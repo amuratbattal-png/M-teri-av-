@@ -148,12 +148,20 @@ Neden bu yapı:
       Cloudflare Access önerilir).
 - [x] `workers/wordpress-agent` iskeleti eklendi — PASİF, kapsam netleşince
       genişletilecek (bkz. aşağıdaki not).
-- [ ] D1 veritabanı + KV namespace'ler gerçek Cloudflare hesabında
-      oluşturulup her `wrangler.toml` içindeki `database_id`/`id`
-      alanları doldurulacak.
+- [x] **Cloudflare hesabında canlıya alındı** (hesap subdomain: `alimuratbattal`):
+      D1 (`musteri-avcisi-db`), 5 KV namespace, `musteri-avcisi-outreach`
+      kuyruğu, `SCAN_SHARED_SECRET` (9 worker'da) ve `DASHBOARD_PASSWORD`
+      secret olarak ayarlandı. Deploy edilenler: `apps/control`,
+      `apps/dashboard`, `workers/channels/whatsapp`,
+      `workers/channels/email`, ve Faz 1 aktif iki tarayıcı
+      (`google-search-scanner`, `company-formation-tracker`). Diğer pasif
+      tarayıcılar henüz deploy edilmedi ama `wrangler.toml`'ları gerçek
+      `CONTROL_API_URL` ile güncel - `docs/deployment.md`'deki adımları
+      tekrarlayarak istendiğinde deploy edilebilirler.
 - [ ] `google-search-scanner` / `yahoo-search-scanner` gerçek bir arama
       API'sine (Google Places API, SerpApi, Yahoo Search API vb.)
-      bağlanacak.
+      bağlanacak - şu an `SEARCH_API_KEY` secret'ı girilmediği için
+      sahte veri üretmeden boş sonuç dönüyor.
 - [ ] WhatsApp Business API ve bir e-posta sağlayıcı (Resend/Postmark)
       kimlik bilgileri eklenecek (`workers/channels/*`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
