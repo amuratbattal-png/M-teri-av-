@@ -1,24 +1,76 @@
-import { SECTORS, type ScanResult } from "@musteri-avcisi/shared";
+import { SECTORS, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
 }
 
+interface PlacesSearchResponse {
+  places?: Array<{
+    id: string;
+    displayName?: { text: string };
+    formattedAddress?: string;
+    websiteUri?: string;
+    internationalPhoneNumber?: string;
+    nationalPhoneNumber?: string;
+  }>;
+}
+
+const RESULTS_PER_SECTOR = 15;
+const WEBSITE_FETCH_TIMEOUT_MS = 5000;
+
 /**
- * Google arama/Maps üzerinden bir sonraki sırad aki sektörü tarar.
- *
- * TODO (gerçek entegrasyon): SEARCH_API_KEY tanımlıysa Google Places API
- * veya SerpApi gibi bir sağlayıcı çağrılıp şunlar aranmalı:
- *   - o sektörde yeni kurulmuş şirketler
- *   - web sitesi eski / mobil uyumsuz olan firmalar (ör. sayfa
- *     kaynağında eski framework/işaretleri arayarak)
- *   - "web sitesi yaptır", "logo tasarım" gibi arama hacmi taşıyan
- *     sorgularla eşleşen yerel işletmeler
- *
- * API anahtarı tanımlı değilse (yerel geliştirme / henüz kurulmadıysa)
- * boş sonuç döner - bu bilinçli bir davranış, sahte veri üretip merkezi
- * tabloyu kirletmemek için.
+ * Google Places API (New) - Text Search ile bir sektördeki işletmeleri arar.
+ * https://developers.google.com/maps/documentation/places/web-service/text-search
  */
+async function searchPlaces(query: string, apiKey: string): Promise<PlacesSearchResponse> {
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.internationalPhoneNumber,places.nationalPhoneNumber",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      languageCode: "tr",
+      regionCode: "TR",
+      maxResultCount: RESULTS_PER_SECTOR,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error("Places API hatası", res.status, await res.text());
+    return {};
+  }
+
+  return (await res.json()) as PlacesSearchResponse;
+}
+
+/**
+ * Basit "eski site" sinyali: sayfa kaynağında mobil uyum (viewport) meta
+ * etiketi yoksa, muhtemelen responsive olmayan/eski bir site - yenileme
+ * teklifi için aday sayılır.
+ *
+ * TODO: daha güvenilir sinyaller eklenebilir (SSL yok, çok eski bir CMS
+ * imzası, son güncelleme tarihi çok eski vb.) - bu ilk, basit bir sürüm.
+ */
+async function looksOutdated(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WEBSITE_FETCH_TIMEOUT_MS);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return false;
+    const html = await res.text();
+    return !/<meta[^>]+name=["']viewport["']/i.test(html);
+  } catch {
+    // Siteye erişilemiyorsa (zaman aşımı, sertifika hatası vb.) karar
+    // veremeyiz - güvenli tarafta kalıp aday olarak işaretlemiyoruz.
+    return false;
+  }
+}
+
 export async function scanNextSector(
   cursorSectorIndex: number,
   env: ScanEnv,
@@ -33,8 +85,38 @@ export async function scanNextSector(
     return { results: [], nextCursorIndex };
   }
 
-  // TODO: gerçek Google arama/Maps API çağrısı buraya.
+  const data = await searchPlaces(`${sector.labelTr} Türkiye`, env.SEARCH_API_KEY);
   const results: ScanResult[] = [];
+
+  for (const place of data.places ?? []) {
+    const name = place.displayName?.text;
+    if (!name) continue;
+
+    let needTags: NeedTag[];
+    if (!place.websiteUri) {
+      needTags = ["website_new"];
+    } else {
+      const outdated = await looksOutdated(place.websiteUri);
+      if (!outdated) continue; // sağlıklı bir sitesi var, hedef değil
+      needTags = ["website_redesign"];
+    }
+
+    results.push({
+      name,
+      sectorSlug: sector.slug,
+      sourceChannel: "google_maps",
+      sourceUrl:
+        place.websiteUri ??
+        (place.formattedAddress
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+              `${name} ${place.formattedAddress}`,
+            )}`
+          : null),
+      needTags,
+      contactPhone: place.internationalPhoneNumber ?? place.nationalPhoneNumber ?? null,
+      rawMetadata: { placeId: place.id, formattedAddress: place.formattedAddress },
+    });
+  }
 
   return { results, nextCursorIndex };
 }
