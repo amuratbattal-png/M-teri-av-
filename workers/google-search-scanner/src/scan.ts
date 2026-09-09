@@ -22,7 +22,10 @@ const WEBSITE_FETCH_TIMEOUT_MS = 5000;
  * Google Places API (New) - Text Search ile bir sektördeki işletmeleri arar.
  * https://developers.google.com/maps/documentation/places/web-service/text-search
  */
-async function searchPlaces(query: string, apiKey: string): Promise<PlacesSearchResponse> {
+async function searchPlaces(
+  query: string,
+  apiKey: string,
+): Promise<{ data: PlacesSearchResponse; apiError?: string }> {
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: {
@@ -40,11 +43,12 @@ async function searchPlaces(query: string, apiKey: string): Promise<PlacesSearch
   });
 
   if (!res.ok) {
-    console.error("Places API hatası", res.status, await res.text());
-    return {};
+    const text = await res.text();
+    console.error("Places API hatası", res.status, text);
+    return { data: {}, apiError: `${res.status}: ${text.slice(0, 300)}` };
   }
 
-  return (await res.json()) as PlacesSearchResponse;
+  return { data: (await res.json()) as PlacesSearchResponse };
 }
 
 /**
@@ -71,24 +75,37 @@ async function looksOutdated(url: string): Promise<boolean> {
   }
 }
 
+export interface ScanDebugInfo {
+  sectorLabel: string;
+  query: string;
+  placesReturned: number;
+  apiError?: string;
+}
+
 export async function scanNextSector(
   cursorSectorIndex: number,
   env: ScanEnv,
-): Promise<{ results: ScanResult[]; nextCursorIndex: number }> {
+): Promise<{ results: ScanResult[]; nextCursorIndex: number; debug: ScanDebugInfo }> {
   const sector = SECTORS[cursorSectorIndex % SECTORS.length];
   const nextCursorIndex = (cursorSectorIndex + 1) % SECTORS.length;
+  const query = `${sector.labelTr} Türkiye`;
 
   if (!env.SEARCH_API_KEY) {
     console.warn(
       `SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" sektörü için gerçek tarama atlandı.`,
     );
-    return { results: [], nextCursorIndex };
+    return {
+      results: [],
+      nextCursorIndex,
+      debug: { sectorLabel: sector.labelTr, query, placesReturned: 0, apiError: "SEARCH_API_KEY tanımlı değil" },
+    };
   }
 
-  const data = await searchPlaces(`${sector.labelTr} Türkiye`, env.SEARCH_API_KEY);
+  const { data, apiError } = await searchPlaces(query, env.SEARCH_API_KEY);
+  const places = data.places ?? [];
   const results: ScanResult[] = [];
 
-  for (const place of data.places ?? []) {
+  for (const place of places) {
     const name = place.displayName?.text;
     if (!name) continue;
 
@@ -118,5 +135,9 @@ export async function scanNextSector(
     });
   }
 
-  return { results, nextCursorIndex };
+  return {
+    results,
+    nextCursorIndex,
+    debug: { sectorLabel: sector.labelTr, query, placesReturned: places.length, apiError },
+  };
 }

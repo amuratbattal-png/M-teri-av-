@@ -1,4 +1,4 @@
-import { scanNextSector } from "./scan";
+import { scanNextSector, type ScanDebugInfo } from "./scan";
 
 export interface Env {
   SCAN_STATE: KVNamespace;
@@ -13,6 +13,7 @@ interface ScanDiagnostics {
   posted: boolean;
   postStatus?: number;
   postError?: string;
+  scan: ScanDebugInfo;
 }
 
 const CURSOR_KEY = "sector-cursor-index";
@@ -21,12 +22,13 @@ async function runScan(env: Env): Promise<ScanDiagnostics> {
   const cursorRaw = await env.SCAN_STATE.get(CURSOR_KEY);
   const cursorIndex = cursorRaw ? Number.parseInt(cursorRaw, 10) : 0;
 
-  const { results, nextCursorIndex } = await scanNextSector(cursorIndex, env);
+  const { results, nextCursorIndex, debug } = await scanNextSector(cursorIndex, env);
 
   const diagnostics: ScanDiagnostics = {
     sectorIndex: cursorIndex,
     found: results.length,
     posted: false,
+    scan: debug,
   };
 
   if (results.length > 0) {
