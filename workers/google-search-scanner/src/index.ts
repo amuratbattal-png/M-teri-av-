@@ -7,13 +7,27 @@ export interface Env {
   SEARCH_API_KEY?: string;
 }
 
+interface ScanDiagnostics {
+  sectorIndex: number;
+  found: number;
+  posted: boolean;
+  postStatus?: number;
+  postError?: string;
+}
+
 const CURSOR_KEY = "sector-cursor-index";
 
-async function runScan(env: Env): Promise<void> {
+async function runScan(env: Env): Promise<ScanDiagnostics> {
   const cursorRaw = await env.SCAN_STATE.get(CURSOR_KEY);
   const cursorIndex = cursorRaw ? Number.parseInt(cursorRaw, 10) : 0;
 
   const { results, nextCursorIndex } = await scanNextSector(cursorIndex, env);
+
+  const diagnostics: ScanDiagnostics = {
+    sectorIndex: cursorIndex,
+    found: results.length,
+    posted: false,
+  };
 
   if (results.length > 0) {
     const res = await fetch(`${env.CONTROL_API_URL}/scan-results`, {
@@ -24,12 +38,16 @@ async function runScan(env: Env): Promise<void> {
       },
       body: JSON.stringify({ results }),
     });
+    diagnostics.posted = res.ok;
+    diagnostics.postStatus = res.status;
     if (!res.ok) {
-      console.error("control API'ye sonuç gönderilemedi", res.status, await res.text());
+      diagnostics.postError = await res.text();
+      console.error("control API'ye sonuç gönderilemedi", res.status, diagnostics.postError);
     }
   }
 
   await env.SCAN_STATE.put(CURSOR_KEY, String(nextCursorIndex));
+  return diagnostics;
 }
 
 export default {
@@ -43,23 +61,14 @@ export default {
       const provided = url.searchParams.get("secret")?.trim() ?? "";
       const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
       if (provided !== expected) {
-        // GEÇİCİ TEŞHİS: gerçek değerleri göstermeden sadece uzunlukları
-        // dönüyor - sorunu bulunca bu blok kaldırılacak.
-        return new Response(
-          JSON.stringify({
-            error: "unauthorized",
-            debug: {
-              providedLength: provided.length,
-              expectedLength: expected.length,
-              expectedIsSet: env.SCAN_SHARED_SECRET !== undefined,
-            },
-          }),
-          { status: 401, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
-      await runScan(env);
+      const diagnostics = await runScan(env);
       return new Response(
-        JSON.stringify({ ok: true, ranAt: new Date().toISOString() }),
+        JSON.stringify({ ok: true, ranAt: new Date().toISOString(), diagnostics }),
         { headers: { "content-type": "application/json" } },
       );
     }
