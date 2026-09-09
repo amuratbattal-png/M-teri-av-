@@ -10,7 +10,7 @@ crons = ["*/30 * * * *"]
 # Bu worker'ın kendi tarama ilerlemesini (hangi sektörde kaldığı) tuttuğu KV.
 [[kv_namespaces]]
 binding = "SCAN_STATE"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+id = "d0985dc320d847ff8b3ecf13d4f37b26"
 
 [vars]
 CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
