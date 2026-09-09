@@ -29,7 +29,14 @@ service = "musteri-avcisi-control"
 # scan() fonksiyonu sahte (stub) veri dondurur.
 
 # Duz Google web aramasi (google_search kanali) icin Custom Search
-# JSON API. Gizli degil (bkz. programmablesearchengine.google.com),
-# bu yuzden secret degil normal var olarak tutuluyor. Bos birakilirsa
-# sadece Google Maps (Places API) taranir, duz web aramasi atlanir.
+# JSON API. Bos birakilirsa sadece Google Maps (Places API) taranir,
+# duz web aramasi atlanir.
+#
+# GOOGLE_SEARCH_API_KEY: Custom Search API'ye ozel, ayri bir anahtar
+# (onerilen - `wrangler secret put GOOGLE_SEARCH_API_KEY` ile eklenmeli,
+# gizli oldugu icin secret). Tanimli degilse SEARCH_API_KEY'e (Places
+# API anahtari) geri doner - o da Custom Search API'ye izinliyse calisir.
+#
+# GOOGLE_SEARCH_ENGINE_ID: programmablesearchengine.google.com'dan
+# alinan arama motoru kimligi - gizli degil, normal var.
 GOOGLE_SEARCH_ENGINE_ID = ""

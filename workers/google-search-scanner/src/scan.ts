@@ -2,6 +2,13 @@ import { SECTORS, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
+  /**
+   * Custom Search API için ayrı, kendi anahtarı (önerilen - Places API
+   * anahtarından bağımsız, sadece Custom Search API'ye kısıtlı).
+   * Tanımlı değilse SEARCH_API_KEY'e geri döner (o da her iki API'ye
+   * izinliyse çalışır).
+   */
+  GOOGLE_SEARCH_API_KEY?: string;
   /** Google Programmable Search Engine (Custom Search JSON API) kimliği - gizli değil, sadece bir kimlik. */
   GOOGLE_SEARCH_ENGINE_ID?: string;
 }
@@ -252,8 +259,9 @@ export async function scanNextSector(
     webSearchEnabled: Boolean(env.GOOGLE_SEARCH_ENGINE_ID),
   };
 
+  const webSearchApiKey = env.GOOGLE_SEARCH_API_KEY ?? env.SEARCH_API_KEY;
   if (env.GOOGLE_SEARCH_ENGINE_ID) {
-    const web = await collectWebSearchResults(sector, env.SEARCH_API_KEY, env.GOOGLE_SEARCH_ENGINE_ID);
+    const web = await collectWebSearchResults(sector, webSearchApiKey, env.GOOGLE_SEARCH_ENGINE_ID);
     results.push(...web.results);
     debug.webQuery = web.query;
     debug.webResultsReturned = web.returned;
