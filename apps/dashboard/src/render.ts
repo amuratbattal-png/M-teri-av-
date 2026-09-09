@@ -192,63 +192,85 @@ function statTiles(counts: Record<string, number>): string {
     .join("");
 }
 
-function candidateCard(c: Candidate): string {
-  const needs = c.needTags
-    .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
-    .join("");
-  const contactParts = [
+function contactLine(c: Candidate): string {
+  const parts = [
     c.contactWhatsapp ? `WhatsApp: ${c.contactWhatsapp}` : null,
     c.contactEmail ? `E-posta: ${c.contactEmail}` : null,
     c.contactPhone ? `Telefon: ${c.contactPhone}` : null,
   ].filter(Boolean) as string[];
-  const contact = contactParts.length
-    ? contactParts.map((p) => escapeHtml(p)).join(" · ")
-    : "İletişim bilgisi yok";
+  return parts.length ? parts.map((p) => escapeHtml(p)).join(" · ") : "İletişim bilgisi yok";
+}
+
+function approveRejectForms(id: string): string {
+  return `
+    <form method="post" action="/approve/${id}">
+      <button type="submit" class="btn btn--approve">✓ Onayla ve Gönder</button>
+    </form>
+    <form method="post" action="/reject/${id}">
+      <button type="submit" class="btn btn--reject">✕ Reddet</button>
+    </form>`;
+}
+
+/** Kompakt kart: sadece özet bilgi + hızlı onay/red. Detay için tıklanınca popup açılır. */
+function candidateCard(c: Candidate): string {
+  const needsPreview = c.needTags.slice(0, 2);
+  const extra = c.needTags.length - needsPreview.length;
+  const pills =
+    needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
+    (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
 
   return `
-    <article class="card">
-      <header class="card-header">
-        <div>
-          <h3 class="card-title">${escapeHtml(c.name)}</h3>
-          <div class="card-meta">
-            <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
-            <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
-          </div>
-        </div>
-      </header>
-
-      <div class="pills">${needs}</div>
-      <p class="contact">${contact}</p>
-
-      ${
-        c.proposalDraft
-          ? `<details class="proposal-wrap">
-              <summary>Teklif taslağını gör</summary>
-              <pre class="proposal">${escapeHtml(c.proposalDraft)}</pre>
-            </details>`
-          : ""
-      }
-
-      ${
-        c.sourceUrl
-          ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
-          : ""
-      }
-
-      <div class="card-actions">
-        <form method="post" action="/approve/${c.id}">
-          <button type="submit" class="btn btn--approve">✓ Onayla ve Gönder</button>
-        </form>
-        <form method="post" action="/reject/${c.id}">
-          <button type="submit" class="btn btn--reject">✕ Reddet</button>
-        </form>
+    <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
+      <h3 class="card-title card-title--clamp">${escapeHtml(c.name)}</h3>
+      <div class="card-meta">
+        <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
+        <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+      </div>
+      <div class="pills">${pills}</div>
+      <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
+      <div class="card-actions" onclick="event.stopPropagation()">
+        ${approveRejectForms(c.id)}
       </div>
     </article>`;
 }
 
+/** Kartın detay popup'ı (native &lt;dialog&gt; - ekstra JS kütüphanesi gerekmiyor). */
+function candidateDialog(c: Candidate): string {
+  const pills = c.needTags
+    .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
+    .join("");
+
+  return `
+    <dialog id="dlg-${c.id}" class="detail-dialog">
+      <div class="dialog-inner">
+        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">✕</button>
+        <h3 class="card-title">${escapeHtml(c.name)}</h3>
+        <div class="card-meta">
+          <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
+          <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+        </div>
+        <div class="pills">${pills}</div>
+        <p class="contact">${contactLine(c)}</p>
+        ${
+          c.proposalDraft
+            ? `<div class="proposal-label">Teklif taslağı</div><pre class="proposal">${escapeHtml(c.proposalDraft)}</pre>`
+            : ""
+        }
+        ${
+          c.sourceUrl
+            ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
+            : ""
+        }
+        <div class="card-actions">
+          ${approveRejectForms(c.id)}
+        </div>
+      </div>
+    </dialog>`;
+}
+
 export function renderApprovalsPage(counts: Record<string, number>, pending: Candidate[]): string {
   const list = pending.length
-    ? `<div class="cards">${pending.map(candidateCard).join("\n")}</div>`
+    ? `<div class="cards">${pending.map(candidateCard).join("\n")}</div>${pending.map(candidateDialog).join("\n")}`
     : `<div class="empty-state">
         <span class="emoji">🔍</span>
         Onay bekleyen aday yok.<br>
@@ -480,19 +502,62 @@ const STYLES = `
   }
   .empty-state .emoji { font-size: 2.2rem; display: block; margin-bottom: 0.6rem; }
 
-  .cards { display: grid; gap: 1rem; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.35rem 1.5rem;
+    padding: 1.1rem 1.2rem;
     box-shadow: var(--shadow-md);
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, transform 0.1s;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
   }
-  .card:hover { border-color: #33395a; }
-  .card-header { display: flex; justify-content: space-between; gap: 1rem; }
-  .card-title { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 700; letter-spacing: -0.01em; }
+  .card:hover { border-color: #33395a; transform: translateY(-1px); }
+  .card-title { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+  .card-title--clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.5em;
+  }
   .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .detail-link {
+    background: none; border: none; padding: 0; margin: 0.7rem 0 0;
+    color: var(--accent); font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; text-align: left; font-family: inherit;
+  }
+  .detail-link:hover { text-decoration: underline; }
+
+  /* Detay popup'ı (native <dialog>) */
+  dialog.detail-dialog {
+    border: none; padding: 0; background: transparent; max-width: 560px; width: 92vw;
+    border-radius: var(--radius);
+  }
+  dialog.detail-dialog::backdrop { background: rgba(5,6,12,0.72); backdrop-filter: blur(2px); }
+  .dialog-inner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.6rem 1.7rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .dialog-close {
+    position: absolute; top: 1rem; right: 1rem;
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+    cursor: pointer; font-size: 0.9rem;
+  }
+  .dialog-close:hover { color: var(--text); }
+  .proposal-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); margin-top: 0.9rem; }
 
   .badge {
     font-size: 0.71rem;
@@ -518,6 +583,7 @@ const STYLES = `
     background: var(--accent-soft); color: var(--accent-2);
     border: 1px solid rgba(45,212,191,0.25);
   }
+  .pill--muted { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
 
   .contact { font-size: 0.84rem; color: var(--text-muted); margin: 0.5rem 0; }
 
@@ -561,6 +627,9 @@ const STYLES = `
   tr:hover td { background: var(--surface-2); }
   .muted { color: var(--text-muted); }
 
+  @media (max-width: 1100px) {
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 760px) {
     .shell { flex-direction: column; }
     .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 0.75rem 1rem; overflow-x: auto; }
@@ -569,5 +638,6 @@ const STYLES = `
     .sidebar-footer { display: none; }
     .main { padding: 1.25rem 1rem 2.5rem; }
     .topbar { flex-direction: column; }
+    .cards { grid-template-columns: 1fr; }
   }
 `;
