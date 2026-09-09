@@ -40,7 +40,7 @@ export default {
     // tetikler. SCAN_SHARED_SECRET ile korunuyor (rastgele biri API
     // kotasını tüketemesin diye).
     if (url.pathname === "/run-now") {
-      if (url.searchParams.get("secret") !== env.SCAN_SHARED_SECRET) {
+      if (url.searchParams.get("secret")?.trim() !== env.SCAN_SHARED_SECRET?.trim()) {
         return new Response("unauthorized", { status: 401 });
       }
       await runScan(env);
