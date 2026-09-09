@@ -40,8 +40,22 @@ export default {
     // tetikler. SCAN_SHARED_SECRET ile korunuyor (rastgele biri API
     // kotasını tüketemesin diye).
     if (url.pathname === "/run-now") {
-      if (url.searchParams.get("secret")?.trim() !== env.SCAN_SHARED_SECRET?.trim()) {
-        return new Response("unauthorized", { status: 401 });
+      const provided = url.searchParams.get("secret")?.trim() ?? "";
+      const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
+      if (provided !== expected) {
+        // GEÇİCİ TEŞHİS: gerçek değerleri göstermeden sadece uzunlukları
+        // dönüyor - sorunu bulunca bu blok kaldırılacak.
+        return new Response(
+          JSON.stringify({
+            error: "unauthorized",
+            debug: {
+              providedLength: provided.length,
+              expectedLength: expected.length,
+              expectedIsSet: env.SCAN_SHARED_SECRET !== undefined,
+            },
+          }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        );
       }
       await runScan(env);
       return new Response(
