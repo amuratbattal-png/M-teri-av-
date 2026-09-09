@@ -183,11 +183,11 @@ Neden bu yapı:
       `workers/channels/email` deploy edildi, doğrudan `/send`
       endpoint'ine test isteği atılıp gerçek e-posta alındığı teyit
       edildi.
-  - **Not:** `/send` endpoint'i şu an ek bir yetki kontrolü olmadan genel
-    `*.workers.dev` adresinden erişilebilir (control'ün service binding
-    ile çağırması bekleniyor, ama URL'yi bilen biri doğrudan da
-    çağırabilir). Düşük risk ama ileride `SCAN_SHARED_SECRET`'a benzer
-    bir paylaşılan sır ile korunması iyi olur.
+- [x] **Gönderim kanalları korumaya alındı**: `OUTREACH_SHARED_SECRET`
+      eklendi - control, whatsapp/email/voice-call worker'larına
+      `x-outreach-secret` header'ı ile istek atıyor, worker'lar kendi
+      kopyalarıyla eşleşmiyorsa 401 dönüyor. Secret olmadan doğrudan
+      `/send` çağrısı denenip reddedildiği doğrulandı.
 - [ ] WhatsApp Business API kimlik bilgileri eklenecek
       (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
