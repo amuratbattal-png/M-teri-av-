@@ -33,7 +33,23 @@ async function runScan(env: Env): Promise<void> {
 }
 
 export default {
-  async fetch(): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Manuel test için: cron'un 30 dakikayı beklemeden taramayı hemen
+    // tetikler. SCAN_SHARED_SECRET ile korunuyor (rastgele biri API
+    // kotasını tüketemesin diye).
+    if (url.pathname === "/run-now") {
+      if (url.searchParams.get("secret") !== env.SCAN_SHARED_SECRET) {
+        return new Response("unauthorized", { status: 401 });
+      }
+      await runScan(env);
+      return new Response(
+        JSON.stringify({ ok: true, ranAt: new Date().toISOString() }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+
     return new Response(
       JSON.stringify({ ok: true, service: "musteri-avcisi-google-search-scanner" }),
       { headers: { "content-type": "application/json" } },
