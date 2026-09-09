@@ -1,5 +1,5 @@
 import type { Candidate } from "@musteri-avcisi/shared";
-import { renderPage } from "./render";
+import { renderApprovalsPage, renderAllCandidatesPage } from "./render";
 
 export interface Env {
   CONTROL_WORKER: Fetcher;
@@ -24,6 +24,19 @@ function requireAuth(request: Request, env: Env): Response | null {
   });
 }
 
+async function fetchStats(env: Env): Promise<Record<string, number>> {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/stats");
+  const { counts } = (await res.json()) as { counts: Record<string, number> };
+  return counts;
+}
+
+async function fetchCandidates(env: Env, status?: string): Promise<Candidate[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await env.CONTROL_WORKER.fetch(`https://internal/candidates${qs}`);
+  const { candidates } = (await res.json()) as { candidates: Candidate[] };
+  return candidates;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const unauthorized = requireAuth(request, env);
@@ -32,14 +45,18 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/" && request.method === "GET") {
-      const [statsRes, candidatesRes] = await Promise.all([
-        env.CONTROL_WORKER.fetch("https://internal/stats"),
-        env.CONTROL_WORKER.fetch("https://internal/candidates?status=pending_approval"),
+      const [counts, pending] = await Promise.all([
+        fetchStats(env),
+        fetchCandidates(env, "pending_approval"),
       ]);
-      const { counts } = (await statsRes.json()) as { counts: Record<string, number> };
-      const { candidates } = (await candidatesRes.json()) as { candidates: Candidate[] };
+      return new Response(renderApprovalsPage(counts, pending), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
 
-      return new Response(renderPage(counts, candidates), {
+    if (url.pathname === "/adaylar" && request.method === "GET") {
+      const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
+      return new Response(renderAllCandidatesPage(counts, all), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
