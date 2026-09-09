@@ -148,6 +148,12 @@ export interface ScanDebugInfo {
   webQuery?: string;
   webResultsReturned?: number;
   webApiError?: string;
+  /** GOOGLE_SEARCH_API_KEY (veya yoksa SEARCH_API_KEY) uzunluğu - secret
+   * yapıştırma sırasında bozulmayı tespit etmek için (bu projede daha
+   * önce iki kez yaşandı, bkz. CLAUDE.md "Bilinen risk"). Gerçek bir
+   * Google API anahtarı normalde 39 karakter ve "AIza" ile başlar. */
+  webApiKeyLength?: number;
+  webApiKeyPrefix?: string;
 }
 
 /** "google_maps" kanalı: Places API sonuçlarını ScanResult'a çevirir. */
@@ -260,6 +266,8 @@ export async function scanNextSector(
   };
 
   const webSearchApiKey = env.GOOGLE_SEARCH_API_KEY ?? env.SEARCH_API_KEY;
+  debug.webApiKeyLength = webSearchApiKey.length;
+  debug.webApiKeyPrefix = webSearchApiKey.slice(0, 4);
   if (env.GOOGLE_SEARCH_ENGINE_ID) {
     const web = await collectWebSearchResults(sector, webSearchApiKey, env.GOOGLE_SEARCH_ENGINE_ID);
     results.push(...web.results);
