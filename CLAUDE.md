@@ -148,16 +148,31 @@ Neden bu yapı:
       Cloudflare Access önerilir).
 - [x] `workers/wordpress-agent` iskeleti eklendi — PASİF, kapsam netleşince
       genişletilecek (bkz. aşağıdaki not).
-- [x] **Cloudflare hesabında canlıya alındı** (hesap subdomain: `alimuratbattal`):
-      D1 (`musteri-avcisi-db`), 5 KV namespace, `musteri-avcisi-outreach`
-      kuyruğu, `SCAN_SHARED_SECRET` (9 worker'da) ve `DASHBOARD_PASSWORD`
-      secret olarak ayarlandı. Deploy edilenler: `apps/control`,
-      `apps/dashboard`, `workers/channels/whatsapp`,
+- [x] **Cloudflare hesabında canlıya alındı ve uçtan uca doğrulandı**
+      (hesap subdomain: `alimuratbattal`): D1 (`musteri-avcisi-db`), 5 KV
+      namespace, `musteri-avcisi-outreach` kuyruğu, `SCAN_SHARED_SECRET`
+      ve `DASHBOARD_PASSWORD` secret olarak ayarlandı. Deploy edilenler:
+      `apps/control`, `apps/dashboard`, `workers/channels/whatsapp`,
       `workers/channels/email`, ve Faz 1 aktif iki tarayıcı
-      (`google-search-scanner`, `company-formation-tracker`). Diğer pasif
-      tarayıcılar henüz deploy edilmedi ama `wrangler.toml`'ları gerçek
-      `CONTROL_API_URL` ile güncel - `docs/deployment.md`'deki adımları
-      tekrarlayarak istendiğinde deploy edilebilirler.
+      (`google-search-scanner`, `company-formation-tracker`).
+      `google-search-scanner` gerçek Google Places API ile test edildi:
+      aday bulma → control'e kaydetme → dashboard'da görünme akışı
+      çalışıyor. Diğer pasif tarayıcılar henüz deploy edilmedi ama
+      service binding'leri (`CONTROL_WORKER`) güncel -
+      `docs/deployment.md`'deki adımları tekrarlayarak istendiğinde
+      deploy edilebilirler.
+  - **Önemli mimari not (çözüldü):** worker'lar arası iletişimde artık
+    `CONTROL_API_URL` + düz `fetch()` DEĞİL, `CONTROL_WORKER` service
+    binding kullanılıyor - Cloudflare, aynı hesaptaki worker'ların
+    birbirinin genel `*.workers.dev` adresine düz fetch ile istek atmasını
+    "error 1042" ile engelliyor. Yeni bir worker eklerken bu deseni takip
+    et (bkz. `docs/architecture.md`).
+  - **Bilinen risk:** `wrangler secret put` ile interaktif yapıştırma
+    sırasında değer bozulabiliyor (2 kez, farklı worker'larda, secret
+    1 karaktere düştü). Güvenilir yöntem: `$deger = "..."; $deger |
+    pnpm exec wrangler secret put AD` (PowerShell). Diğer 7 pasif
+    worker'daki `SCAN_SHARED_SECRET` değerleri henüz bu yöntemle
+    doğrulanmadı - aktifleştirilmeden önce kontrol edilmeli.
 - [ ] `google-search-scanner` / `yahoo-search-scanner` gerçek bir arama
       API'sine (Google Places API, SerpApi, Yahoo Search API vb.)
       bağlanacak - şu an `SEARCH_API_KEY` secret'ı girilmediği için
