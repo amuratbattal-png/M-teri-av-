@@ -7,7 +7,7 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "musteri-avcisi-db"
-database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+database_id = "a66a7c79-aa21-4346-8ec0-550241d27849"
 
 # Onaylanan adaylarin gonderim kanallarina dispatch edilmesi icin kuyruk.
 [[queues.producers]]
