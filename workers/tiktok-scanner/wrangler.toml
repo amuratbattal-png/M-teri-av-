@@ -8,7 +8,7 @@ crons = ["*/30 * * * *"]
 
 [[kv_namespaces]]
 binding = "SCAN_STATE"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+id = "1800db04200348fab7f181b6d310690a"
 
 [vars]
 CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
