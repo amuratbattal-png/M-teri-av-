@@ -9,3 +9,8 @@ compatibility_date = "2024-11-01"
 # WhatsApp Business Cloud API kimlik bilgileri gerçek deploy öncesi
 # `wrangler secret put WHATSAPP_TOKEN` ve `WHATSAPP_PHONE_NUMBER_ID`
 # ile eklenmeli.
+
+# OUTREACH_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put OUTREACH_SHARED_SECRET` ile ayarlanmalı
+# (apps/control ile AYNI değer) - /send endpoint'ini yalnızca control'ün
+# çağırabilmesini sağlar.

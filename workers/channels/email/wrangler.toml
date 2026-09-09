@@ -5,5 +5,10 @@ compatibility_date = "2024-11-01"
 # `apps/control` bu worker'ı service binding ile çağırır.
 # E-posta sağlayıcı API anahtarı gerçek deploy öncesi
 # `wrangler secret put EMAIL_API_KEY` ile eklenmeli.
+
+# OUTREACH_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put OUTREACH_SHARED_SECRET` ile ayarlanmalı
+# (apps/control ile AYNI değer) - /send endpoint'ini yalnızca control'ün
+# çağırabilmesini sağlar.
 [vars]
 EMAIL_FROM_ADDRESS = "info@ajansim.net"

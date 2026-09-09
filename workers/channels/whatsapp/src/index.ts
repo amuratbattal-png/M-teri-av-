@@ -1,6 +1,8 @@
 export interface Env {
   WHATSAPP_TOKEN?: string;
   WHATSAPP_PHONE_NUMBER_ID?: string;
+  /** control -> bu worker arası paylaşılan sır (bkz. apps/control/src/env.ts). */
+  OUTREACH_SHARED_SECRET: string;
 }
 
 interface SendRequest {
@@ -12,12 +14,22 @@ interface SendRequest {
  * `apps/control` bu worker'ı SADECE onaylanmış bir aday için, kuyruk
  * üzerinden çağırır (bkz. apps/control/src/index.ts `queue()`).
  * Burada ek bir onay kontrolü yoktur - onay control tarafında yapılır.
+ * `OUTREACH_SHARED_SECRET` sadece bu isteğin gerçekten control'den
+ * geldiğini doğrular (rastgele biri genel URL'yi bulup gönderim
+ * tetikleyemesin diye).
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname !== "/send" || request.method !== "POST") {
       return new Response("not found", { status: 404 });
+    }
+
+    if (request.headers.get("x-outreach-secret")?.trim() !== env.OUTREACH_SHARED_SECRET?.trim()) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     const body = (await request.json()) as SendRequest;

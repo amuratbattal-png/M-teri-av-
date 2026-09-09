@@ -1,6 +1,8 @@
 export interface Env {
   VOICE_CALL_ENABLED: string; // "true" | "false"
   VOICE_PROVIDER_API_KEY?: string;
+  /** control -> bu worker arası paylaşılan sır (bkz. apps/control/src/env.ts). */
+  OUTREACH_SHARED_SECRET: string;
 }
 
 interface SendRequest {
@@ -18,6 +20,13 @@ export default {
     const url = new URL(request.url);
     if (url.pathname !== "/send" || request.method !== "POST") {
       return new Response("not found", { status: 404 });
+    }
+
+    if (request.headers.get("x-outreach-secret")?.trim() !== env.OUTREACH_SHARED_SECRET?.trim()) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     if (env.VOICE_CALL_ENABLED !== "true") {

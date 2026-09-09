@@ -79,7 +79,10 @@ export default {
       try {
         const res = await worker.fetch("https://internal/send", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "x-outreach-secret": env.OUTREACH_SHARED_SECRET?.trim() ?? "",
+          },
           body: JSON.stringify({
             to:
               channel === "whatsapp" ? candidate.contactWhatsapp : candidate.contactEmail,
