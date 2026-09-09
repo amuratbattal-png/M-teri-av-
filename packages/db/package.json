@@ -1,0 +1,17 @@
+{
+  "name": "@musteri-avcisi/db",
+  "private": true,
+  "version": "0.1.0",
+  "main": "client.ts",
+  "types": "client.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.36.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "drizzle-kit": "^0.28.1"
+  }
+}

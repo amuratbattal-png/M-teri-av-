@@ -1,0 +1,21 @@
+name = "musteri-avcisi-google-search-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Her 30 dakikada bir tetiklenir; her calismada sirali sektor listesinden
+# bir sonraki sektoru tarar (bkz. src/scan.ts).
+[triggers]
+crons = ["*/30 * * * *"]
+
+# Bu worker'ın kendi tarama ilerlemesini (hangi sektörde kaldığı) tuttuğu KV.
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+
+[vars]
+CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
+SCAN_SHARED_SECRET = "dev-only-change-me"
+
+# Gercek arama/scraping icin API anahtari (Google Places API, SerpApi vb.)
+# `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene kadar
+# scan() fonksiyonu sahte (stub) veri dondurur.

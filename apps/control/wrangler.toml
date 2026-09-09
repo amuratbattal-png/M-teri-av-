@@ -1,0 +1,36 @@
+name = "musteri-avcisi-control"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Merkezi veritabani - gercek Cloudflare hesabinda `wrangler d1 create`
+# ile olusturulup asagidaki database_id doldurulmali.
+[[d1_databases]]
+binding = "DB"
+database_name = "musteri-avcisi-db"
+database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+
+# Onaylanan adaylarin gonderim kanallarina dispatch edilmesi icin kuyruk.
+[[queues.producers]]
+binding = "OUTREACH_QUEUE"
+queue = "musteri-avcisi-outreach"
+
+[[queues.consumers]]
+queue = "musteri-avcisi-outreach"
+max_batch_size = 10
+max_retries = 3
+
+# Gonderim kanali worker'larina servis baglantilari (whatsapp/email).
+# Once workers/channels/* deploy edilmeli, sonra bu binding'ler aktif olur.
+[[services]]
+binding = "WHATSAPP_WORKER"
+service = "musteri-avcisi-channel-whatsapp"
+
+[[services]]
+binding = "EMAIL_WORKER"
+service = "musteri-avcisi-channel-email"
+
+[vars]
+# Tarama worker'larinin control API'ye yazarken kullandigi paylasilan sir.
+# Gercek deger `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmali,
+# buradaki sadece yerel gelistirme placeholder'i.
+SCAN_SHARED_SECRET = "dev-only-change-me"

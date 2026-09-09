@@ -1,0 +1,48 @@
+export interface Env {
+  EMAIL_API_KEY?: string;
+  EMAIL_FROM_ADDRESS: string;
+}
+
+interface SendRequest {
+  to: string | null;
+  content: string | null;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname !== "/send" || request.method !== "POST") {
+      return new Response("not found", { status: 404 });
+    }
+
+    const body = (await request.json()) as SendRequest;
+    if (!body.to) {
+      return new Response(JSON.stringify({ error: "no email contact" }), { status: 400 });
+    }
+
+    if (!env.EMAIL_API_KEY) {
+      console.warn("EMAIL_API_KEY tanımlı değil - gönderim atlandı.");
+      return new Response(JSON.stringify({ ok: false, reason: "not_configured" }), {
+        status: 501,
+      });
+    }
+
+    // TODO: gerçek e-posta sağlayıcı entegrasyonu (ör. Resend, Postmark,
+    // ya da Cloudflare üzerinden MailChannels).
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.EMAIL_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM_ADDRESS,
+        to: body.to,
+        subject: "Sizin için hazırladığımız teklif",
+        text: body.content ?? "",
+      }),
+    });
+
+    return new Response(JSON.stringify({ ok: res.ok }), { status: res.ok ? 200 : 502 });
+  },
+};

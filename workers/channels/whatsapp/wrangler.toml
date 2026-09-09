@@ -1,0 +1,11 @@
+name = "musteri-avcisi-channel-whatsapp"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# `apps/control` bu worker'ı service binding ile çağırır (bkz.
+# apps/control/wrangler.toml [[services]]) - dışarıya açık bir HTTP
+# endpoint olarak deploy edilmesine gerek yok.
+
+# WhatsApp Business Cloud API kimlik bilgileri gerçek deploy öncesi
+# `wrangler secret put WHATSAPP_TOKEN` ve `WHATSAPP_PHONE_NUMBER_ID`
+# ile eklenmeli.

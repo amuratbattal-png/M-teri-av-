@@ -1,0 +1,16 @@
+name = "musteri-avcisi-company-formation-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Alfabetik sektor taramasindan BAGIMSIZ, paralel calisan iş kolu.
+# Sık calisir cunku "yeni kurulan sirket" sinyali zamana duyarli.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
+SCAN_SHARED_SECRET = "dev-only-change-me"
+
+# TODO: Ticaret Sicili Gazetesi / benzeri resmi yeni sirket kuruluş
+# ilanlari kaynagi, ve is arama sitelerindeki "is ariyorum / girisimci"
+# sinyalleri icin API anahtarlari.
