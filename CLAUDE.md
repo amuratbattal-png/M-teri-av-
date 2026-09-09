@@ -173,12 +173,23 @@ Neden bu yapı:
     pnpm exec wrangler secret put AD` (PowerShell). Diğer 7 pasif
     worker'daki `SCAN_SHARED_SECRET` değerleri henüz bu yöntemle
     doğrulanmadı - aktifleştirilmeden önce kontrol edilmeli.
-- [ ] `google-search-scanner` / `yahoo-search-scanner` gerçek bir arama
-      API'sine (Google Places API, SerpApi, Yahoo Search API vb.)
-      bağlanacak - şu an `SEARCH_API_KEY` secret'ı girilmediği için
-      sahte veri üretmeden boş sonuç dönüyor.
-- [ ] WhatsApp Business API ve bir e-posta sağlayıcı (Resend/Postmark)
-      kimlik bilgileri eklenecek (`workers/channels/*`).
+- [x] `google-search-scanner` gerçek Google Places API'sine bağlandı ve
+      uçtan uca doğrulandı (bkz. yukarıdaki not). `yahoo-search-scanner`
+      hâlâ bekliyor.
+- [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
+      domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
+      DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
+      `info@ajansim.net`. `EMAIL_API_KEY` secret olarak ayarlandı,
+      `workers/channels/email` deploy edildi, doğrudan `/send`
+      endpoint'ine test isteği atılıp gerçek e-posta alındığı teyit
+      edildi.
+  - **Not:** `/send` endpoint'i şu an ek bir yetki kontrolü olmadan genel
+    `*.workers.dev` adresinden erişilebilir (control'ün service binding
+    ile çağırması bekleniyor, ama URL'yi bilen biri doğrudan da
+    çağırabilir). Düşük risk ama ileride `SCAN_SHARED_SECRET`'a benzer
+    bir paylaşılan sır ile korunması iyi olur.
+- [ ] WhatsApp Business API kimlik bilgileri eklenecek
+      (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
