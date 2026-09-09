@@ -173,9 +173,21 @@ Neden bu yapı:
     pnpm exec wrangler secret put AD` (PowerShell). Diğer 7 pasif
     worker'daki `SCAN_SHARED_SECRET` değerleri henüz bu yöntemle
     doğrulanmadı - aktifleştirilmeden önce kontrol edilmeli.
-- [x] `google-search-scanner` gerçek Google Places API'sine bağlandı ve
-      uçtan uca doğrulandı (bkz. yukarıdaki not). `yahoo-search-scanner`
+- [x] `google-search-scanner` gerçek Google Places API'sine (kanal:
+      `google_maps`) bağlandı ve uçtan uca doğrulandı. `yahoo-search-scanner`
       hâlâ bekliyor.
+- [ ] **Bilinen sorun (beklemede):** düz Google web araması (kanal:
+      `google_search`, Custom Search JSON API) kodu yazıldı ve deploy
+      edildi (`GOOGLE_SEARCH_ENGINE_ID` ayarlı), ama Google tarafında
+      sürekli `403: This project does not have the access to Custom
+      Search JSON API` hatası alıyor - API "Enabled" görünmesine ve
+      API anahtarı kısıtlamasına eklenmesine rağmen. Muhtemelen
+      hesabın Google Cloud Organization politikalarıyla ilgili bir
+      kısıtlama (IAM & Admin → Organization Policies kontrol
+      edilmeli). Sistem bunu zarif karşılıyor - web arama hata verse
+      bile Maps sonuçları etkilenmeden kaydediliyor
+      (`workers/google-search-scanner/src/scan.ts`). Sahibi şimdilik
+      bu konuyu ertelemeyi tercih etti.
 - [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
       domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
       DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
