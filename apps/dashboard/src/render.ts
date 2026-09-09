@@ -269,8 +269,11 @@ function candidateDialog(c: Candidate): string {
 }
 
 export function renderApprovalsPage(counts: Record<string, number>, pending: Candidate[]): string {
-  const list = pending.length
-    ? `<div class="cards">${pending.map(candidateCard).join("\n")}</div>${pending.map(candidateDialog).join("\n")}`
+  const sortedPending = [...pending].sort((a, b) =>
+    a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
+  );
+  const list = sortedPending.length
+    ? `<div class="cards">${sortedPending.map(candidateCard).join("\n")}</div>${sortedPending.map(candidateDialog).join("\n")}`
     : `<div class="empty-state">
         <span class="emoji">🔍</span>
         Onay bekleyen aday yok.<br>
@@ -521,13 +524,11 @@ const STYLES = `
   .card:hover { border-color: #33395a; transform: translateY(-1px); }
   .card-title { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
   .card-title--clamp {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
     overflow: hidden;
-    min-height: 2.5em;
+    text-overflow: ellipsis;
   }
-  .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; min-height: 1.6rem; }
   .detail-link {
     background: none; border: none; padding: 0; margin: 0.7rem 0 0;
     color: var(--accent); font-size: 0.78rem; font-weight: 600;
@@ -607,6 +608,7 @@ const STYLES = `
   .source-link:hover { text-decoration: underline; }
 
   .card-actions { display: flex; gap: 0.65rem; margin-top: 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+  .card > .card-actions { margin-top: auto; }
   .card-actions form { margin: 0; }
   .btn {
     cursor: pointer; border: none; border-radius: 9px;
