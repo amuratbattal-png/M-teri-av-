@@ -20,7 +20,7 @@ async function runScan(env: Env): Promise<void> {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-scan-secret": env.SCAN_SHARED_SECRET,
+        "x-scan-secret": env.SCAN_SHARED_SECRET?.trim() ?? "",
       },
       body: JSON.stringify({ results }),
     });

@@ -19,8 +19,8 @@ function json(data: unknown, status = 200): Response {
  * `/candidates/:id/approve` çağrıldığında tetiklenir.
  */
 export async function handleScanResults(request: Request, env: Env): Promise<Response> {
-  const auth = request.headers.get("x-scan-secret");
-  if (!auth || auth !== env.SCAN_SHARED_SECRET) {
+  const auth = request.headers.get("x-scan-secret")?.trim();
+  if (!auth || auth !== env.SCAN_SHARED_SECRET?.trim()) {
     return json({ error: "unauthorized" }, 401);
   }
 
