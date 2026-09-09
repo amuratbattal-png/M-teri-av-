@@ -95,14 +95,28 @@ Cloudflare Workers tabanlı bir pnpm monorepo:
 
 ```
 apps/control/          Merkezi kontrol sistemi (orchestrator, API, onay akışı)
+apps/dashboard/         Onay paneli (adayları listeler, Onayla/Reddet)
 packages/db/            Ortak D1 şeması + migration'lar (Drizzle ORM)
-packages/shared/         Ortak tipler, need-tag enum'ları, sektör listesi
-workers/google-search-scanner/       Kanal modülü: Google arama/Maps tarama
+packages/shared/         Ortak tipler, need-tag enum'ları, sektör/anahtar kelime listesi
+workers/google-search-scanner/       Kanal: Google arama/Maps tarama
+workers/yahoo-search-scanner/         Kanal: Yahoo arama tarama
+workers/linkedin-scanner/             Kanal: LinkedIn (PASİF - erişim yöntemi netleşmeli)
+workers/tiktok-scanner/               Kanal: TikTok (PASİF)
+workers/instagram-scanner/            Kanal: Instagram (PASİF)
+workers/tender-site-scanner/          Kanal: ihale siteleri (PASİF)
+workers/freelancer-gallery-scanner/   Kanal: freelancer galerileri (PASİF, iki adımlı)
 workers/company-formation-tracker/    Paralel iş kolu: yeni şirket / iş arayan tespiti
+workers/wordpress-agent/              WordPress'e müdahale ajanı (PASİF, kapsam netleşmedi)
 workers/channels/whatsapp/            Gönderim kanalı: WhatsApp
 workers/channels/email/               Gönderim kanalı: e-posta
-workers/channels/voice-call/          Gönderim kanalı: sesli arama (pasif, feature-flag)
+workers/channels/voice-call/          Gönderim kanalı: sesli arama (PASİF, feature-flag)
 ```
+
+Faz 1 başlangıcında aktif olan tek kanallar `google_search` ve
+`google_maps` (bkz. `packages/shared/src/config.ts` `activeSourceChannels`).
+Diğerleri worker olarak var ama gerçek kimlik bilgisi/API anahtarı
+eklenene kadar boş sonuç döndürür - "her kanal ayrı modül, ama
+başlangıçta sadece 1-2 aktif" kararının birebir karşılığı.
 
 Neden bu yapı:
 - Her tarama kaynağı (`workers/*-scanner`, ileride linkedin/tiktok/instagram/
@@ -121,18 +135,37 @@ Neden bu yapı:
 ## Şu anki durum / sonraki adımlar
 
 - [x] Proje notları toplandı, mimari onaylandı.
-- [x] Repo iskeleti kuruldu (bu commit).
-- [ ] D1 veritabanı gerçek Cloudflare hesabında oluşturulup `wrangler.toml`
-      içindeki `database_id` alanları doldurulacak.
-- [ ] `google-search-scanner` gerçek bir arama/scraping kaynağına
-      (Google Places API, SerpApi, vb. — API anahtarı gerekli) bağlanacak.
-- [ ] WhatsApp Business API ve SMTP/e-posta sağlayıcı kimlik bilgileri
-      eklenecek (`workers/channels/*`).
-- [ ] Onay akışı için basit bir yönetim arayüzü (dashboard) eklenecek —
-      şimdilik `apps/control` sadece API olarak var.
-- [ ] `linkedin`, `tiktok`, `instagram`, `tender-site`,
-      `freelancer-gallery` kanal modülleri eklenecek (iskelet hazır,
-      henüz yazılmadı).
+- [x] Repo iskeleti kuruldu.
+- [x] Tüm tarama kanalları için worker iskeleti hazır: `google-search-scanner`,
+      `yahoo-search-scanner`, `linkedin-scanner`, `tiktok-scanner`,
+      `instagram-scanner`, `tender-site-scanner`,
+      `freelancer-gallery-scanner`, `company-formation-tracker` (paralel
+      iş kolu). Hepsi API anahtarı/kimlik bilgisi tanımlı olmadığında
+      sahte veri üretmeden boş sonuç döner.
+- [x] Onay paneli iskeleti (`apps/dashboard`) eklendi: onay bekleyen
+      adayları ve genel sayaçları listeler, Onayla/Reddet formları
+      control API'yi çağırır. Basic Auth ile korunuyor (üretimde
+      Cloudflare Access önerilir).
+- [x] `workers/wordpress-agent` iskeleti eklendi — PASİF, kapsam netleşince
+      genişletilecek (bkz. aşağıdaki not).
+- [ ] D1 veritabanı + KV namespace'ler gerçek Cloudflare hesabında
+      oluşturulup her `wrangler.toml` içindeki `database_id`/`id`
+      alanları doldurulacak.
+- [ ] `google-search-scanner` / `yahoo-search-scanner` gerçek bir arama
+      API'sine (Google Places API, SerpApi, Yahoo Search API vb.)
+      bağlanacak.
+- [ ] WhatsApp Business API ve bir e-posta sağlayıcı (Resend/Postmark)
+      kimlik bilgileri eklenecek (`workers/channels/*`).
+- [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
+      `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
+      kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
+      içindeki TODO'lar).
+- [ ] `packages/shared/src/config.ts` içindeki `activeSourceChannels`
+      listesi, her kanal gerçek entegrasyonla test edildikçe genişletilecek.
+- [ ] `wordpress-agent` kapsamı netleştirilecek: hangi siteler, hangi
+      işlemler (içerik güncelleme, SEO meta, eklenti yönetimi vb.).
+- [ ] Dashboard için Cloudflare Access (Zero Trust) ile gerçek erişim
+      kontrolü kurulacak — Basic Auth sadece geçici bir önlem.
 - [ ] SEO motoru için ayrı repo/proje (`ajansimiz.net`) — bu repo'nun
       kapsamı dışında, sadece entegrasyon noktası bırakılacak.
 

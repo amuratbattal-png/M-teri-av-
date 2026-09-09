@@ -10,13 +10,16 @@ sadece teknik akışı özetler.
                  │   Tarama worker'ları          │
                  │  (her kanal = ayrı Worker)    │
                  │                              │
-                 │  google-search-scanner        │
+                 │  google-search-scanner (aktif) │
                  │  company-formation-tracker    │
-                 │  [linkedin]  (henüz yok)       │
-                 │  [tiktok]    (henüz yok)       │
-                 │  [instagram] (henüz yok)       │
-                 │  [tender-site] (henüz yok)     │
-                 │  [freelancer-gallery] (henüz yok)│
+                 │            (aktif)            │
+                 │  yahoo-search-scanner (pasif)  │
+                 │  linkedin-scanner     (pasif)  │
+                 │  tiktok-scanner       (pasif)  │
+                 │  instagram-scanner    (pasif)  │
+                 │  tender-site-scanner  (pasif)  │
+                 │  freelancer-gallery-scanner    │
+                 │              (pasif)           │
                  └───────────────┬──────────────┘
                                  │ POST /scan-results
                                  │ (x-scan-secret ile)
@@ -28,8 +31,9 @@ sadece teknik akışı özetler.
                  │  - status: pending_approval     │
                  │  - MERKEZI D1 (packages/db)     │
                  └───────────────┬──────────────┘
-                                 │ sahibi onaylar
-                                 │ POST /candidates/:id/approve
+                                 │ sahibi apps/dashboard üzerinden onaylar
+                                 │ (dashboard -> control:
+                                 │  POST /candidates/:id/approve)
                                  ▼
                  ┌─────────────────────────────┐
                  │   OUTREACH_QUEUE (Cloudflare  │

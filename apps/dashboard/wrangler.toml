@@ -1,0 +1,16 @@
+name = "musteri-avcisi-dashboard"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# apps/control API'sine servis binding'i ile bağlanır.
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# Basit Basic Auth koruması - GERÇEK KULLANIMDA yeterli değildir.
+# Üretimde Cloudflare Access (Zero Trust) ile önüne erişim kontrolü
+# konması önerilir; bu sadece iskelet aşamasında minimum bir engel.
+DASHBOARD_USERNAME = "admin"
+# `wrangler secret put DASHBOARD_PASSWORD` ile gerçek bir şifre ayarlanmalı.
+DASHBOARD_PASSWORD = "dev-only-change-me"

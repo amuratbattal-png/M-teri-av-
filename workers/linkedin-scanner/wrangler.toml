@@ -1,0 +1,25 @@
+name = "musteri-avcisi-linkedin-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# BAŞLANGIÇTA PASİF - packages/shared/src/config.ts activeSourceChannels
+# listesine eklenene kadar bu worker devreye alınmayacak (bkz. CLAUDE.md).
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+
+[vars]
+CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
+SCAN_SHARED_SECRET = "dev-only-change-me"
+
+# Sahibinin isteği: yerel bilgisayardaki bir yapay zeka yerine, KENDİ
+# LinkedIn profiline gerçek erişimi olan bir sistem kullanılacak. İki
+# olası yaklaşım (ikisi de deploy öncesi netleştirilmeli):
+#   1. LinkedIn'in resmi API'si (çok kısıtlı, bu kullanım senaryosunu
+#      büyük olasılıkla kapsamaz)
+#   2. Oturum tabanlı erişim (LINKEDIN_SESSION_COOKIE) - kullanım
+#      şartlarına aykırı olabilir, hesap askıya alınma riski var; sahibi
+#      bu riski kabul etti (bkz. CLAUDE.md).

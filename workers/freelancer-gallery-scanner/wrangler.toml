@@ -1,0 +1,18 @@
+name = "musteri-avcisi-freelancer-gallery-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# BAŞLANGIÇTA PASİF - bkz. packages/shared/src/config.ts activeSourceChannels.
+[triggers]
+crons = ["0 */2 * * *"]
+
+[vars]
+CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
+SCAN_SHARED_SECRET = "dev-only-change-me"
+# Örnek: "tasarlat.com" gibi hedef platformların herkese açık galeri
+# sayfa URL kalıpları.
+GALLERY_SOURCE_URLS = ""
+
+# Google üzerinden ikinci adımda iletişim bilgisi aramak için
+# `wrangler secret put SEARCH_API_KEY` (google-search-scanner ile aynı
+# sağlayıcı kullanılabilir).

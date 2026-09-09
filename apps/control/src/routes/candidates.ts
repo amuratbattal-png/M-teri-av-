@@ -1,6 +1,6 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { createDb, candidates } from "@musteri-avcisi/db";
-import type { ScanResult } from "@musteri-avcisi/shared";
+import { CANDIDATE_STATUSES, type ScanResult } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 
@@ -84,4 +84,24 @@ export async function handleListCandidates(request: Request, env: Env): Promise<
     : await db.select().from(candidates);
 
   return json({ candidates: rows });
+}
+
+/**
+ * Sahibinin "sadece yeni müşterileri ve sonuçları görecek" isteğine
+ * hizmet eden özet sayaçlar - dashboard bu endpoint'i kullanır.
+ */
+export async function handleStats(env: Env): Promise<Response> {
+  const db = createDb(env.DB);
+  const rows = await db
+    .select({ status: candidates.status, count: sql<number>`count(*)` })
+    .from(candidates)
+    .groupBy(candidates.status);
+
+  const counts = Object.fromEntries(CANDIDATE_STATUSES.map((s) => [s, 0])) as Record<
+    string,
+    number
+  >;
+  for (const row of rows) counts[row.status] = Number(row.count);
+
+  return json({ counts });
 }

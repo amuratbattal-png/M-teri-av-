@@ -37,6 +37,22 @@ importers:
         specifier: ^3.90.0
         version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
 
+  apps/dashboard:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
   packages/db:
     dependencies:
       drizzle-orm:
@@ -108,7 +124,115 @@ importers:
         specifier: ^3.90.0
         version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
 
+  workers/freelancer-gallery-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
   workers/google-search-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/instagram-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/linkedin-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/tender-site-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/tiktok-scanner:
+    dependencies:
+      '@musteri-avcisi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/wordpress-agent:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241127.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.90.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/yahoo-search-scanner:
     dependencies:
       '@musteri-avcisi/shared':
         specifier: workspace:*

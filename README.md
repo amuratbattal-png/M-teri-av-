@@ -14,14 +14,22 @@ Yol haritası: [`docs/roadmap.md`](./docs/roadmap.md)
 ## Yapı
 
 ```
-apps/control/                 Merkezi kontrol sistemi (API + onay akışı + dispatch)
-packages/db/                   Merkezi D1 şeması (Drizzle ORM)
-packages/shared/                Ortak tipler, ihtiyaç etiketleri, sektör listesi
-workers/google-search-scanner/  Kanal: Google arama/Maps tarama
-workers/company-formation-tracker/  Paralel iş kolu: yeni şirket / iş arayan
-workers/channels/whatsapp/       Gönderim: WhatsApp
-workers/channels/email/          Gönderim: e-posta
-workers/channels/voice-call/     Gönderim: sesli arama (PASİF)
+apps/control/                       Merkezi kontrol sistemi (API + onay akışı + dispatch)
+apps/dashboard/                      Onay paneli (Basic Auth korumalı)
+packages/db/                         Merkezi D1 şeması (Drizzle ORM)
+packages/shared/                     Ortak tipler, ihtiyaç etiketleri, sektör/kelime listesi
+workers/google-search-scanner/       Kanal: Google arama/Maps tarama (Faz 1 aktif)
+workers/yahoo-search-scanner/         Kanal: Yahoo arama (PASİF)
+workers/linkedin-scanner/             Kanal: LinkedIn (PASİF)
+workers/tiktok-scanner/               Kanal: TikTok (PASİF)
+workers/instagram-scanner/            Kanal: Instagram (PASİF)
+workers/tender-site-scanner/          Kanal: ihale siteleri (PASİF)
+workers/freelancer-gallery-scanner/   Kanal: freelancer galerileri (PASİF)
+workers/company-formation-tracker/    Paralel iş kolu: yeni şirket / iş arayan (Faz 1 aktif)
+workers/wordpress-agent/              WordPress'e müdahale ajanı (PASİF)
+workers/channels/whatsapp/            Gönderim: WhatsApp
+workers/channels/email/               Gönderim: e-posta
+workers/channels/voice-call/          Gönderim: sesli arama (PASİF)
 ```
 
 ## Geliştirme

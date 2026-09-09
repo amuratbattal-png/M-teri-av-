@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import type { Env, OutreachJob } from "./env";
-import { handleScanResults, handleListCandidates } from "./routes/candidates";
+import { handleScanResults, handleListCandidates, handleStats } from "./routes/candidates";
 import { handleApprove, handleReject } from "./routes/approvals";
 
 function json(data: unknown, status = 200): Response {
@@ -27,6 +27,10 @@ export default {
 
     if (pathname === "/candidates" && method === "GET") {
       return handleListCandidates(request, env);
+    }
+
+    if (pathname === "/stats" && method === "GET") {
+      return handleStats(env);
     }
 
     const approveMatch = pathname.match(/^\/candidates\/([^/]+)\/approve$/);
