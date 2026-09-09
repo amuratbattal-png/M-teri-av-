@@ -9,7 +9,9 @@ crons = ["*/15 * * * *"]
 
 [vars]
 CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
-SCAN_SHARED_SECRET = "dev-only-change-me"
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
 
 # TODO: Ticaret Sicili Gazetesi / benzeri resmi yeni sirket kuruluş
 # ilanlari kaynagi, ve is arama sitelerindeki "is ariyorum / girisimci"

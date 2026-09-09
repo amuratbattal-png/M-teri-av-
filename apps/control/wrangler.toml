@@ -29,8 +29,6 @@ service = "musteri-avcisi-channel-whatsapp"
 binding = "EMAIL_WORKER"
 service = "musteri-avcisi-channel-email"
 
-[vars]
 # Tarama worker'larinin control API'ye yazarken kullandigi paylasilan sir.
-# Gercek deger `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmali,
-# buradaki sadece yerel gelistirme placeholder'i.
-SCAN_SHARED_SECRET = "dev-only-change-me"
+# Repoda PLAINTEXT tutulmaz - `wrangler secret put SCAN_SHARED_SECRET` ile
+# ayarlanmali (ayni deger her tarama worker'inda da secret olarak set edilmeli).

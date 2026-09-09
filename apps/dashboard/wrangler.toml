@@ -12,5 +12,6 @@ service = "musteri-avcisi-control"
 # Üretimde Cloudflare Access (Zero Trust) ile önüne erişim kontrolü
 # konması önerilir; bu sadece iskelet aşamasında minimum bir engel.
 DASHBOARD_USERNAME = "admin"
-# `wrangler secret put DASHBOARD_PASSWORD` ile gerçek bir şifre ayarlanmalı.
-DASHBOARD_PASSWORD = "dev-only-change-me"
+
+# DASHBOARD_PASSWORD repoda PLAINTEXT tutulmaz -
+# `wrangler secret put DASHBOARD_PASSWORD` ile ayarlanmalı.

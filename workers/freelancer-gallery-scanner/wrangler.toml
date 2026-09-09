@@ -8,7 +8,9 @@ crons = ["0 */2 * * *"]
 
 [vars]
 CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
-SCAN_SHARED_SECRET = "dev-only-change-me"
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
 # Örnek: "tasarlat.com" gibi hedef platformların herkese açık galeri
 # sayfa URL kalıpları.
 GALLERY_SOURCE_URLS = ""

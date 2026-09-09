@@ -8,7 +8,9 @@ crons = ["0 * * * *"]
 
 [vars]
 CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"
-SCAN_SHARED_SECRET = "dev-only-change-me"
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
 
 # TODO: hedeflenecek ihale sitesi/siteleri henüz belirlenmedi. Her site
 # için ayrı bir kazıma (scraping) mantığı gerekecek.
