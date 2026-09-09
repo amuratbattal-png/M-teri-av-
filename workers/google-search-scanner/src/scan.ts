@@ -3,14 +3,12 @@ import { SECTORS, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
   /**
-   * Custom Search API için ayrı, kendi anahtarı (önerilen - Places API
-   * anahtarından bağımsız, sadece Custom Search API'ye kısıtlı).
-   * Tanımlı değilse SEARCH_API_KEY'e geri döner (o da her iki API'ye
-   * izinliyse çalışır).
+   * Brave Search API anahtarı - düz web araması (kanal: "brave_search")
+   * için. Ayrı bir sağlayıcı olduğu için Places API anahtarından
+   * bağımsız. Tanımlı değilse web araması atlanır, sadece Maps taranır.
+   * https://api.search.brave.com
    */
-  GOOGLE_SEARCH_API_KEY?: string;
-  /** Google Programmable Search Engine (Custom Search JSON API) kimliği - gizli değil, sadece bir kimlik. */
-  GOOGLE_SEARCH_ENGINE_ID?: string;
+  BRAVE_SEARCH_API_KEY?: string;
 }
 
 interface PlacesSearchResponse {
@@ -24,12 +22,14 @@ interface PlacesSearchResponse {
   }>;
 }
 
-interface WebSearchResponse {
-  items?: Array<{
-    title?: string;
-    link?: string;
-    snippet?: string;
-  }>;
+interface BraveSearchResponse {
+  web?: {
+    results?: Array<{
+      title?: string;
+      url?: string;
+      description?: string;
+    }>;
+  };
 }
 
 const RESULTS_PER_SECTOR = 15;
@@ -74,44 +74,46 @@ async function searchPlaces(
 }
 
 /**
- * Google Custom Search JSON API ile düz web araması - Maps'te olmayan
- * sinyalleri (forum/sosyal medya/haber gibi kaynaklarda "yeni şirket
- * açıldı", "web sitesi yaptırmak istiyorum" gibi ifadeler) yakalamak
- * için. (Kanal: "google_search")
- * https://developers.google.com/custom-search/v1/overview
+ * Brave Search API ile düz web araması - Maps'te olmayan sinyalleri
+ * (forum/sosyal medya/haber gibi kaynaklarda "yeni şirket açıldı",
+ * "web sitesi yaptırmak istiyorum" gibi ifadeler) yakalamak için.
+ * (Kanal: "brave_search")
+ * https://api-dashboard.search.brave.com/app/documentation/web-search/get-started
  *
- * NOT: Bu, Places API'den AYRI bir API - aynı SEARCH_API_KEY kullanılsa
- * bile Google Cloud Console'da "Custom Search API" ayrıca enable
- * edilmeli ve anahtarın API restriction listesine eklenmeli. Ayrıca
- * programmablesearchengine.google.com üzerinden bir arama motoru (cx)
- * oluşturulup "Search the entire web" açılmalı.
+ * NOT: Google Custom Search API yerine Brave kullanılıyor - Google
+ * tarafında hesabın Organization Policy kısıtlaması nedeniyle Custom
+ * Search API'ye erişim sürekli 403 ile reddediliyordu (bkz. CLAUDE.md).
+ * Brave'in ücretsiz katmanı (aylık 2.000 sorgu) bizim kullanımımız
+ * için yeterli ve bu sorunu yaşamıyor.
  */
-async function searchGoogleWeb(
+async function searchBraveWeb(
   query: string,
   apiKey: string,
-  searchEngineId: string,
-): Promise<{ data: WebSearchResponse; apiError?: string }> {
+): Promise<{ data: BraveSearchResponse; apiError?: string }> {
   const params = new URLSearchParams({
-    key: apiKey,
-    cx: searchEngineId,
     q: query,
-    num: "10",
-    gl: "tr",
-    hl: "tr",
+    country: "tr",
+    search_lang: "tr",
+    count: "10",
   });
 
-  const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`);
+  const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params.toString()}`, {
+    headers: {
+      Accept: "application/json",
+      "X-Subscription-Token": apiKey,
+    },
+  });
 
   if (!res.ok) {
     const text = await res.text();
-    console.error("Custom Search API hatası", res.status, text);
+    console.error("Brave Search API hatası", res.status, text);
     return {
       data: {},
       apiError: `status=${res.status} bodyLen=${text.length} body=${text.slice(0, 300)}`,
     };
   }
 
-  return { data: (await res.json()) as WebSearchResponse };
+  return { data: (await res.json()) as BraveSearchResponse };
 }
 
 /**
@@ -193,29 +195,28 @@ async function collectMapsResults(
   return { results, placesReturned: places.length, apiError };
 }
 
-/** "google_search" kanalı: düz web araması sonuçlarını ScanResult'a çevirir. */
+/** "brave_search" kanalı: düz web araması sonuçlarını ScanResult'a çevirir. */
 async function collectWebSearchResults(
   sector: (typeof SECTORS)[number],
   apiKey: string,
-  searchEngineId: string,
 ): Promise<{ results: ScanResult[]; query: string; returned: number; apiError?: string }> {
   const query = `"${sector.labelTr}" ("yeni açıldı" OR "web sitesi yaptırmak istiyorum" OR "sitemizi yenilemek istiyoruz")`;
-  const { data, apiError } = await searchGoogleWeb(query, apiKey, searchEngineId);
-  const items = data.items ?? [];
+  const { data, apiError } = await searchBraveWeb(query, apiKey);
+  const items = data.web?.results ?? [];
   const results: ScanResult[] = [];
 
   for (const item of items) {
-    if (!item.title || !item.link) continue;
+    if (!item.title || !item.url) continue;
     results.push({
       name: item.title,
       sectorSlug: sector.slug,
-      sourceChannel: "google_search",
-      sourceUrl: item.link,
+      sourceChannel: "brave_search",
+      sourceUrl: item.url,
       // Web aramasından gelen bir sonuç için en güvenli varsayım "web
-      // sitesi ihtiyacı" sinyali - gerçek ihtiyaç türü sayfa/snippet
+      // sitesi ihtiyacı" sinyali - gerçek ihtiyaç türü sayfa/açıklama
       // okunmadan kesinleştirilemez, bu ilk basit sürüm.
       needTags: ["website_new"],
-      rawMetadata: { snippet: item.snippet },
+      rawMetadata: { description: item.description },
     });
   }
 
@@ -256,19 +257,18 @@ export async function scanNextSector(
     placesReturned: maps.placesReturned,
     apiError: maps.apiError,
     apiKeyLength: env.SEARCH_API_KEY.length,
-    webSearchEnabled: Boolean(env.GOOGLE_SEARCH_ENGINE_ID),
+    webSearchEnabled: Boolean(env.BRAVE_SEARCH_API_KEY),
   };
 
-  const webSearchApiKey = env.GOOGLE_SEARCH_API_KEY ?? env.SEARCH_API_KEY;
-  if (env.GOOGLE_SEARCH_ENGINE_ID) {
-    const web = await collectWebSearchResults(sector, webSearchApiKey, env.GOOGLE_SEARCH_ENGINE_ID);
+  if (env.BRAVE_SEARCH_API_KEY) {
+    const web = await collectWebSearchResults(sector, env.BRAVE_SEARCH_API_KEY);
     results.push(...web.results);
     debug.webQuery = web.query;
     debug.webResultsReturned = web.returned;
     debug.webApiError = web.apiError;
   } else {
     console.warn(
-      `GOOGLE_SEARCH_ENGINE_ID tanımlı değil - "${sector.labelTr}" için düz Google araması (google_search) atlandı, sadece Maps tarandı.`,
+      `BRAVE_SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" için düz web araması (brave_search) atlandı, sadece Maps tarandı.`,
     );
   }
 

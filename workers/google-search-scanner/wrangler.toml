@@ -28,15 +28,11 @@ service = "musteri-avcisi-control"
 # `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene kadar
 # scan() fonksiyonu sahte (stub) veri dondurur.
 
-# Duz Google web aramasi (google_search kanali) icin Custom Search
-# JSON API. Bos birakilirsa sadece Google Maps (Places API) taranir,
-# duz web aramasi atlanir.
-#
-# GOOGLE_SEARCH_API_KEY: Custom Search API'ye ozel, ayri bir anahtar
-# (onerilen - `wrangler secret put GOOGLE_SEARCH_API_KEY` ile eklenmeli,
-# gizli oldugu icin secret). Tanimli degilse SEARCH_API_KEY'e (Places
-# API anahtari) geri doner - o da Custom Search API'ye izinliyse calisir.
-#
-# GOOGLE_SEARCH_ENGINE_ID: programmablesearchengine.google.com'dan
-# alinan arama motoru kimligi - gizli degil, normal var.
-GOOGLE_SEARCH_ENGINE_ID = "f28b89812aab34a03"
+# Duz web aramasi (brave_search kanali) icin Brave Search API.
+# Bos birakilirsa sadece Google Maps (Places API) taranir, duz web
+# aramasi atlanir. Google Custom Search API yerine Brave kullaniliyor -
+# hesabin Organization Policy kisitlamasi nedeniyle Custom Search API'ye
+# erisim surekli reddediliyordu (bkz. CLAUDE.md). Brave'in ucretsiz
+# katmani (ayda 2000 sorgu) yeterli.
+# `wrangler secret put BRAVE_SEARCH_API_KEY` ile eklenmeli - gizli
+# oldugu icin secret, api.search.brave.com/app/keys adresinden alinir.

@@ -4,6 +4,7 @@ import type { NeedTag } from "./need-tags";
 export const SOURCE_CHANNELS = [
   "google_search",
   "google_maps",
+  "brave_search",
   "yahoo_search",
   "linkedin",
   "tiktok",
