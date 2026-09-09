@@ -39,4 +39,4 @@ service = "musteri-avcisi-control"
 #
 # GOOGLE_SEARCH_ENGINE_ID: programmablesearchengine.google.com'dan
 # alinan arama motoru kimligi - gizli degil, normal var.
-GOOGLE_SEARCH_ENGINE_ID = ""
+GOOGLE_SEARCH_ENGINE_ID = "f28b89812aab34a03"
