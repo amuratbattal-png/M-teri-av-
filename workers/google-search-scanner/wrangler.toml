@@ -27,3 +27,9 @@ service = "musteri-avcisi-control"
 # Gercek arama/scraping icin API anahtari (Google Places API, SerpApi vb.)
 # `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene kadar
 # scan() fonksiyonu sahte (stub) veri dondurur.
+
+# Duz Google web aramasi (google_search kanali) icin Custom Search
+# JSON API. Gizli degil (bkz. programmablesearchengine.google.com),
+# bu yuzden secret degil normal var olarak tutuluyor. Bos birakilirsa
+# sadece Google Maps (Places API) taranir, duz web aramasi atlanir.
+GOOGLE_SEARCH_ENGINE_ID = ""

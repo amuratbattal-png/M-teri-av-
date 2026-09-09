@@ -2,6 +2,8 @@ import { SECTORS, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
+  /** Google Programmable Search Engine (Custom Search JSON API) kimliği - gizli değil, sadece bir kimlik. */
+  GOOGLE_SEARCH_ENGINE_ID?: string;
 }
 
 interface PlacesSearchResponse {
@@ -15,11 +17,20 @@ interface PlacesSearchResponse {
   }>;
 }
 
+interface WebSearchResponse {
+  items?: Array<{
+    title?: string;
+    link?: string;
+    snippet?: string;
+  }>;
+}
+
 const RESULTS_PER_SECTOR = 15;
 const WEBSITE_FETCH_TIMEOUT_MS = 5000;
 
 /**
  * Google Places API (New) - Text Search ile bir sektördeki işletmeleri arar.
+ * (Kanal: "google_maps")
  * https://developers.google.com/maps/documentation/places/web-service/text-search
  */
 async function searchPlaces(
@@ -56,6 +67,47 @@ async function searchPlaces(
 }
 
 /**
+ * Google Custom Search JSON API ile düz web araması - Maps'te olmayan
+ * sinyalleri (forum/sosyal medya/haber gibi kaynaklarda "yeni şirket
+ * açıldı", "web sitesi yaptırmak istiyorum" gibi ifadeler) yakalamak
+ * için. (Kanal: "google_search")
+ * https://developers.google.com/custom-search/v1/overview
+ *
+ * NOT: Bu, Places API'den AYRI bir API - aynı SEARCH_API_KEY kullanılsa
+ * bile Google Cloud Console'da "Custom Search API" ayrıca enable
+ * edilmeli ve anahtarın API restriction listesine eklenmeli. Ayrıca
+ * programmablesearchengine.google.com üzerinden bir arama motoru (cx)
+ * oluşturulup "Search the entire web" açılmalı.
+ */
+async function searchGoogleWeb(
+  query: string,
+  apiKey: string,
+  searchEngineId: string,
+): Promise<{ data: WebSearchResponse; apiError?: string }> {
+  const params = new URLSearchParams({
+    key: apiKey,
+    cx: searchEngineId,
+    q: query,
+    num: "10",
+    gl: "tr",
+    hl: "tr",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`);
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Custom Search API hatası", res.status, text);
+    return {
+      data: {},
+      apiError: `status=${res.status} bodyLen=${text.length} body=${text.slice(0, 300)}`,
+    };
+  }
+
+  return { data: (await res.json()) as WebSearchResponse };
+}
+
+/**
  * Basit "eski site" sinyali: sayfa kaynağında mobil uyum (viewport) meta
  * etiketi yoksa, muhtemelen responsive olmayan/eski bir site - yenileme
  * teklifi için aday sayılır.
@@ -85,34 +137,19 @@ export interface ScanDebugInfo {
   placesReturned: number;
   apiError?: string;
   apiKeyLength: number;
+  webSearchEnabled: boolean;
+  webQuery?: string;
+  webResultsReturned?: number;
+  webApiError?: string;
 }
 
-export async function scanNextSector(
-  cursorSectorIndex: number,
-  env: ScanEnv,
-): Promise<{ results: ScanResult[]; nextCursorIndex: number; debug: ScanDebugInfo }> {
-  const sector = SECTORS[cursorSectorIndex % SECTORS.length];
-  const nextCursorIndex = (cursorSectorIndex + 1) % SECTORS.length;
+/** "google_maps" kanalı: Places API sonuçlarını ScanResult'a çevirir. */
+async function collectMapsResults(
+  sector: (typeof SECTORS)[number],
+  apiKey: string,
+): Promise<{ results: ScanResult[]; placesReturned: number; apiError?: string }> {
   const query = `${sector.labelTr} Türkiye`;
-
-  if (!env.SEARCH_API_KEY) {
-    console.warn(
-      `SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" sektörü için gerçek tarama atlandı.`,
-    );
-    return {
-      results: [],
-      nextCursorIndex,
-      debug: {
-        sectorLabel: sector.labelTr,
-        query,
-        placesReturned: 0,
-        apiError: "SEARCH_API_KEY tanımlı değil",
-        apiKeyLength: 0,
-      },
-    };
-  }
-
-  const { data, apiError } = await searchPlaces(query, env.SEARCH_API_KEY);
+  const { data, apiError } = await searchPlaces(query, apiKey);
   const places = data.places ?? [];
   const results: ScanResult[] = [];
 
@@ -146,15 +183,86 @@ export async function scanNextSector(
     });
   }
 
-  return {
-    results,
-    nextCursorIndex,
-    debug: {
-      sectorLabel: sector.labelTr,
-      query,
-      placesReturned: places.length,
-      apiError,
-      apiKeyLength: env.SEARCH_API_KEY.length,
-    },
+  return { results, placesReturned: places.length, apiError };
+}
+
+/** "google_search" kanalı: düz web araması sonuçlarını ScanResult'a çevirir. */
+async function collectWebSearchResults(
+  sector: (typeof SECTORS)[number],
+  apiKey: string,
+  searchEngineId: string,
+): Promise<{ results: ScanResult[]; query: string; returned: number; apiError?: string }> {
+  const query = `"${sector.labelTr}" ("yeni açıldı" OR "web sitesi yaptırmak istiyorum" OR "sitemizi yenilemek istiyoruz")`;
+  const { data, apiError } = await searchGoogleWeb(query, apiKey, searchEngineId);
+  const items = data.items ?? [];
+  const results: ScanResult[] = [];
+
+  for (const item of items) {
+    if (!item.title || !item.link) continue;
+    results.push({
+      name: item.title,
+      sectorSlug: sector.slug,
+      sourceChannel: "google_search",
+      sourceUrl: item.link,
+      // Web aramasından gelen bir sonuç için en güvenli varsayım "web
+      // sitesi ihtiyacı" sinyali - gerçek ihtiyaç türü sayfa/snippet
+      // okunmadan kesinleştirilemez, bu ilk basit sürüm.
+      needTags: ["website_new"],
+      rawMetadata: { snippet: item.snippet },
+    });
+  }
+
+  return { results, query, returned: items.length, apiError };
+}
+
+export async function scanNextSector(
+  cursorSectorIndex: number,
+  env: ScanEnv,
+): Promise<{ results: ScanResult[]; nextCursorIndex: number; debug: ScanDebugInfo }> {
+  const sector = SECTORS[cursorSectorIndex % SECTORS.length];
+  const nextCursorIndex = (cursorSectorIndex + 1) % SECTORS.length;
+
+  if (!env.SEARCH_API_KEY) {
+    console.warn(
+      `SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" sektörü için gerçek tarama atlandı.`,
+    );
+    return {
+      results: [],
+      nextCursorIndex,
+      debug: {
+        sectorLabel: sector.labelTr,
+        query: `${sector.labelTr} Türkiye`,
+        placesReturned: 0,
+        apiError: "SEARCH_API_KEY tanımlı değil",
+        apiKeyLength: 0,
+        webSearchEnabled: false,
+      },
+    };
+  }
+
+  const maps = await collectMapsResults(sector, env.SEARCH_API_KEY);
+  const results = [...maps.results];
+
+  const debug: ScanDebugInfo = {
+    sectorLabel: sector.labelTr,
+    query: `${sector.labelTr} Türkiye`,
+    placesReturned: maps.placesReturned,
+    apiError: maps.apiError,
+    apiKeyLength: env.SEARCH_API_KEY.length,
+    webSearchEnabled: Boolean(env.GOOGLE_SEARCH_ENGINE_ID),
   };
+
+  if (env.GOOGLE_SEARCH_ENGINE_ID) {
+    const web = await collectWebSearchResults(sector, env.SEARCH_API_KEY, env.GOOGLE_SEARCH_ENGINE_ID);
+    results.push(...web.results);
+    debug.webQuery = web.query;
+    debug.webResultsReturned = web.returned;
+    debug.webApiError = web.apiError;
+  } else {
+    console.warn(
+      `GOOGLE_SEARCH_ENGINE_ID tanımlı değil - "${sector.labelTr}" için düz Google araması (google_search) atlandı, sadece Maps tarandı.`,
+    );
+  }
+
+  return { results, nextCursorIndex, debug };
 }
