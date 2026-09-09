@@ -44,8 +44,12 @@ async function searchPlaces(
 
   if (!res.ok) {
     const text = await res.text();
+    const contentType = res.headers.get("content-type") ?? "(yok)";
     console.error("Places API hatası", res.status, text);
-    return { data: {}, apiError: `${res.status}: ${text.slice(0, 300)}` };
+    return {
+      data: {},
+      apiError: `status=${res.status} statusText=${res.statusText} content-type=${contentType} bodyLen=${text.length} body=${text}`,
+    };
   }
 
   return { data: (await res.json()) as PlacesSearchResponse };
@@ -80,6 +84,7 @@ export interface ScanDebugInfo {
   query: string;
   placesReturned: number;
   apiError?: string;
+  apiKeyLength: number;
 }
 
 export async function scanNextSector(
@@ -97,7 +102,13 @@ export async function scanNextSector(
     return {
       results: [],
       nextCursorIndex,
-      debug: { sectorLabel: sector.labelTr, query, placesReturned: 0, apiError: "SEARCH_API_KEY tanımlı değil" },
+      debug: {
+        sectorLabel: sector.labelTr,
+        query,
+        placesReturned: 0,
+        apiError: "SEARCH_API_KEY tanımlı değil",
+        apiKeyLength: 0,
+      },
     };
   }
 
@@ -138,6 +149,12 @@ export async function scanNextSector(
   return {
     results,
     nextCursorIndex,
-    debug: { sectorLabel: sector.labelTr, query, placesReturned: places.length, apiError },
+    debug: {
+      sectorLabel: sector.labelTr,
+      query,
+      placesReturned: places.length,
+      apiError,
+      apiKeyLength: env.SEARCH_API_KEY.length,
+    },
   };
 }
