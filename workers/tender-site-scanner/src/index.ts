@@ -1,7 +1,7 @@
 import { scanTenders } from "./scan";
 
 export interface Env {
-  CONTROL_API_URL: string;
+  CONTROL_WORKER: Fetcher;
   SCAN_SHARED_SECRET: string;
   TENDER_SITE_URLS?: string;
 }
@@ -10,7 +10,7 @@ async function runScan(env: Env): Promise<void> {
   const results = await scanTenders(env);
   if (results.length === 0) return;
 
-  const res = await fetch(`${env.CONTROL_API_URL}/scan-results`, {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/scan-results", {
     method: "POST",
     headers: {
       "content-type": "application/json",

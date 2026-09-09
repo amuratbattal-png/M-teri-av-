@@ -2,7 +2,7 @@ import { scanNextSector, type ScanDebugInfo } from "./scan";
 
 export interface Env {
   SCAN_STATE: KVNamespace;
-  CONTROL_API_URL: string;
+  CONTROL_WORKER: Fetcher;
   SCAN_SHARED_SECRET: string;
   SEARCH_API_KEY?: string;
 }
@@ -32,7 +32,7 @@ async function runScan(env: Env): Promise<ScanDiagnostics> {
   };
 
   if (results.length > 0) {
-    const res = await fetch(`${env.CONTROL_API_URL}/scan-results`, {
+    const res = await env.CONTROL_WORKER.fetch("https://internal/scan-results", {
       method: "POST",
       headers: {
         "content-type": "application/json",

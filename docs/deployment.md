@@ -122,27 +122,21 @@ cd ../email                          && pnpm exec wrangler deploy
 cd ../../../apps/control             && pnpm exec wrangler deploy
 ```
 
-Bu adımda çıktıda `https://musteri-avcisi-control.<SENIN-SUBDOMAIN>.workers.dev`
-gibi bir URL göreceksin. **`<SENIN-SUBDOMAIN>` kısmını not al** - bir
-sonraki adımda lazım.
-
 ```bash
 # 6c. Dashboard
 cd ../dashboard && pnpm exec wrangler deploy
 ```
 
-## 7. Tarama worker'larına gerçek control URL'ini gir
+## 7. Tarama worker'larını deploy et
 
-Adım 6b'de aldığın gerçek URL ile, aşağıdaki dosyalardaki
-`CONTROL_API_URL = "https://musteri-avcisi-control.<ACCOUNT>.workers.dev"`
-satırındaki `<ACCOUNT>` kısmını kendi subdomain'inle değiştir:
+Tarama worker'ları control'e **service binding** ile bağlanır (düz URL
+`fetch()` ile değil - workers.dev üzerinde worker-to-worker istekler
+Cloudflare tarafından "error 1042" ile engelleniyor). Bu binding
+`wrangler.toml` içinde `musteri-avcisi-control` ismiyle zaten tanımlı,
+ekstra bir URL/ID girmen gerekmiyor - sadece control'ün deploy edilmiş
+olması yeterli (adım 6b'de yaptın).
 
-- `workers/google-search-scanner/wrangler.toml`
-- `workers/company-formation-tracker/wrangler.toml`
-- (ileride aktifleştireceklerinde: yahoo/linkedin/tiktok/instagram/
-  tender-site/freelancer-gallery için de aynısı)
-
-Sonra Faz 1'de aktif olan iki worker'ı deploy et:
+Faz 1'de aktif olan iki worker'ı deploy et:
 
 ```bash
 cd ../../workers/google-search-scanner && pnpm exec wrangler deploy
