@@ -6,4 +6,4 @@ compatibility_date = "2024-11-01"
 # E-posta sağlayıcı API anahtarı gerçek deploy öncesi
 # `wrangler secret put EMAIL_API_KEY` ile eklenmeli.
 [vars]
-EMAIL_FROM_ADDRESS = "teklif@ornek-domain.com"
+EMAIL_FROM_ADDRESS = "info@ajansim.net"
