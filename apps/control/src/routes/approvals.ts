@@ -59,6 +59,64 @@ export async function handleReject(env: Env, candidateId: string): Promise<Respo
   return json({ ok: true, candidateId });
 }
 
+/**
+ * Toplu onay - dashboard'daki "Seçilenleri Onayla" için. Her aday
+ * tek tek handleApprove ile aynı kurala tabi (sadece pending_approval
+ * durumundakiler onaylanır, diğerleri sessizce atlanır).
+ */
+export async function handleBulkApprove(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    candidateIds?: string[];
+    approvedBy?: string;
+  };
+  if (!Array.isArray(body.candidateIds) || body.candidateIds.length === 0) {
+    return json({ error: "invalid body: expected { candidateIds: string[] }" }, 400);
+  }
+
+  const db = createDb(env.DB);
+  const now = new Date().toISOString();
+  const approved: string[] = [];
+  const skipped: string[] = [];
+
+  for (const candidateId of body.candidateIds) {
+    const rows = await db.select().from(candidates).where(eq(candidates.id, candidateId)).limit(1);
+    const candidate = rows[0];
+    if (!candidate || candidate.status !== "pending_approval") {
+      skipped.push(candidateId);
+      continue;
+    }
+    await db
+      .update(candidates)
+      .set({ status: "approved", approvedBy: body.approvedBy ?? "unknown", approvedAt: now })
+      .where(eq(candidates.id, candidateId));
+    approved.push(candidateId);
+  }
+
+  return json({ ok: true, approved, skipped });
+}
+
+/**
+ * Serbest metin not (mini-CRM alanı) - "İlgilenmiyor", "Ay sonu tekrar
+ * ara" gibi takip notları için. Şemada zaten vardı (evaluation_notes)
+ * ama hiçbir endpoint/arayüz kullanmıyordu, bu onu devreye alıyor.
+ */
+export async function handleUpdateNotes(
+  request: Request,
+  env: Env,
+  candidateId: string,
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { evaluationNotes?: string };
+  if (typeof body.evaluationNotes !== "string") {
+    return json({ error: "invalid body: expected { evaluationNotes: string }" }, 400);
+  }
+  const db = createDb(env.DB);
+  await db
+    .update(candidates)
+    .set({ evaluationNotes: body.evaluationNotes })
+    .where(eq(candidates.id, candidateId));
+  return json({ ok: true, candidateId });
+}
+
 /** Sahibinin Onaylananlar sayfasında teklif metnini elle düzenlemesi için. */
 export async function handleUpdateProposal(
   request: Request,

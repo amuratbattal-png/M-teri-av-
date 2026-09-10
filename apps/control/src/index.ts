@@ -5,8 +5,10 @@ import { handleScanResults, handleListCandidates, handleStats } from "./routes/c
 import {
   handleApprove,
   handleReject,
+  handleBulkApprove,
   handleUpdateProposal,
   handleRegenerateProposal,
+  handleUpdateNotes,
   handleMarkSent,
 } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
@@ -44,6 +46,10 @@ export default {
       return handleListCommunications(env);
     }
 
+    if (pathname === "/candidates/bulk-approve" && method === "POST") {
+      return handleBulkApprove(request, env);
+    }
+
     const approveMatch = pathname.match(/^\/candidates\/([^/]+)\/approve$/);
     if (approveMatch && method === "POST") {
       return handleApprove(request, env, approveMatch[1]);
@@ -62,6 +68,11 @@ export default {
     const regenerateMatch = pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
     if (regenerateMatch && method === "POST") {
       return handleRegenerateProposal(env, regenerateMatch[1]);
+    }
+
+    const notesMatch = pathname.match(/^\/candidates\/([^/]+)\/notes$/);
+    if (notesMatch && method === "POST") {
+      return handleUpdateNotes(request, env, notesMatch[1]);
     }
 
     const markSentMatch = pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);

@@ -328,6 +328,15 @@ Neden bu yapı:
       (`POST /candidates/:id/regenerate-proposal`) - mevcut metni
       NVIDIA ile sıfırdan yeniden yazdırıyor. NVIDIA_API_KEY henüz
       Cloudflare'e eklenmedi/doğrulanmadı.
+- [x] **Toplu onay + not (mini-CRM) alanı eklendi.** Onaylar ve Tüm
+      Adaylar sayfalarında onay bekleyen adayların kartında bir
+      onay-kutusu var; birden fazlasını işaretleyip görünen çubuktan
+      **"Seçilenleri Onayla"** ile tek seferde onaylayabiliyorsun
+      (`apps/control`: `POST /candidates/bulk-approve`). Ayrıca her
+      aday popup'ına **serbest metin not alanı** eklendi ("ilgilenmiyor",
+      "ay sonu tekrar ara" gibi takip notları için) -
+      `evaluation_notes` sütunu şemada zaten vardı ama hiç
+      kullanılmıyordu, `POST /candidates/:id/notes` ile devreye alındı.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

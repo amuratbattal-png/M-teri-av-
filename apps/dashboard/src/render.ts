@@ -200,6 +200,25 @@ function shell(opts: {
       </div>
     </main>
   </div>
+  <script>
+    // Toplu onay çubuğu (bkz. bulkActionBar) - .bulk-check kutucukları
+    // işaretlendikçe çubuğu günceller. Kütüphane yok, sade JS.
+    function updateBulkBar() {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('.bulk-check:checked'));
+      var ids = boxes.map(function (el) { return el.value; });
+      var bar = document.getElementById('bulk-approve-form');
+      if (!bar) return;
+      document.getElementById('bulk-ids').value = ids.join(',');
+      document.getElementById('bulk-count').textContent = ids.length;
+      bar.hidden = ids.length === 0;
+    }
+    function clearBulkSelection() {
+      Array.prototype.slice.call(document.querySelectorAll('.bulk-check:checked')).forEach(function (el) {
+        el.checked = false;
+      });
+      updateBulkBar();
+    }
+  </script>
 </body>
 </html>`;
 }
@@ -299,6 +318,13 @@ function candidateCard(c: Candidate, redirectTo: string): string {
 
   return `
     <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
+      ${
+        c.status === "pending_approval"
+          ? `<label class="card-select" onclick="event.stopPropagation()">
+               <input type="checkbox" class="bulk-check" value="${c.id}" onchange="updateBulkBar()">
+             </label>`
+          : ""
+      }
       <h3 class="card-title card-title--clamp">${escapeHtml(c.name)}</h3>
       <div class="card-meta">
         <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
@@ -401,6 +427,13 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
             ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
             : ""
         }
+
+        <form method="post" action="/candidates/${c.id}/notes" class="proposal-edit" onclick="event.stopPropagation()">
+          <input type="hidden" name="redirect" value="${redirectTo}">
+          <div class="proposal-label">Not (ör. "ilgilenmiyor", "ay sonu tekrar ara")</div>
+          <textarea name="evaluationNotes" rows="3" placeholder="Serbest not...">${escapeHtml(c.evaluationNotes ?? "")}</textarea>
+          <button type="submit" class="btn--filter">Notu Kaydet</button>
+        </form>
       </div>
     </dialog>`;
 }
@@ -417,6 +450,22 @@ function candidateListOrEmpty(
   return `<div class="cards">${list.map((c) => candidateCard(c, redirectTo)).join("\n")}</div>${list
     .map((c) => candidateDetailDialog(c, redirectTo))
     .join("\n")}`;
+}
+
+/**
+ * Toplu onay çubuğu - listede en az bir onay bekleyen aday varsa
+ * (bkz. candidateCard'daki .bulk-check kutucukları) görünür hale
+ * gelir. JS (updateBulkBar/clearBulkSelection) shell()'de tanımlı.
+ */
+function bulkActionBar(redirectTo: string): string {
+  return `
+    <form id="bulk-approve-form" method="post" action="/bulk-approve" class="bulk-bar" hidden>
+      <input type="hidden" name="redirect" value="${redirectTo}">
+      <input type="hidden" name="ids" id="bulk-ids">
+      <span><span id="bulk-count">0</span> aday seçildi</span>
+      <button type="submit" class="btn btn--approve">✓ Seçilenleri Onayla</button>
+      <button type="button" class="btn--filter" onclick="clearBulkSelection()">Seçimi Temizle</button>
+    </form>`;
 }
 
 export function renderApprovalsPage(
@@ -448,6 +497,7 @@ export function renderApprovalsPage(
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
     ${filterBar({ action: "/", selectedSector, selectedCity, selectedQuery })}
+    ${bulkActionBar("/")}
     ${list}
   `;
 
@@ -539,6 +589,7 @@ export function renderAllCandidatesPage(
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
     ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedQuery })}
+    ${bulkActionBar("/adaylar")}
     ${list}
   `;
 
@@ -912,6 +963,7 @@ const STYLES = `
     gap: 1rem;
   }
   .card {
+    position: relative;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -923,6 +975,28 @@ const STYLES = `
     flex-direction: column;
   }
   .card:hover { border-color: #33395a; transform: translateY(-1px); }
+  .card-select {
+    position: absolute;
+    top: 0.8rem;
+    right: 0.8rem;
+    cursor: pointer;
+  }
+  .card-select input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
+  .card .card-title { padding-right: 1.6rem; }
+
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 0.7rem 1rem;
+    margin: 0 0 1rem;
+    font-size: 0.85rem;
+    color: var(--text);
+  }
+  .bulk-bar #bulk-count { font-weight: 700; color: var(--accent); }
   .card-title { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
   .card-title--clamp {
     white-space: nowrap;

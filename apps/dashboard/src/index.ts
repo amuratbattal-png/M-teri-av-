@@ -138,6 +138,37 @@ export default {
       return safeRedirect(url.origin, form.get("redirect"));
     }
 
+    // Toplu onay (bkz. render.ts bulkActionBar) - "ids" alanı virgülle
+    // ayrılmış aday kimlikleri.
+    if (url.pathname === "/bulk-approve" && request.method === "POST") {
+      const form = await request.formData();
+      const candidateIds = String(form.get("ids") ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (candidateIds.length > 0) {
+        await env.CONTROL_WORKER.fetch("https://internal/candidates/bulk-approve", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ candidateIds, approvedBy: env.DASHBOARD_USERNAME }),
+        });
+      }
+      return safeRedirect(url.origin, form.get("redirect"));
+    }
+
+    // Serbest metin not (mini-CRM) - popup'taki "Notu Kaydet" formu.
+    const notesMatch = url.pathname.match(/^\/candidates\/([^/]+)\/notes$/);
+    if (notesMatch && request.method === "POST") {
+      const form = await request.formData();
+      const evaluationNotes = String(form.get("evaluationNotes") ?? "");
+      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${notesMatch[1]}/notes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ evaluationNotes }),
+      });
+      return safeRedirect(url.origin, form.get("redirect"));
+    }
+
     // Teklif metnini düzenleme (Onaylar/Onaylananlar/Tüm Adaylar
     // popup'larının hepsinde ortak) - sahibi wa.me/mailto linkleriyle
     // göndermeden önce metni değiştirebiliyor.
