@@ -5,7 +5,8 @@ export interface Env {
   CONTROL_WORKER: Fetcher;
   SCAN_SHARED_SECRET: string;
   SEARCH_API_KEY?: string;
-  BRAVE_API_KEY?: string;
+  GOOGLE_SEARCH_API_KEY?: string;
+  GOOGLE_SEARCH_ENGINE_ID?: string;
 }
 
 interface ScanDiagnostics {

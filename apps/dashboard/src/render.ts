@@ -42,7 +42,6 @@ const STATUS_TONE: Record<string, "warn" | "ok" | "bad" | "neutral"> = {
 
 const SOURCE_LABELS_TR: Record<string, string> = {
   google_search: "Google Arama",
-  brave_search: "Brave Arama",
   google_maps: "Google Haritalar",
   yahoo_search: "Yahoo Arama",
   linkedin: "LinkedIn",

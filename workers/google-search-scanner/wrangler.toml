@@ -24,20 +24,19 @@ service = "musteri-avcisi-control"
 # `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
 # ile AYNI değer).
 
-# Gercek arama/scraping icin API anahtari (Google Places API - google_maps
-# kanali). `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene
-# kadar scan() fonksiyonu sahte (stub) veri dondurur.
+# Gercek arama/scraping icin API anahtari (Google Places API, SerpApi vb.)
+# `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene kadar
+# scan() fonksiyonu sahte (stub) veri dondurur.
 
-# Duz web aramasi (brave_search kanali) icin Brave Search API anahtari.
-# Bos birakilirsa sadece Google Maps (Places API) taranir, duz web
-# aramasi atlanir.
+# Duz Google web aramasi (google_search kanali) icin Custom Search
+# JSON API. Bos birakilirsa sadece Google Maps (Places API) taranir,
+# duz web aramasi atlanir.
 #
-# NOT: Bu kanal onceden Google Custom Search JSON API kullaniyordu, ama
-# projeye ozel, cozulemeyen kalici bir 403 hatasi ("This project does
-# not have the access to Custom Search JSON API") yuzunden Brave Search
-# API'ye gecildi - API restriction, proje eslesmesi, billing, birden
-# fazla farkli/yeni anahtar ve API'yi kapatip acmak denendi, hicbiri
-# cozmedi (hatta Cloudflare disinda dogrudan test edilince de ayni
-# sonuc alindi). Brave Search API anahtari brave.com/search/api adresinden
-# alinip `wrangler secret put BRAVE_API_KEY` ile eklenmeli - ucretsiz
-# katmani var, gizli oldugu icin var degil secret.
+# GOOGLE_SEARCH_API_KEY: Custom Search API'ye ozel, ayri bir anahtar
+# (onerilen - `wrangler secret put GOOGLE_SEARCH_API_KEY` ile eklenmeli,
+# gizli oldugu icin secret). Tanimli degilse SEARCH_API_KEY'e (Places
+# API anahtari) geri doner - o da Custom Search API'ye izinliyse calisir.
+#
+# GOOGLE_SEARCH_ENGINE_ID: programmablesearchengine.google.com'dan
+# alinan arama motoru kimligi - gizli degil, normal var.
+GOOGLE_SEARCH_ENGINE_ID = "f28b89812aab34a03"
