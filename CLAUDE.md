@@ -55,6 +55,14 @@ yapay zeka sistemi.
   merkezi tabloda, her adaya bir **ihtiyaç türü etiketi** (need tag) eklenir
   (web sitesi, logo, kurumsal kimlik, SEO, vb.).
 - **İletişim kanalları**: öncelik **WhatsApp ve e-posta**.
+  - **Gönderim OTOMATİK DEĞİL, MANUEL** (karar güncellendi): sistem
+    hiçbir mesajı kendi API/hesabıyla göndermiyor. Onaylanan bir aday
+    için sistem teklif metnini hazırlıyor (ve sahibi düzenleyebiliyor),
+    ardından bir **wa.me linki** (WhatsApp) veya **mailto: linki**
+    (e-posta) üretiyor - sahibi bu linke tıklayıp **kendi WhatsApp/
+    e-posta oturumundan** manuel gönderiyor. Bu yüzden WhatsApp
+    Business API ya da otomatik e-posta gönderimi (Resend vb.) artık
+    gerekli değil (bkz. "Şu anki durum" bölümü).
 - **Sesli arama modülü**: mimariye baştan dahil edilecek ama **şimdilik
   pasif**; ileride yeniden yapılandırmaya gerek kalmadan aktif
   edilebilecek şekilde tasarlanacak (feature-flag ile kapalı, arayüzü
@@ -256,8 +264,31 @@ Neden bu yapı:
       kart + tıklanınca açılan popup (native `<dialog>`) görünümünde**
       (onay/red butonu olmadan - zaten onaylı, ama kim/ne zaman
       onayladığı popup'ta gösteriliyor).
-- [ ] WhatsApp Business API kimlik bilgileri eklenecek
-      (`workers/channels/whatsapp`).
+- [x] **Gönderim otomatikten manuele çevrildi** (mimari karar
+      güncellendi - bkz. yukarıdaki "İletişim kanalları" notu). Sahibi
+      "tüm gönderimleri ben yapacağım" dedi:
+      - `apps/control`: `handleApprove` artık `OUTREACH_QUEUE`'ya hiçbir
+        şey koymuyor - sadece `approved` durumuna geçiriyor. Yeni
+        `POST /candidates/:id/proposal` (teklif metnini güncelle) ve
+        `POST /candidates/:id/mark-sent` (sahibi manuel gönderdikten
+        sonra `sent`e çekip `communication_log`'a kayıt düşer) endpoint'leri
+        eklendi. Eski `queue()` handler'ı (otomatik WhatsApp/e-posta API
+        çağrısı) koddan silinmedi ama artık hiç tetiklenmiyor -
+        `wrangler.toml`'daki `[[queues.consumers]]` tanımının geçerli
+        kalması için (queue handler'sız deploy edilemiyor) kasıtlı
+        olarak bırakıldı.
+      - `apps/dashboard`: Onaylananlar sayfasındaki detay popup'ına
+        düzenlenebilir teklif metni kutusu ("Metni Kaydet"), bir
+        **WhatsApp'ta Gönder** (`wa.me/90...?text=...`) linki ve bir
+        **E-posta ile Gönder** (`mailto:...`) linki eklendi - ikisi de
+        sahibinin kendi hesabını/istemcisini açıyor. Her linkin yanında
+        "...olarak işaretle" butonu var (manuel gönderim sonrası durumu
+        günceller).
+      - `workers/channels/whatsapp` ve `workers/channels/email` (Resend)
+        koddan silinmedi (ileride tekrar otomatik gönderime dönülmek
+        istenirse hazır dursun diye) ama artık hiçbir yerden
+        çağrılmıyor - **WhatsApp Business API kimlik bilgisi eklemeye
+        gerek kalmadı**.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

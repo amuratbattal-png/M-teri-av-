@@ -123,6 +123,34 @@ export default {
       return Response.redirect(url.origin + "/", 303);
     }
 
+    // Onaylananlar sayfasında teklif metnini düzenleme - sahibi buradan
+    // wa.me/mailto linkleriyle göndermeden önce metni değiştirebiliyor.
+    const proposalMatch = url.pathname.match(/^\/onaylananlar\/([^/]+)\/proposal$/);
+    if (proposalMatch && request.method === "POST") {
+      const form = await request.formData();
+      const proposalDraft = String(form.get("proposalDraft") ?? "");
+      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${proposalMatch[1]}/proposal`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ proposalDraft }),
+      });
+      return Response.redirect(url.origin + "/onaylananlar", 303);
+    }
+
+    // Sahibi WhatsApp/e-postayı kendi hesabından MANUEL gönderdikten
+    // sonra bunu işaretliyor - sistem otomatik göndermiyor.
+    const markSentMatch = url.pathname.match(/^\/onaylananlar\/([^/]+)\/mark-sent$/);
+    if (markSentMatch && request.method === "POST") {
+      const form = await request.formData();
+      const channel = String(form.get("channel") ?? "");
+      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${markSentMatch[1]}/mark-sent`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel }),
+      });
+      return Response.redirect(url.origin + "/onaylananlar", 303);
+    }
+
     return new Response("not found", { status: 404 });
   },
 };

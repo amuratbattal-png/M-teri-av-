@@ -241,10 +241,38 @@ function contactLine(c: Candidate): string {
   return parts.length ? parts.map((p) => escapeHtml(p)).join(" · ") : "İletişim bilgisi yok";
 }
 
+/**
+ * Türkiye numaralarını wa.me'nin beklediği "90XXXXXXXXXX" (ülke kodu,
+ * boşluk/+/0 yok) formatına çevirir. "0532...", "+90 532...",
+ * "532..." gibi yaygın biçimlerin hepsini kapsar.
+ */
+function toWhatsAppNumber(raw: string): string | null {
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("0")) digits = "90" + digits.slice(1);
+  else if (digits.length === 10) digits = "90" + digits;
+  return digits.startsWith("90") ? digits : null;
+}
+
+/** wa.me gönderim linki - sahibi bunu tıklayıp kendi WhatsApp oturumundan gönderiyor. */
+function waLink(c: Candidate, text: string): string | null {
+  const raw = c.contactWhatsapp || c.contactPhone;
+  if (!raw) return null;
+  const number = toWhatsAppNumber(raw);
+  return number ? `https://wa.me/${number}?text=${encodeURIComponent(text)}` : null;
+}
+
+/** mailto: linki - sahibi bunu tıklayıp kendi e-posta istemcisinden gönderiyor. */
+function mailtoLink(c: Candidate, text: string): string | null {
+  if (!c.contactEmail) return null;
+  const subject = encodeURIComponent(`${c.name} için teklif`);
+  return `mailto:${encodeURIComponent(c.contactEmail)}?subject=${subject}&body=${encodeURIComponent(text)}`;
+}
+
 function approveRejectForms(id: string): string {
   return `
     <form method="post" action="/approve/${id}">
-      <button type="submit" class="btn btn--approve">✓ Onayla ve Gönder</button>
+      <button type="submit" class="btn btn--approve">✓ Onayla</button>
     </form>
     <form method="post" action="/reject/${id}">
       <button type="submit" class="btn btn--reject">✕ Reddet</button>
@@ -494,6 +522,9 @@ function approvedDialog(c: Candidate): string {
     .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
     .join("");
   const cityLabel = candidateCityLabel(c);
+  const proposalText = c.proposalDraft ?? "";
+  const wa = waLink(c, proposalText);
+  const mail = mailtoLink(c, proposalText);
 
   return `
     <dialog id="dlg-${c.id}" class="detail-dialog">
@@ -507,11 +538,39 @@ function approvedDialog(c: Candidate): string {
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
-        ${
-          c.proposalDraft
-            ? `<div class="proposal-label">Teklif taslağı</div><pre class="proposal">${escapeHtml(c.proposalDraft)}</pre>`
-            : ""
-        }
+
+        <form method="post" action="/onaylananlar/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
+          <div class="proposal-label">Teklif metni (gönderim öncesi düzenleyebilirsin)</div>
+          <textarea name="proposalDraft" rows="7">${escapeHtml(proposalText)}</textarea>
+          <button type="submit" class="btn--filter">Metni Kaydet</button>
+        </form>
+
+        <div class="send-actions" onclick="event.stopPropagation()">
+          ${
+            wa
+              ? `<a class="btn btn--approve" href="${wa}" target="_blank" rel="noopener">${ICONS.chat} WhatsApp'ta Gönder</a>
+                 <form method="post" action="/onaylananlar/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
+                   <input type="hidden" name="channel" value="whatsapp">
+                   <button type="submit" class="detail-link">WhatsApp'tan gönderildi olarak işaretle</button>
+                 </form>`
+              : ""
+          }
+          ${
+            mail
+              ? `<a class="btn btn--approve" href="${mail}">${ICONS.send} E-posta ile Gönder</a>
+                 <form method="post" action="/onaylananlar/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
+                   <input type="hidden" name="channel" value="email">
+                   <button type="submit" class="detail-link">E-posta ile gönderildi olarak işaretle</button>
+                 </form>`
+              : ""
+          }
+          ${
+            !wa && !mail
+              ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
+              : ""
+          }
+        </div>
+
         ${
           c.approvedAt
             ? `<p class="contact">Onaylayan: ${escapeHtml(c.approvedBy ?? "—")} · ${fmtDate(c.approvedAt)}</p>`
@@ -983,6 +1042,36 @@ const STYLES = `
 
   .source-link { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.79rem; color: var(--accent); text-decoration: none; margin-top: 0.4rem; font-weight: 500; }
   .source-link:hover { text-decoration: underline; }
+
+  .proposal-edit { margin: 0.6rem 0 0; }
+  .proposal-edit textarea {
+    width: 100%;
+    margin-top: 0.5rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 0.9rem;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.83rem;
+    line-height: 1.5;
+    resize: vertical;
+  }
+  .proposal-edit .btn--filter { margin-top: 0.5rem; }
+
+  .send-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+    margin: 1rem 0;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .send-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+  .send-actions svg { width: 15px; height: 15px; }
+  .send-actions form { margin: 0; }
 
   .card-actions { display: flex; gap: 0.65rem; margin-top: 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
   .card > .card-actions { margin-top: auto; }

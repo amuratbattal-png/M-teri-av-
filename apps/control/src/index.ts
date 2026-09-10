@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import type { Env, OutreachJob } from "./env";
 import { handleScanResults, handleListCandidates, handleStats } from "./routes/candidates";
-import { handleApprove, handleReject } from "./routes/approvals";
+import { handleApprove, handleReject, handleUpdateProposal, handleMarkSent } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
 
 function json(data: unknown, status = 200): Response {
@@ -48,13 +48,27 @@ export default {
       return handleReject(env, rejectMatch[1]);
     }
 
+    const proposalMatch = pathname.match(/^\/candidates\/([^/]+)\/proposal$/);
+    if (proposalMatch && method === "POST") {
+      return handleUpdateProposal(request, env, proposalMatch[1]);
+    }
+
+    const markSentMatch = pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);
+    if (markSentMatch && method === "POST") {
+      return handleMarkSent(request, env, markSentMatch[1]);
+    }
+
     return json({ error: "not found" }, 404);
   },
 
   /**
-   * Onaylanmış adayları ilgili gönderim kanalı worker'ına dispatch eder.
-   * Bu, sistemde gerçek mesajın gönderildiği TEK yer - ve buraya sadece
-   * `handleApprove` üzerinden, sahibinin onayından sonra girilir.
+   * ESKİ otomatik dispatch yolu - artık HİÇBİR ŞEY buraya mesaj koymuyor
+   * (bkz. routes/approvals.ts handleApprove, gönderim artık otomatik
+   * değil - sahibi WhatsApp/e-postayı kendi hesabından manuel gönderiyor,
+   * bkz. handleMarkSent). Bu handler sadece wrangler.toml'daki
+   * `[[queues.consumers]]` tanımının geçerli kalması için (bir consumer
+   * queue'su, karşılık gelen bir queue() export'u olmadan deploy
+   * edilemiyor) kaldırılmadan bırakıldı - pratikte artık hiç tetiklenmez.
    */
   async queue(batch: MessageBatch<OutreachJob>, env: Env): Promise<void> {
     const db = createDb(env.DB);
