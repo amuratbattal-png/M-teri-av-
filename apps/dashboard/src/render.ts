@@ -353,6 +353,10 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
           <textarea name="proposalDraft" rows="7">${escapeHtml(proposalText)}</textarea>
           <button type="submit" class="btn--filter">Metni Kaydet</button>
         </form>
+        <form method="post" action="/candidates/${c.id}/regenerate-proposal" class="proposal-edit" onclick="event.stopPropagation()" onsubmit="return confirm('Mevcut metnin üzerine yazılacak, yapay zekayla yeniden yazılsın mı?')">
+          <input type="hidden" name="redirect" value="${redirectTo}">
+          <button type="submit" class="btn--filter">${ICONS.star} AI ile Yeniden Yaz</button>
+        </form>
 
         <div class="send-actions" onclick="event.stopPropagation()">
           ${

@@ -316,6 +316,18 @@ Neden bu yapı:
       `apps/control`'deki `/candidates/:id/proposal` ve
       `/candidates/:id/mark-sent` endpoint'leri artık her sayfadan
       (sadece Onaylananlar'dan değil) çağrılabiliyor.
+- [x] **Teklif metinleri NVIDIA API ile kişiselleştiriliyor**
+      (`apps/control/src/lib/proposal.ts`, `integrate.api.nvidia.com`
+      chat completions, varsayılan model `meta/llama-3.1-70b-instruct`,
+      `NVIDIA_MODEL` var'ı ile değiştirilebilir). Firma adı, sektör,
+      şehir ve tespit edilen ihtiyaca göre doğal bir ilk temas mesajı
+      yazdırıyor. `NVIDIA_API_KEY` secret'ı tanımlı değilse ya da API
+      çağrısı başarısız olursa sessizce basit şablon metne düşülüyor -
+      hiçbir aday LLM hatası yüzünden teklifsiz kalmıyor. Dashboard'daki
+      popup'a **"AI ile Yeniden Yaz"** butonu eklendi
+      (`POST /candidates/:id/regenerate-proposal`) - mevcut metni
+      NVIDIA ile sıfırdan yeniden yazdırıyor. NVIDIA_API_KEY henüz
+      Cloudflare'e eklenmedi/doğrulanmadı.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

@@ -32,3 +32,12 @@ service = "musteri-avcisi-channel-email"
 # Tarama worker'larinin control API'ye yazarken kullandigi paylasilan sir.
 # Repoda PLAINTEXT tutulmaz - `wrangler secret put SCAN_SHARED_SECRET` ile
 # ayarlanmali (ayni deger her tarama worker'inda da secret olarak set edilmeli).
+
+# Teklif metinlerini kisisellestirmek icin NVIDIA API (integrate.api.nvidia.com).
+# Tanimli degilse basit sablon metne dusulur, hata vermez.
+# `wrangler secret put NVIDIA_API_KEY` ile eklenmeli.
+#
+# Istege bagli: NVIDIA_MODEL (var, secret degil) - build.nvidia.com'daki
+# model kimligi, tanimli degilse "meta/llama-3.1-70b-instruct" kullanilir.
+# [vars]
+# NVIDIA_MODEL = "meta/llama-3.1-70b-instruct"

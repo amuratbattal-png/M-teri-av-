@@ -153,6 +153,18 @@ export default {
       return safeRedirect(url.origin, form.get("redirect"));
     }
 
+    // "AI ile Yeniden Yaz" - teklif metnini NVIDIA API ile (bkz.
+    // apps/control/src/lib/proposal.ts) sıfırdan yeniden yazdırır.
+    const regenerateMatch = url.pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
+    if (regenerateMatch && request.method === "POST") {
+      const form = await request.formData();
+      await env.CONTROL_WORKER.fetch(
+        `https://internal/candidates/${regenerateMatch[1]}/regenerate-proposal`,
+        { method: "POST" },
+      );
+      return safeRedirect(url.origin, form.get("redirect"));
+    }
+
     // Sahibi WhatsApp/e-postayı kendi hesabından MANUEL gönderdikten
     // sonra bunu işaretliyor - sistem otomatik göndermiyor.
     const markSentMatch = url.pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);

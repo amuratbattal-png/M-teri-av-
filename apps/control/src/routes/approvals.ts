@@ -1,6 +1,14 @@
 import { eq } from "drizzle-orm";
 import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
+import { SECTORS, PARALLEL_TRACK, type NeedTag } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
+import { draftProposal } from "../lib/proposal";
+
+/** Slug'dan Türkçe sektör etiketi - apps/dashboard'daki sectorLabel() ile aynı mantık. */
+function sectorLabel(slug: string): string {
+  if (slug === PARALLEL_TRACK.slug) return PARALLEL_TRACK.labelTr;
+  return SECTORS.find((s) => s.slug === slug)?.labelTr ?? slug;
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -67,6 +75,33 @@ export async function handleUpdateProposal(
     .set({ proposalDraft: body.proposalDraft })
     .where(eq(candidates.id, candidateId));
   return json({ ok: true, candidateId });
+}
+
+/**
+ * Sahibi popup'taki "AI ile Yeniden Yaz" butonuna basınca çağrılır -
+ * teklif metnini NVIDIA API ile (bkz. lib/proposal.ts) sıfırdan
+ * yeniden yazdırır ve kaydeder. NVIDIA_API_KEY tanımlı değilse basit
+ * şablona düşer (hata vermez).
+ */
+export async function handleRegenerateProposal(env: Env, candidateId: string): Promise<Response> {
+  const db = createDb(env.DB);
+  const rows = await db.select().from(candidates).where(eq(candidates.id, candidateId)).limit(1);
+  const candidate = rows[0];
+  if (!candidate) return json({ error: "candidate not found" }, 404);
+
+  const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+  const proposalDraft = await draftProposal(
+    {
+      candidateName: candidate.name,
+      needTags: candidate.needTags as NeedTag[],
+      sectorLabel: sectorLabel(candidate.sectorSlug),
+      cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+    },
+    env,
+  );
+
+  await db.update(candidates).set({ proposalDraft }).where(eq(candidates.id, candidateId));
+  return json({ ok: true, candidateId, proposalDraft });
 }
 
 /**

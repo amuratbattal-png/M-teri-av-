@@ -1,6 +1,11 @@
 import { eq, and, sql } from "drizzle-orm";
 import { createDb, candidates } from "@musteri-avcisi/db";
-import { CANDIDATE_STATUSES, type ScanResult } from "@musteri-avcisi/shared";
+import {
+  CANDIDATE_STATUSES,
+  SECTORS,
+  PARALLEL_TRACK,
+  type ScanResult,
+} from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 
@@ -9,6 +14,12 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+/** Slug'dan Türkçe sektör etiketi - apps/dashboard'daki sectorLabel() ile aynı mantık. */
+function sectorLabel(slug: string): string {
+  if (slug === PARALLEL_TRACK.slug) return PARALLEL_TRACK.labelTr;
+  return SECTORS.find((s) => s.slug === slug)?.labelTr ?? slug;
 }
 
 /**
@@ -49,6 +60,17 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
 
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
+    const cityLabel = result.rawMetadata?.cityLabel;
+
+    const proposalDraft = await draftProposal(
+      {
+        candidateName: result.name,
+        needTags: result.needTags,
+        sectorLabel: sectorLabel(result.sectorSlug),
+        cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+      },
+      env,
+    );
 
     await db.insert(candidates).values({
       id,
@@ -64,7 +86,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       contactLinkedin: result.contactLinkedin ?? null,
       discoveredAt: now,
       status: "pending_approval",
-      proposalDraft: draftProposal(result.name, result.needTags),
+      proposalDraft,
       rawMetadata: result.rawMetadata ?? null,
     });
 

@@ -2,7 +2,13 @@ import { eq } from "drizzle-orm";
 import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import type { Env, OutreachJob } from "./env";
 import { handleScanResults, handleListCandidates, handleStats } from "./routes/candidates";
-import { handleApprove, handleReject, handleUpdateProposal, handleMarkSent } from "./routes/approvals";
+import {
+  handleApprove,
+  handleReject,
+  handleUpdateProposal,
+  handleRegenerateProposal,
+  handleMarkSent,
+} from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
 
 function json(data: unknown, status = 200): Response {
@@ -51,6 +57,11 @@ export default {
     const proposalMatch = pathname.match(/^\/candidates\/([^/]+)\/proposal$/);
     if (proposalMatch && method === "POST") {
       return handleUpdateProposal(request, env, proposalMatch[1]);
+    }
+
+    const regenerateMatch = pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
+    if (regenerateMatch && method === "POST") {
+      return handleRegenerateProposal(env, regenerateMatch[1]);
     }
 
     const markSentMatch = pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);

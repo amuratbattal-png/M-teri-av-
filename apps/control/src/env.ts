@@ -6,6 +6,10 @@ export interface Env {
   SCAN_SHARED_SECRET: string;
   /** control -> gönderim kanalı worker'ları (whatsapp/email/voice-call) arası paylaşılan sır. */
   OUTREACH_SHARED_SECRET: string;
+  /** Teklif metinlerini kişiselleştirmek için NVIDIA API (integrate.api.nvidia.com) anahtarı - tanımlı değilse basit şablona düşülür. */
+  NVIDIA_API_KEY?: string;
+  /** build.nvidia.com model kimliği - tanımlı değilse varsayılana (meta/llama-3.1-70b-instruct) düşer. */
+  NVIDIA_MODEL?: string;
 }
 
 /** OUTREACH_QUEUE'ye konan, onaylanmış gönderim işi. */
