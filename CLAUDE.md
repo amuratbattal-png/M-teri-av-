@@ -248,6 +248,14 @@ Neden bu yapı:
       çıkarıldı - orada artık sadece onaylanmamış durumlar görünüyor.
       Sidebar sırası: Onaylar → Onaylananlar → Gönderilenler → Tüm
       Adaylar.
+- [x] **Dashboard'a isim arama kutusu eklendi**: Onaylar, Onaylananlar,
+      Tüm Adaylar ve Gönderilenler sayfalarındaki filtre çubuğuna (`q`
+      query param) bir arama kutusu eklendi - sektör/şehir/kanal/durum
+      filtreleriyle birlikte kullanılabiliyor.
+      **Onaylananlar sayfası artık tablo değil, Onaylar sayfasıyla aynı
+      kart + tıklanınca açılan popup (native `<dialog>`) görünümünde**
+      (onay/red butonu olmadan - zaten onaylı, ama kim/ne zaman
+      onayladığı popup'ta gösteriliyor).
 - [ ] WhatsApp Business API kimlik bilgileri eklenecek
       (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,

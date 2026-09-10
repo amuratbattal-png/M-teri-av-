@@ -59,11 +59,12 @@ export default {
     if (url.pathname === "/" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const q = url.searchParams.get("q") || undefined;
       const [counts, pending] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "pending_approval"),
       ]);
-      return new Response(renderApprovalsPage(counts, pending, sector, city), {
+      return new Response(renderApprovalsPage(counts, pending, sector, city, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -71,11 +72,12 @@ export default {
     if (url.pathname === "/onaylananlar" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const q = url.searchParams.get("q") || undefined;
       const [counts, approved] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "approved"),
       ]);
-      return new Response(renderApprovedPage(counts, approved, sector, city), {
+      return new Response(renderApprovedPage(counts, approved, sector, city, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -83,8 +85,9 @@ export default {
     if (url.pathname === "/adaylar" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const q = url.searchParams.get("q") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
-      return new Response(renderAllCandidatesPage(counts, all, sector, city), {
+      return new Response(renderAllCandidatesPage(counts, all, sector, city, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -92,11 +95,12 @@ export default {
     if (url.pathname === "/gonderilenler" && request.method === "GET") {
       const channel = url.searchParams.get("channel") || undefined;
       const status = url.searchParams.get("status") || undefined;
+      const q = url.searchParams.get("q") || undefined;
       const [counts, communications] = await Promise.all([
         fetchStats(env),
         fetchCommunications(env),
       ]);
-      return new Response(renderSentPage(counts, communications, channel, status), {
+      return new Response(renderSentPage(counts, communications, channel, status, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

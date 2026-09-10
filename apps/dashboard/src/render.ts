@@ -18,6 +18,12 @@ function candidateCityLabel(c: Candidate): string | undefined {
   return typeof label === "string" ? label : undefined;
 }
 
+/** Arama kutusu için: isim eşleşmesi (büyük/küçük harf duyarsız). */
+function matchesQuery(name: string, query?: string): boolean {
+  if (!query) return true;
+  return name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"));
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -311,9 +317,11 @@ export function renderApprovalsPage(
   pending: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedQuery?: string,
 ): string {
   const filtered = pending.filter(
     (c) =>
+      matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
@@ -325,7 +333,7 @@ export function renderApprovalsPage(
     : `<div class="empty-state">
         <span class="emoji">🔍</span>
         ${
-          selectedSector || selectedCity
+          selectedSector || selectedCity || selectedQuery
             ? "Bu filtreyle onay bekleyen aday yok."
             : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir."
         }
@@ -334,7 +342,7 @@ export function renderApprovalsPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
-    ${filterBar({ action: "/", selectedSector, selectedCity })}
+    ${filterBar({ action: "/", selectedSector, selectedCity, selectedQuery })}
     ${list}
   `;
 
@@ -363,11 +371,12 @@ function candidateRow(c: Candidate): string {
     </tr>`;
 }
 
-/** Sektör + şehir filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
+/** Sektör + şehir + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
 function filterBar(opts: {
   action: string;
   selectedSector?: string;
   selectedCity?: string;
+  selectedQuery?: string;
 }): string {
   const sectorOptions = [
     `<option value=""${opts.selectedSector ? "" : " selected"}>Tüm sektörler</option>`,
@@ -394,10 +403,20 @@ function filterBar(opts: {
 
   return `
     <form class="filter-bar" method="get" action="${opts.action}">
+      <span class="search-box">
+        ${ICONS.search}
+        <input
+          type="search"
+          name="q"
+          placeholder="Ada göre ara..."
+          value="${escapeHtml(opts.selectedQuery ?? "")}"
+        >
+      </span>
       <label for="sector-filter">Sektör</label>
       <select id="sector-filter" name="sector" onchange="this.form.submit()">${sectorOptions}</select>
       <label for="city-filter">Şehir</label>
       <select id="city-filter" name="city" onchange="this.form.submit()">${cityOptions}</select>
+      <button type="submit" class="btn--filter">Ara</button>
     </form>`;
 }
 
@@ -406,12 +425,14 @@ export function renderAllCandidatesPage(
   all: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedQuery?: string,
 ): string {
   // Onaylanmış adaylar artık kendi sayfasında (bkz. renderApprovedPage) -
   // burada tekrar gösterilmiyor.
   const filtered = all.filter(
     (c) =>
       c.status !== "approved" &&
+      matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
@@ -423,7 +444,7 @@ export function renderAllCandidatesPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
-    ${filterBar({ action: "/adaylar", selectedSector, selectedCity })}
+    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedQuery })}
     <div class="table-wrap">
       <table>
         <thead>
@@ -445,34 +466,96 @@ export function renderAllCandidatesPage(
 
 // --- Onaylananlar sayfası ----------------------------------------------------
 
+/** Onaylanmış aday kartı - onay/red butonu yok (zaten onaylandı), tıklanınca popup açılır. */
+function approvedCard(c: Candidate): string {
+  const needsPreview = c.needTags.slice(0, 2);
+  const extra = c.needTags.length - needsPreview.length;
+  const pills =
+    needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
+    (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
+  const cityLabel = candidateCityLabel(c);
+
+  return `
+    <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
+      <h3 class="card-title card-title--clamp">${escapeHtml(c.name)}</h3>
+      <div class="card-meta">
+        <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
+        <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+        ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
+      </div>
+      <div class="pills">${pills}</div>
+      <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
+    </article>`;
+}
+
+/** Onaylanmış aday detay popup'ı - onay/red butonu yok, kim/ne zaman onayladığı gösterilir. */
+function approvedDialog(c: Candidate): string {
+  const pills = c.needTags
+    .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
+    .join("");
+  const cityLabel = candidateCityLabel(c);
+
+  return `
+    <dialog id="dlg-${c.id}" class="detail-dialog">
+      <div class="dialog-inner">
+        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">✕</button>
+        <h3 class="card-title">${escapeHtml(c.name)}</h3>
+        <div class="card-meta">
+          <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
+          <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+          ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
+        </div>
+        <div class="pills">${pills}</div>
+        <p class="contact">${contactLine(c)}</p>
+        ${
+          c.proposalDraft
+            ? `<div class="proposal-label">Teklif taslağı</div><pre class="proposal">${escapeHtml(c.proposalDraft)}</pre>`
+            : ""
+        }
+        ${
+          c.approvedAt
+            ? `<p class="contact">Onaylayan: ${escapeHtml(c.approvedBy ?? "—")} · ${fmtDate(c.approvedAt)}</p>`
+            : ""
+        }
+        ${
+          c.sourceUrl
+            ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
+            : ""
+        }
+      </div>
+    </dialog>`;
+}
+
 export function renderApprovedPage(
   counts: Record<string, number>,
   approved: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedQuery?: string,
 ): string {
   const filtered = approved.filter(
     (c) =>
+      matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
-  const rows = sorted.length
-    ? sorted.map(candidateRow).join("\n")
-    : `<tr><td colspan="6" class="muted">Onaylanmış aday yok.</td></tr>`;
+  const list = sorted.length
+    ? `<div class="cards">${sorted.map(approvedCard).join("\n")}</div>${sorted.map(approvedDialog).join("\n")}`
+    : `<div class="empty-state">
+        <span class="emoji">✓</span>
+        ${
+          selectedSector || selectedCity || selectedQuery
+            ? "Bu filtreyle onaylanmış aday yok."
+            : "Henüz onaylanmış aday yok."
+        }
+      </div>`;
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onaylananlar (${sorted.length})</h2>
-    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity })}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kaynak</th><th>Durum</th><th>Keşif tarihi</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
+    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedQuery })}
+    ${list}
   `;
 
   return shell({
@@ -518,9 +601,11 @@ export function renderSentPage(
   communications: CommunicationRow[],
   selectedChannel?: string,
   selectedStatus?: string,
+  selectedQuery?: string,
 ): string {
   const filtered = communications.filter(
     (r) =>
+      matchesQuery(r.candidateName ?? "", selectedQuery) &&
       (!selectedChannel || r.channel === selectedChannel) &&
       (!selectedStatus || r.status === selectedStatus),
   );
@@ -548,10 +633,15 @@ export function renderSentPage(
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Gönderilenler (${filtered.length})</h2>
     <form class="filter-bar" method="get" action="/gonderilenler">
+      <span class="search-box">
+        ${ICONS.search}
+        <input type="search" name="q" placeholder="Ada göre ara..." value="${escapeHtml(selectedQuery ?? "")}">
+      </span>
       <label for="channel-filter">Kanal</label>
       <select id="channel-filter" name="channel" onchange="this.form.submit()">${channelOptions}</select>
       <label for="status-filter">İletim durumu</label>
       <select id="status-filter" name="status" onchange="this.form.submit()">${statusOptions}</select>
+      <button type="submit" class="btn--filter">Ara</button>
     </form>
     <div class="table-wrap">
       <table>
@@ -744,6 +834,41 @@ const STYLES = `
     font-size: 0.88rem;
     max-width: 280px;
   }
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.4rem 0.7rem;
+    color: var(--text-muted);
+    flex: 1 1 220px;
+    max-width: 320px;
+  }
+  .search-box svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .search-box input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.88rem;
+    width: 100%;
+  }
+  .search-box input::placeholder { color: var(--text-muted); }
+  .btn--filter {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.45rem 0.9rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn--filter:hover { border-color: var(--accent); color: var(--accent); }
 
   .empty-state {
     background: var(--surface);
