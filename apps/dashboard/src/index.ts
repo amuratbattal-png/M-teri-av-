@@ -185,15 +185,18 @@ export default {
     }
 
     // "AI ile Yeniden Yaz" - teklif metnini NVIDIA API ile (bkz.
-    // apps/control/src/lib/proposal.ts) sıfırdan yeniden yazdırır.
+    // apps/control/src/lib/proposal.ts) sıfırdan yeniden yazdırır. Diğer
+    // formların aksine tam sayfa yönlendirmesi YAPMIYOR (popup açık
+    // kalsın diye) - render.ts'teki buton bunu fetch() ile çağırıp
+    // dönen proposalDraft'ı doğrudan metin kutusuna yazıyor.
     const regenerateMatch = url.pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
     if (regenerateMatch && request.method === "POST") {
-      const form = await request.formData();
-      await env.CONTROL_WORKER.fetch(
+      const res = await env.CONTROL_WORKER.fetch(
         `https://internal/candidates/${regenerateMatch[1]}/regenerate-proposal`,
         { method: "POST" },
       );
-      return safeRedirect(url.origin, form.get("redirect"));
+      const data = await res.text();
+      return new Response(data, { headers: { "content-type": "application/json" } });
     }
 
     // Sahibi WhatsApp/e-postayı kendi hesabından MANUEL gönderdikten

@@ -13,6 +13,13 @@ export interface ProposalEnv {
   NVIDIA_MODEL?: string;
 }
 
+export interface ProposalResult {
+  text: string;
+  usedAI: boolean;
+  /** AI başarısız olduysa (ya da hiç denenmediyse) neden - dashboard'da "AI ile Yeniden Yaz" sonrası gösterilir, wrangler tail'e bakmaya gerek kalmaz. */
+  error?: string;
+}
+
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
 
@@ -35,19 +42,23 @@ function templateProposal(ctx: ProposalContext): string {
 }
 
 /**
- * NVIDIA API (build.nvidia.com, OpenAI uyumlu chat completions) ile
- * adaya özel, doğal bir teklif metni ürettirir. Anahtar tanımlı değilse
- * ya da çağrı başarısız olursa şablon metne (templateProposal) sessizce
- * düşer - hiçbir aday LLM hatası yüzünden teklifsiz kalmaz.
+ * NVIDIA API (integrate.api.nvidia.com, OpenAI uyumlu chat completions)
+ * ile adaya özel, doğal bir teklif metni ürettirir. Anahtar tanımlı
+ * değilse ya da çağrı başarısız olursa şablon metne (templateProposal)
+ * düşer - hiçbir aday LLM hatası yüzünden teklifsiz kalmaz. `error`
+ * alanı, düşüş sebebini (ör. 401/403, yanlış anahtar türü) taşır -
+ * dashboard'daki "AI ile Yeniden Yaz" bunu doğrudan gösteriyor.
  *
  * NOT: Bu, sistemdeki hiçbir gönderimi OTOMATİKLEŞTİRMİYOR - sadece
  * `pending_approval` durumundaki bir adayın taslak metnini yazıyor.
  * Sahibi her zaman bu metni Onaylar/Onaylananlar popup'ında okuyup
  * düzenleyebiliyor, gönderim hâlâ tamamen manuel (bkz. CLAUDE.md).
  */
-export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Promise<string> {
+export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Promise<ProposalResult> {
   const fallback = templateProposal(ctx);
-  if (!env.NVIDIA_API_KEY) return fallback;
+  if (!env.NVIDIA_API_KEY) {
+    return { text: fallback, usedAI: false, error: "NVIDIA_API_KEY tanımlı değil" };
+  }
 
   const services = ctx.needTags.map((tag) => NEED_TAG_LABELS_TR[tag] ?? tag).join(", ");
   const contextLines = [
@@ -92,17 +103,25 @@ export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Pro
     });
 
     if (!res.ok) {
-      console.error("NVIDIA API hatası", res.status, await res.text());
-      return fallback;
+      const bodyText = await res.text();
+      console.error("NVIDIA API hatası", res.status, bodyText);
+      return {
+        text: fallback,
+        usedAI: false,
+        error: `status=${res.status} ${bodyText.slice(0, 300)}`,
+      };
     }
 
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const text = data.choices?.[0]?.message?.content?.trim();
-    return text || fallback;
+    if (!text) {
+      return { text: fallback, usedAI: false, error: "NVIDIA yanıtı boş döndü" };
+    }
+    return { text, usedAI: true };
   } catch (err) {
     console.error("NVIDIA API çağrısı başarısız", err);
-    return fallback;
+    return { text: fallback, usedAI: false, error: String(err) };
   }
 }

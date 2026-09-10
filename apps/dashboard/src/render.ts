@@ -218,6 +218,33 @@ function shell(opts: {
       });
       updateBulkBar();
     }
+
+    // "AI ile Yeniden Yaz" - popup'ı kapatmadan (sayfa yenilemeden) metni
+    // NVIDIA API ile yeniden yazdırır. Başarısız olursa (ör. yanlış
+    // anahtar) sebebini doğrudan gösterir - log'lara bakmaya gerek kalmaz.
+    function regenerateProposal(id, btn) {
+      if (!confirm('Mevcut metnin üzerine yazılacak, yapay zekayla yeniden yazılsın mı?')) return;
+      var original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Yazılıyor...';
+      fetch('/candidates/' + id + '/regenerate-proposal', { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data && data.proposalDraft) {
+            document.getElementById('proposal-' + id).value = data.proposalDraft;
+          }
+          if (!data || !data.usedAI) {
+            alert('Yapay zeka ile yazılamadı, şablon metin kullanıldı.\n\nSebep: ' + ((data && data.aiError) || 'bilinmiyor'));
+          }
+        })
+        .catch(function (err) {
+          alert('Bir hata oluştu: ' + err);
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = original;
+        });
+    }
   </script>
 </body>
 </html>`;
@@ -376,12 +403,11 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         <form method="post" action="/candidates/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
           <input type="hidden" name="redirect" value="${redirectTo}">
           <div class="proposal-label">Teklif metni (düzenleyebilirsin)</div>
-          <textarea name="proposalDraft" rows="7">${escapeHtml(proposalText)}</textarea>
-          <button type="submit" class="btn--filter">Metni Kaydet</button>
-        </form>
-        <form method="post" action="/candidates/${c.id}/regenerate-proposal" class="proposal-edit" onclick="event.stopPropagation()" onsubmit="return confirm('Mevcut metnin üzerine yazılacak, yapay zekayla yeniden yazılsın mı?')">
-          <input type="hidden" name="redirect" value="${redirectTo}">
-          <button type="submit" class="btn--filter">${ICONS.star} AI ile Yeniden Yaz</button>
+          <textarea name="proposalDraft" id="proposal-${c.id}" rows="7">${escapeHtml(proposalText)}</textarea>
+          <div class="proposal-edit-row">
+            <button type="submit" class="btn--filter">Metni Kaydet</button>
+            <button type="button" class="btn--filter" onclick="event.stopPropagation(); regenerateProposal('${c.id}', this)">${ICONS.star} AI ile Yeniden Yaz</button>
+          </div>
         </form>
 
         <div class="send-actions" onclick="event.stopPropagation()">
@@ -1098,6 +1124,8 @@ const STYLES = `
     resize: vertical;
   }
   .proposal-edit .btn--filter { margin-top: 0.5rem; }
+  .proposal-edit-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.5rem; }
+  .proposal-edit-row .btn--filter { margin-top: 0; }
 
   .send-actions {
     display: flex;

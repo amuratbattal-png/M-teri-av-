@@ -350,6 +350,17 @@ Neden bu yapı:
       bir sistem bildirimi. Hedef adres `ALERT_EMAIL` var'ı ile
       değiştirilebilir. `workers/channels/email`'e özel başlık
       (`subject`) alanı eklendi (önceden hep sabitti).
+- [x] **"AI ile Yeniden Yaz" düzeltildi + NVIDIA hata teşhisi eklendi.**
+      Önceden bu buton tam sayfa formu gönderip popup'ı kapatıyordu
+      (diğer formlarla aynı desen) - artık `fetch()` ile arka planda
+      çalışıyor, popup açık kalıyor, dönen metin doğrudan kutuya
+      yazılıyor. `draftProposal()` artık sadece metin değil
+      `{ text, usedAI, error }` döndürüyor - NVIDIA çağrısı başarısız
+      olursa (yanlış anahtar türü, 401/403 vb.) sebep doğrudan
+      dashboard'da bir uyarı olarak gösteriliyor, `wrangler tail`'e
+      bakmaya gerek kalmıyor. NGC "Legacy Key" ile
+      `integrate.api.nvidia.com`'un çalışıp çalışmadığı henüz
+      doğrulanmadı - bu hata mesajı doğrulamak için kullanılacak.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

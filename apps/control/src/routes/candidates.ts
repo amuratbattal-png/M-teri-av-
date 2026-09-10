@@ -62,7 +62,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     const now = new Date().toISOString();
     const cityLabel = result.rawMetadata?.cityLabel;
 
-    const proposalDraft = await draftProposal(
+    const proposal = await draftProposal(
       {
         candidateName: result.name,
         needTags: result.needTags,
@@ -71,6 +71,9 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       },
       env,
     );
+    if (!proposal.usedAI) {
+      console.warn(`AI teklif metni üretilemedi (${result.name}): ${proposal.error}`);
+    }
 
     await db.insert(candidates).values({
       id,
@@ -86,7 +89,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       contactLinkedin: result.contactLinkedin ?? null,
       discoveredAt: now,
       status: "pending_approval",
-      proposalDraft,
+      proposalDraft: proposal.text,
       rawMetadata: result.rawMetadata ?? null,
     });
 

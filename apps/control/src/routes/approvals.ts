@@ -148,7 +148,7 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
   if (!candidate) return json({ error: "candidate not found" }, 404);
 
   const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
-  const proposalDraft = await draftProposal(
+  const proposal = await draftProposal(
     {
       candidateName: candidate.name,
       needTags: candidate.needTags as NeedTag[],
@@ -158,8 +158,14 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
     env,
   );
 
-  await db.update(candidates).set({ proposalDraft }).where(eq(candidates.id, candidateId));
-  return json({ ok: true, candidateId, proposalDraft });
+  await db.update(candidates).set({ proposalDraft: proposal.text }).where(eq(candidates.id, candidateId));
+  return json({
+    ok: true,
+    candidateId,
+    proposalDraft: proposal.text,
+    usedAI: proposal.usedAI,
+    aiError: proposal.error,
+  });
 }
 
 /**
