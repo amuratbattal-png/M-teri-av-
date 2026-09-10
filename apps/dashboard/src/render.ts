@@ -223,27 +223,43 @@ function shell(opts: {
     // NVIDIA API ile yeniden yazdırır. Başarısız olursa (ör. yanlış
     // anahtar) sebebini doğrudan gösterir - log'lara bakmaya gerek kalmaz.
     function regenerateProposal(id, btn) {
-      if (!confirm('Mevcut metnin üzerine yazılacak, yapay zekayla yeniden yazılsın mı?')) return;
-      var original = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Yazılıyor...';
-      fetch('/candidates/' + id + '/regenerate-proposal', { method: 'POST' })
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-          if (data && data.proposalDraft) {
-            document.getElementById('proposal-' + id).value = data.proposalDraft;
-          }
-          if (!data || !data.usedAI) {
-            alert('Yapay zeka ile yazılamadı, şablon metin kullanıldı.\n\nSebep: ' + ((data && data.aiError) || 'bilinmiyor'));
-          }
-        })
-        .catch(function (err) {
-          alert('Bir hata oluştu: ' + err);
-        })
-        .finally(function () {
-          btn.disabled = false;
-          btn.textContent = original;
-        });
+      // Teşhis logu: buton tıklaması JS'e hiç ulaşmıyor mu, yoksa
+      // confirm()/fetch() aşamasında mı takılıyor - Console'da bunu
+      // görüyorsak en azından tıklamanın buraya ulaştığı kesinleşir.
+      console.log('[regenerateProposal] tıklandı, id=', id);
+      try {
+        var proceed = confirm('Mevcut metnin üzerine yazılacak, yapay zekayla yeniden yazılsın mı?');
+        console.log('[regenerateProposal] confirm sonucu =', proceed);
+        if (!proceed) return;
+        var original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Yazılıyor...';
+        fetch('/candidates/' + id + '/regenerate-proposal', { method: 'POST' })
+          .then(function (res) {
+            console.log('[regenerateProposal] fetch status =', res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            console.log('[regenerateProposal] yanıt =', data);
+            if (data && data.proposalDraft) {
+              document.getElementById('proposal-' + id).value = data.proposalDraft;
+            }
+            if (!data || !data.usedAI) {
+              alert('Yapay zeka ile yazılamadı, şablon metin kullanıldı.\n\nSebep: ' + ((data && data.aiError) || 'bilinmiyor'));
+            }
+          })
+          .catch(function (err) {
+            console.error('[regenerateProposal] hata', err);
+            alert('Bir hata oluştu: ' + err);
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = original;
+          });
+      } catch (err) {
+        console.error('[regenerateProposal] senkron hata', err);
+        alert('Beklenmeyen bir hata oluştu: ' + err);
+      }
     }
   </script>
 </body>
