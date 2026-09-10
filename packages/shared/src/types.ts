@@ -3,6 +3,7 @@ import type { NeedTag } from "./need-tags";
 /** Tarama kaynağı kanalları. Her biri ayrı bir Cloudflare Worker modülüdür. */
 export const SOURCE_CHANNELS = [
   "google_search",
+  "brave_search",
   "google_maps",
   "yahoo_search",
   "linkedin",

@@ -176,18 +176,29 @@ Neden bu yapı:
 - [x] `google-search-scanner` gerçek Google Places API'sine (kanal:
       `google_maps`) bağlandı ve uçtan uca doğrulandı. `yahoo-search-scanner`
       hâlâ bekliyor.
-- [ ] **Bilinen sorun (beklemede):** düz Google web araması (kanal:
-      `google_search`, Custom Search JSON API) kodu yazıldı ve deploy
-      edildi (`GOOGLE_SEARCH_ENGINE_ID` ayarlı), ama Google tarafında
-      sürekli `403: This project does not have the access to Custom
-      Search JSON API` hatası alıyor - API "Enabled" görünmesine ve
-      API anahtarı kısıtlamasına eklenmesine rağmen. Muhtemelen
-      hesabın Google Cloud Organization politikalarıyla ilgili bir
-      kısıtlama (IAM & Admin → Organization Policies kontrol
-      edilmeli). Sistem bunu zarif karşılıyor - web arama hata verse
-      bile Maps sonuçları etkilenmeden kaydediliyor
-      (`workers/google-search-scanner/src/scan.ts`). Sahibi şimdilik
-      bu konuyu ertelemeyi tercih etti.
+- [x] **Düz web araması artık Brave Search API ile çalışıyor (kanal:
+      `brave_search`).** Google Custom Search JSON API'de kalıcı bir
+      `403: This project does not have the access to Custom Search
+      JSON API` hatası çözülemedi - sırasıyla denendi ve hiçbiri
+      çözmedi: API anahtarı kısıtlamasına ekleme, API "Enabled"
+      olduğunu doğrulama, Organization Policy (`gcp.restrictServiceUsage`
+      = "Allowed: All") kontrolü, anahtar/proje eşleşmesi doğrulama,
+      billing hesabının aktif olduğunu doğrulama (kota sayfası 10.000
+      sorgu/gün gösteriyordu), API'yi kapatıp yeniden açma, tamamen
+      yeni/kısıtlamasız bir anahtarla deneme, ve isteği Cloudflare
+      dışında (kullanıcının kendi bilgisayarından `curl` ile) doğrudan
+      Google'a atma - hepsinde aynı hata. Bu, sorunun ağ/IP kaynaklı
+      olmadığını ve anahtarda değil doğrudan projenin Custom Search
+      API'ye erişim yetkisinde olduğunu kanıtladı - kök neden Google
+      tarafında kalan, çözülemeyen bir tutarsızlık. Bu yüzden
+      `workers/google-search-scanner/src/scan.ts` içindeki düz web
+      araması Brave Search API'ye geçirildi (`BRAVE_API_KEY` secret,
+      `brave.com/search/api`'den alınıyor, ücretsiz katmanı var).
+      Google Places API (kanal: `google_maps`) etkilenmedi, olduğu
+      gibi çalışmaya devam ediyor. Custom Search sorunu ileride
+      Google tarafında çözülürse `google_search` kanalına geri
+      dönülebilir (kod hâlâ `SOURCE_CHANNELS` içinde duruyor, sadece
+      kullanılmıyor).
 - [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
       domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
       DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
