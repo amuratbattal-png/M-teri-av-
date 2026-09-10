@@ -269,24 +269,33 @@ function mailtoLink(c: Candidate, text: string): string | null {
   return `mailto:${encodeURIComponent(c.contactEmail)}?subject=${subject}&body=${encodeURIComponent(text)}`;
 }
 
-function approveRejectForms(id: string): string {
+function approveRejectForms(id: string, redirectTo: string): string {
   return `
     <form method="post" action="/approve/${id}">
+      <input type="hidden" name="redirect" value="${redirectTo}">
       <button type="submit" class="btn btn--approve">✓ Onayla</button>
     </form>
     <form method="post" action="/reject/${id}">
+      <input type="hidden" name="redirect" value="${redirectTo}">
       <button type="submit" class="btn btn--reject">✕ Reddet</button>
     </form>`;
 }
 
-/** Kompakt kart: sadece özet bilgi + hızlı onay/red. Detay için tıklanınca popup açılır. */
-function candidateCard(c: Candidate): string {
+/**
+ * Kompakt kart: sadece özet bilgi. Detay/düzenleme/gönderim için
+ * tıklanınca açılan popup'a bkz. candidateDetailDialog - sistemdeki
+ * TÜM aday popup'ları (Onaylar, Onaylananlar, Tüm Adaylar) aynı bu
+ * fonksiyonu/dialog'u paylaşıyor, tek fark durum bazlı aksiyon
+ * (onayla/reddet vs. gönderildi işaretle).
+ */
+function candidateCard(c: Candidate, redirectTo: string): string {
   const needsPreview = c.needTags.slice(0, 2);
   const extra = c.needTags.length - needsPreview.length;
   const pills =
     needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
     (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
   const cityLabel = candidateCityLabel(c);
+  const tone = STATUS_TONE[c.status] ?? "neutral";
 
   return `
     <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
@@ -295,21 +304,34 @@ function candidateCard(c: Candidate): string {
         <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
         <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
         ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
+        <span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span>
       </div>
       <div class="pills">${pills}</div>
       <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
-      <div class="card-actions" onclick="event.stopPropagation()">
-        ${approveRejectForms(c.id)}
-      </div>
+      ${
+        c.status === "pending_approval"
+          ? `<div class="card-actions" onclick="event.stopPropagation()">${approveRejectForms(c.id, redirectTo)}</div>`
+          : ""
+      }
     </article>`;
 }
 
-/** Kartın detay popup'ı (native &lt;dialog&gt; - ekstra JS kütüphanesi gerekmiyor). */
-function candidateDialog(c: Candidate): string {
+/**
+ * TEK, sistem genelinde ortak aday detay popup'ı (native &lt;dialog&gt;).
+ * Her yerde aynı içerik: bilgiler, düzenlenebilir teklif metni,
+ * WhatsApp (wa.me) / e-posta (mailto:) gönderim linkleri. Sadece en
+ * alttaki aksiyon bloğu duruma göre değişir - onay bekliyorsa
+ * Onayla/Reddet, değilse yok (gönderim zaten yukarıdaki linklerle).
+ */
+function candidateDetailDialog(c: Candidate, redirectTo: string): string {
   const pills = c.needTags
     .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
     .join("");
   const cityLabel = candidateCityLabel(c);
+  const tone = STATUS_TONE[c.status] ?? "neutral";
+  const proposalText = c.proposalDraft ?? "";
+  const wa = waLink(c, proposalText);
+  const mail = mailtoLink(c, proposalText);
 
   return `
     <dialog id="dlg-${c.id}" class="detail-dialog">
@@ -320,12 +342,54 @@ function candidateDialog(c: Candidate): string {
           <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
           <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
           ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
+          <span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span>
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
+
+        <form method="post" action="/candidates/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
+          <input type="hidden" name="redirect" value="${redirectTo}">
+          <div class="proposal-label">Teklif metni (düzenleyebilirsin)</div>
+          <textarea name="proposalDraft" rows="7">${escapeHtml(proposalText)}</textarea>
+          <button type="submit" class="btn--filter">Metni Kaydet</button>
+        </form>
+
+        <div class="send-actions" onclick="event.stopPropagation()">
+          ${
+            wa
+              ? `<a class="btn btn--approve" href="${wa}" target="_blank" rel="noopener">${ICONS.chat} WhatsApp'ta Gönder</a>
+                 <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
+                   <input type="hidden" name="channel" value="whatsapp">
+                   <input type="hidden" name="redirect" value="${redirectTo}">
+                   <button type="submit" class="detail-link">WhatsApp'tan gönderildi olarak işaretle</button>
+                 </form>`
+              : ""
+          }
+          ${
+            mail
+              ? `<a class="btn btn--approve" href="${mail}">${ICONS.send} E-posta ile Gönder</a>
+                 <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
+                   <input type="hidden" name="channel" value="email">
+                   <input type="hidden" name="redirect" value="${redirectTo}">
+                   <button type="submit" class="detail-link">E-posta ile gönderildi olarak işaretle</button>
+                 </form>`
+              : ""
+          }
+          ${
+            !wa && !mail
+              ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
+              : ""
+          }
+        </div>
+
         ${
-          c.proposalDraft
-            ? `<div class="proposal-label">Teklif taslağı</div><pre class="proposal">${escapeHtml(c.proposalDraft)}</pre>`
+          c.status === "pending_approval"
+            ? `<div class="card-actions" onclick="event.stopPropagation()">${approveRejectForms(c.id, redirectTo)}</div>`
+            : ""
+        }
+        ${
+          c.approvedAt
+            ? `<p class="contact">Onaylayan: ${escapeHtml(c.approvedBy ?? "—")} · ${fmtDate(c.approvedAt)}</p>`
             : ""
         }
         ${
@@ -333,11 +397,22 @@ function candidateDialog(c: Candidate): string {
             ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
             : ""
         }
-        <div class="card-actions">
-          ${approveRejectForms(c.id)}
-        </div>
       </div>
     </dialog>`;
+}
+
+function candidateListOrEmpty(
+  list: Candidate[],
+  redirectTo: string,
+  emptyIcon: string,
+  emptyMessage: string,
+): string {
+  if (!list.length) {
+    return `<div class="empty-state"><span class="emoji">${emptyIcon}</span>${emptyMessage}</div>`;
+  }
+  return `<div class="cards">${list.map((c) => candidateCard(c, redirectTo)).join("\n")}</div>${list
+    .map((c) => candidateDetailDialog(c, redirectTo))
+    .join("\n")}`;
 }
 
 export function renderApprovalsPage(
@@ -356,16 +431,14 @@ export function renderApprovalsPage(
   const sortedPending = [...filtered].sort((a, b) =>
     a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
   );
-  const list = sortedPending.length
-    ? `<div class="cards">${sortedPending.map(candidateCard).join("\n")}</div>${sortedPending.map(candidateDialog).join("\n")}`
-    : `<div class="empty-state">
-        <span class="emoji">🔍</span>
-        ${
-          selectedSector || selectedCity || selectedQuery
-            ? "Bu filtreyle onay bekleyen aday yok."
-            : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir."
-        }
-      </div>`;
+  const list = candidateListOrEmpty(
+    sortedPending,
+    "/",
+    "🔍",
+    selectedSector || selectedCity || selectedQuery
+      ? "Bu filtreyle onay bekleyen aday yok."
+      : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir.",
+  );
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
@@ -384,20 +457,6 @@ export function renderApprovalsPage(
 }
 
 // --- Tüm Adaylar sayfası --------------------------------------------------
-
-function candidateRow(c: Candidate): string {
-  const tone = STATUS_TONE[c.status] ?? "neutral";
-  const cityLabel = candidateCityLabel(c);
-  return `
-    <tr>
-      <td>${escapeHtml(c.name)}</td>
-      <td><span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span></td>
-      <td>${cityLabel ? escapeHtml(cityLabel) : "—"}</td>
-      <td><span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span></td>
-      <td><span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span></td>
-      <td class="muted">${fmtDate(c.discoveredAt)}</td>
-    </tr>`;
-}
 
 /** Sektör + şehir + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
 function filterBar(opts: {
@@ -465,22 +524,18 @@ export function renderAllCandidatesPage(
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
-  const rows = sorted.length
-    ? sorted.map(candidateRow).join("\n")
-    : `<tr><td colspan="6" class="muted">Bu filtreyle hiç aday bulunamadı.</td></tr>`;
+  const list = candidateListOrEmpty(
+    sorted,
+    "/adaylar",
+    "🔍",
+    "Bu filtreyle hiç aday bulunamadı.",
+  );
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
     ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedQuery })}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kaynak</th><th>Durum</th><th>Keşif tarihi</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
+    ${list}
   `;
 
   return shell({
@@ -493,97 +548,6 @@ export function renderAllCandidatesPage(
 }
 
 // --- Onaylananlar sayfası ----------------------------------------------------
-
-/** Onaylanmış aday kartı - onay/red butonu yok (zaten onaylandı), tıklanınca popup açılır. */
-function approvedCard(c: Candidate): string {
-  const needsPreview = c.needTags.slice(0, 2);
-  const extra = c.needTags.length - needsPreview.length;
-  const pills =
-    needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
-    (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
-  const cityLabel = candidateCityLabel(c);
-
-  return `
-    <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
-      <h3 class="card-title card-title--clamp">${escapeHtml(c.name)}</h3>
-      <div class="card-meta">
-        <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
-        <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
-        ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
-      </div>
-      <div class="pills">${pills}</div>
-      <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
-    </article>`;
-}
-
-/** Onaylanmış aday detay popup'ı - onay/red butonu yok, kim/ne zaman onayladığı gösterilir. */
-function approvedDialog(c: Candidate): string {
-  const pills = c.needTags
-    .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
-    .join("");
-  const cityLabel = candidateCityLabel(c);
-  const proposalText = c.proposalDraft ?? "";
-  const wa = waLink(c, proposalText);
-  const mail = mailtoLink(c, proposalText);
-
-  return `
-    <dialog id="dlg-${c.id}" class="detail-dialog">
-      <div class="dialog-inner">
-        <button type="button" class="dialog-close" onclick="this.closest('dialog').close()">✕</button>
-        <h3 class="card-title">${escapeHtml(c.name)}</h3>
-        <div class="card-meta">
-          <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
-          <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
-          ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
-        </div>
-        <div class="pills">${pills}</div>
-        <p class="contact">${contactLine(c)}</p>
-
-        <form method="post" action="/onaylananlar/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
-          <div class="proposal-label">Teklif metni (gönderim öncesi düzenleyebilirsin)</div>
-          <textarea name="proposalDraft" rows="7">${escapeHtml(proposalText)}</textarea>
-          <button type="submit" class="btn--filter">Metni Kaydet</button>
-        </form>
-
-        <div class="send-actions" onclick="event.stopPropagation()">
-          ${
-            wa
-              ? `<a class="btn btn--approve" href="${wa}" target="_blank" rel="noopener">${ICONS.chat} WhatsApp'ta Gönder</a>
-                 <form method="post" action="/onaylananlar/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
-                   <input type="hidden" name="channel" value="whatsapp">
-                   <button type="submit" class="detail-link">WhatsApp'tan gönderildi olarak işaretle</button>
-                 </form>`
-              : ""
-          }
-          ${
-            mail
-              ? `<a class="btn btn--approve" href="${mail}">${ICONS.send} E-posta ile Gönder</a>
-                 <form method="post" action="/onaylananlar/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
-                   <input type="hidden" name="channel" value="email">
-                   <button type="submit" class="detail-link">E-posta ile gönderildi olarak işaretle</button>
-                 </form>`
-              : ""
-          }
-          ${
-            !wa && !mail
-              ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
-              : ""
-          }
-        </div>
-
-        ${
-          c.approvedAt
-            ? `<p class="contact">Onaylayan: ${escapeHtml(c.approvedBy ?? "—")} · ${fmtDate(c.approvedAt)}</p>`
-            : ""
-        }
-        ${
-          c.sourceUrl
-            ? `<a class="source-link" href="${escapeHtml(c.sourceUrl)}" target="_blank" rel="noopener">Kaynağı görüntüle ${ICONS.external}</a>`
-            : ""
-        }
-      </div>
-    </dialog>`;
-}
 
 export function renderApprovedPage(
   counts: Record<string, number>,
@@ -599,16 +563,14 @@ export function renderApprovedPage(
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
-  const list = sorted.length
-    ? `<div class="cards">${sorted.map(approvedCard).join("\n")}</div>${sorted.map(approvedDialog).join("\n")}`
-    : `<div class="empty-state">
-        <span class="emoji">✓</span>
-        ${
-          selectedSector || selectedCity || selectedQuery
-            ? "Bu filtreyle onaylanmış aday yok."
-            : "Henüz onaylanmış aday yok."
-        }
-      </div>`;
+  const list = candidateListOrEmpty(
+    sorted,
+    "/onaylananlar",
+    "✓",
+    selectedSector || selectedCity || selectedQuery
+      ? "Bu filtreyle onaylanmış aday yok."
+      : "Henüz onaylanmış aday yok.",
+  );
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>

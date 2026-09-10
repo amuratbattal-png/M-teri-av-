@@ -49,6 +49,19 @@ async function fetchCommunications(env: Env): Promise<CommunicationRow[]> {
   return communications;
 }
 
+/**
+ * Aday popup'ları (bkz. apps/dashboard/src/render.ts candidateDetailDialog)
+ * artık Onaylar/Onaylananlar/Tüm Adaylar sayfalarının hepsinde aynı - her
+ * formda hangi sayfaya geri dönüleceğini belirten bir "redirect" alanı
+ * var. Açık yönlendirme (open redirect) riskine karşı sadece bilinen
+ * sayfa yollarına izin verilir.
+ */
+const ALLOWED_REDIRECTS = new Set(["/", "/onaylananlar", "/adaylar"]);
+function safeRedirect(origin: string, value: unknown): Response {
+  const path = typeof value === "string" && ALLOWED_REDIRECTS.has(value) ? value : "/";
+  return Response.redirect(origin + path, 303);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const unauthorized = requireAuth(request, env);
@@ -107,25 +120,28 @@ export default {
 
     const approveMatch = url.pathname.match(/^\/approve\/([^/]+)$/);
     if (approveMatch && request.method === "POST") {
+      const form = await request.formData();
       await env.CONTROL_WORKER.fetch(`https://internal/candidates/${approveMatch[1]}/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ approvedBy: env.DASHBOARD_USERNAME }),
       });
-      return Response.redirect(url.origin + "/", 303);
+      return safeRedirect(url.origin, form.get("redirect"));
     }
 
     const rejectMatch = url.pathname.match(/^\/reject\/([^/]+)$/);
     if (rejectMatch && request.method === "POST") {
+      const form = await request.formData();
       await env.CONTROL_WORKER.fetch(`https://internal/candidates/${rejectMatch[1]}/reject`, {
         method: "POST",
       });
-      return Response.redirect(url.origin + "/", 303);
+      return safeRedirect(url.origin, form.get("redirect"));
     }
 
-    // Onaylananlar sayfasında teklif metnini düzenleme - sahibi buradan
-    // wa.me/mailto linkleriyle göndermeden önce metni değiştirebiliyor.
-    const proposalMatch = url.pathname.match(/^\/onaylananlar\/([^/]+)\/proposal$/);
+    // Teklif metnini düzenleme (Onaylar/Onaylananlar/Tüm Adaylar
+    // popup'larının hepsinde ortak) - sahibi wa.me/mailto linkleriyle
+    // göndermeden önce metni değiştirebiliyor.
+    const proposalMatch = url.pathname.match(/^\/candidates\/([^/]+)\/proposal$/);
     if (proposalMatch && request.method === "POST") {
       const form = await request.formData();
       const proposalDraft = String(form.get("proposalDraft") ?? "");
@@ -134,12 +150,12 @@ export default {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ proposalDraft }),
       });
-      return Response.redirect(url.origin + "/onaylananlar", 303);
+      return safeRedirect(url.origin, form.get("redirect"));
     }
 
     // Sahibi WhatsApp/e-postayı kendi hesabından MANUEL gönderdikten
     // sonra bunu işaretliyor - sistem otomatik göndermiyor.
-    const markSentMatch = url.pathname.match(/^\/onaylananlar\/([^/]+)\/mark-sent$/);
+    const markSentMatch = url.pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);
     if (markSentMatch && request.method === "POST") {
       const form = await request.formData();
       const channel = String(form.get("channel") ?? "");
@@ -148,7 +164,7 @@ export default {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ channel }),
       });
-      return Response.redirect(url.origin + "/onaylananlar", 303);
+      return safeRedirect(url.origin, form.get("redirect"));
     }
 
     return new Response("not found", { status: 404 });

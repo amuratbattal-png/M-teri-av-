@@ -301,6 +301,21 @@ Neden bu yapı:
       (`website_new`) taranacak bir site olmadığı için e-posta
       çıkarılamıyor - bu adaylarda sadece WhatsApp/telefon linki
       mümkün.
+- [x] **Dashboard'daki tüm aday popup'ları tek bir ortak bileşene
+      (`candidateDetailDialog`) birleştirildi** - Onaylar, Onaylananlar
+      ve Tüm Adaylar sayfalarının hepsinde artık AYNI popup içeriği
+      var: düzenlenebilir teklif metni + WhatsApp (wa.me) / e-posta
+      (mailto:) gönderim linkleri + durum rozeti, farkı sadece en
+      alttaki aksiyon (onay bekliyorsa Onayla/Reddet, değilse yok).
+      **Tüm Adaylar sayfası da tablodan kart+popup görünümüne
+      çevrildi** (artık diğer sayfalarla aynı). Onay/red ve
+      metin-kaydet/gönderildi-işaretle formları artık gizli bir
+      `redirect` alanı taşıyor - hangi sayfadan geldiyse işlem sonrası
+      oraya geri dönülüyor (`apps/dashboard/src/index.ts`
+      `safeRedirect`, sadece bilinen sayfa yollarına izin veriyor).
+      `apps/control`'deki `/candidates/:id/proposal` ve
+      `/candidates/:id/mark-sent` endpoint'leri artık her sayfadan
+      (sadece Onaylananlar'dan değil) çağrılabiliyor.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
