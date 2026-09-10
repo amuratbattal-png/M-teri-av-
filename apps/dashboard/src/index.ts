@@ -45,19 +45,22 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/" && request.method === "GET") {
+      const sector = url.searchParams.get("sector") || undefined;
+      const city = url.searchParams.get("city") || undefined;
       const [counts, pending] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "pending_approval"),
       ]);
-      return new Response(renderApprovalsPage(counts, pending), {
+      return new Response(renderApprovalsPage(counts, pending, sector, city), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
 
     if (url.pathname === "/adaylar" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
+      const city = url.searchParams.get("city") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
-      return new Response(renderAllCandidatesPage(counts, all, sector), {
+      return new Response(renderAllCandidatesPage(counts, all, sector, city), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

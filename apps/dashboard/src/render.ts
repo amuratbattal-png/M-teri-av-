@@ -3,8 +3,20 @@ import {
   CANDIDATE_STATUSES,
   SECTORS,
   PARALLEL_TRACK,
+  CITIES,
   type Candidate,
 } from "@musteri-avcisi/shared";
+
+/** Adayın rawMetadata'sında saklanan şehir bilgisini okur (bkz. google-search-scanner/src/scan.ts). */
+function candidateCitySlug(c: Candidate): string | undefined {
+  const slug = (c.rawMetadata as Record<string, unknown> | null)?.citySlug;
+  return typeof slug === "string" ? slug : undefined;
+}
+
+function candidateCityLabel(c: Candidate): string | undefined {
+  const label = (c.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+  return typeof label === "string" ? label : undefined;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -218,6 +230,7 @@ function candidateCard(c: Candidate): string {
   const pills =
     needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
     (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
+  const cityLabel = candidateCityLabel(c);
 
   return `
     <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
@@ -225,6 +238,7 @@ function candidateCard(c: Candidate): string {
       <div class="card-meta">
         <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
         <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+        ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
       </div>
       <div class="pills">${pills}</div>
       <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
@@ -239,6 +253,7 @@ function candidateDialog(c: Candidate): string {
   const pills = c.needTags
     .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
     .join("");
+  const cityLabel = candidateCityLabel(c);
 
   return `
     <dialog id="dlg-${c.id}" class="detail-dialog">
@@ -248,6 +263,7 @@ function candidateDialog(c: Candidate): string {
         <div class="card-meta">
           <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
           <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
+          ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
@@ -268,21 +284,35 @@ function candidateDialog(c: Candidate): string {
     </dialog>`;
 }
 
-export function renderApprovalsPage(counts: Record<string, number>, pending: Candidate[]): string {
-  const sortedPending = [...pending].sort((a, b) =>
+export function renderApprovalsPage(
+  counts: Record<string, number>,
+  pending: Candidate[],
+  selectedSector?: string,
+  selectedCity?: string,
+): string {
+  const filtered = pending.filter(
+    (c) =>
+      (!selectedSector || c.sectorSlug === selectedSector) &&
+      (!selectedCity || candidateCitySlug(c) === selectedCity),
+  );
+  const sortedPending = [...filtered].sort((a, b) =>
     a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
   );
   const list = sortedPending.length
     ? `<div class="cards">${sortedPending.map(candidateCard).join("\n")}</div>${sortedPending.map(candidateDialog).join("\n")}`
     : `<div class="empty-state">
         <span class="emoji">🔍</span>
-        Onay bekleyen aday yok.<br>
-        Tarama worker'ları her çalıştığında burası otomatik güncellenir.
+        ${
+          selectedSector || selectedCity
+            ? "Bu filtreyle onay bekleyen aday yok."
+            : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir."
+        }
       </div>`;
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
+    ${filterBar({ action: "/", selectedSector, selectedCity })}
     ${list}
   `;
 
@@ -299,35 +329,53 @@ export function renderApprovalsPage(counts: Record<string, number>, pending: Can
 
 function candidateRow(c: Candidate): string {
   const tone = STATUS_TONE[c.status] ?? "neutral";
+  const cityLabel = candidateCityLabel(c);
   return `
     <tr>
       <td>${escapeHtml(c.name)}</td>
       <td><span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span></td>
+      <td>${cityLabel ? escapeHtml(cityLabel) : "—"}</td>
       <td><span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span></td>
       <td><span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span></td>
       <td class="muted">${fmtDate(c.discoveredAt)}</td>
     </tr>`;
 }
 
-/** Sektör filtresi - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS listesi. */
-function sectorFilterSelect(selectedSlug: string | undefined): string {
-  const options = [
-    `<option value=""${selectedSlug ? "" : " selected"}>Tüm sektörler</option>`,
+/** Sektör + şehir filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
+function filterBar(opts: {
+  action: string;
+  selectedSector?: string;
+  selectedCity?: string;
+}): string {
+  const sectorOptions = [
+    `<option value=""${opts.selectedSector ? "" : " selected"}>Tüm sektörler</option>`,
     `<option value="${PARALLEL_TRACK.slug}"${
-      selectedSlug === PARALLEL_TRACK.slug ? " selected" : ""
+      opts.selectedSector === PARALLEL_TRACK.slug ? " selected" : ""
     }>${escapeHtml(PARALLEL_TRACK.labelTr)}</option>`,
     ...SECTORS.map(
       (s) =>
-        `<option value="${s.slug}"${selectedSlug === s.slug ? " selected" : ""}>${escapeHtml(
-          s.labelTr,
-        )}</option>`,
+        `<option value="${s.slug}"${
+          opts.selectedSector === s.slug ? " selected" : ""
+        }>${escapeHtml(s.labelTr)}</option>`,
+    ),
+  ].join("");
+
+  const cityOptions = [
+    `<option value=""${opts.selectedCity ? "" : " selected"}>Tüm şehirler</option>`,
+    ...CITIES.map(
+      (c) =>
+        `<option value="${c.slug}"${
+          opts.selectedCity === c.slug ? " selected" : ""
+        }>${escapeHtml(c.labelTr)}</option>`,
     ),
   ].join("");
 
   return `
-    <form class="filter-bar" method="get" action="/adaylar">
+    <form class="filter-bar" method="get" action="${opts.action}">
       <label for="sector-filter">Sektör</label>
-      <select id="sector-filter" name="sector" onchange="this.form.submit()">${options}</select>
+      <select id="sector-filter" name="sector" onchange="this.form.submit()">${sectorOptions}</select>
+      <label for="city-filter">Şehir</label>
+      <select id="city-filter" name="city" onchange="this.form.submit()">${cityOptions}</select>
     </form>`;
 }
 
@@ -335,23 +383,26 @@ export function renderAllCandidatesPage(
   counts: Record<string, number>,
   all: Candidate[],
   selectedSector?: string,
+  selectedCity?: string,
 ): string {
-  const filtered = selectedSector
-    ? all.filter((c) => c.sectorSlug === selectedSector)
-    : all;
+  const filtered = all.filter(
+    (c) =>
+      (!selectedSector || c.sectorSlug === selectedSector) &&
+      (!selectedCity || candidateCitySlug(c) === selectedCity),
+  );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const rows = sorted.length
     ? sorted.map(candidateRow).join("\n")
-    : `<tr><td colspan="5" class="muted">Bu filtreyle hiç aday bulunamadı.</td></tr>`;
+    : `<tr><td colspan="6" class="muted">Bu filtreyle hiç aday bulunamadı.</td></tr>`;
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
-    ${sectorFilterSelect(selectedSector)}
+    ${filterBar({ action: "/adaylar", selectedSector, selectedCity })}
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Ad</th><th>Sektör</th><th>Kaynak</th><th>Durum</th><th>Keşif tarihi</th></tr>
+          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kaynak</th><th>Durum</th><th>Keşif tarihi</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -523,8 +574,9 @@ const STYLES = `
 
   .filter-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem 1.1rem;
     margin: -0.4rem 0 1rem;
   }
   .filter-bar label { font-size: 0.85rem; color: var(--text-muted); }
@@ -615,6 +667,7 @@ const STYLES = `
     color: var(--text-muted);
   }
   .badge--source { color: var(--violet); border-color: rgba(167,139,250,0.35); background: var(--violet-soft); }
+  .badge--city { color: var(--accent); border-color: rgba(45,212,191,0.35); background: var(--accent-soft); }
 
   .status { font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; }
   .status--warn { color: var(--warn); background: var(--warn-soft); }
