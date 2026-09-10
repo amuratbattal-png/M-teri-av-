@@ -12,6 +12,7 @@ import {
   handleMarkSent,
 } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
+import { handleAlert } from "./routes/alerts";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -44,6 +45,10 @@ export default {
 
     if (pathname === "/communications" && method === "GET") {
       return handleListCommunications(env);
+    }
+
+    if (pathname === "/alerts" && method === "POST") {
+      return handleAlert(request, env);
     }
 
     if (pathname === "/candidates/bulk-approve" && method === "POST") {

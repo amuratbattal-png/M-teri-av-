@@ -10,6 +10,8 @@ export interface Env {
   NVIDIA_API_KEY?: string;
   /** build.nvidia.com model kimliği - tanımlı değilse varsayılana (meta/llama-3.1-70b-instruct) düşer. */
   NVIDIA_MODEL?: string;
+  /** Sistem uyarılarının (tarama art arda başarısız olursa vb.) gönderileceği e-posta - gizli değil, sadece bir hedef adres. */
+  ALERT_EMAIL?: string;
 }
 
 /** OUTREACH_QUEUE'ye konan, onaylanmış gönderim işi. */

@@ -8,6 +8,8 @@ export interface Env {
 interface SendRequest {
   to: string | null;
   content: string | null;
+  /** Tanımlı değilse teklif e-postaları için varsayılan başlık kullanılır. */
+  subject?: string | null;
 }
 
 export default {
@@ -47,7 +49,7 @@ export default {
       body: JSON.stringify({
         from: env.EMAIL_FROM_ADDRESS,
         to: body.to,
-        subject: "Sizin için hazırladığımız teklif",
+        subject: body.subject || "Sizin için hazırladığımız teklif",
         text: body.content ?? "",
       }),
     });

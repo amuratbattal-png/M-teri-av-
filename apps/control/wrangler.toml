@@ -39,5 +39,10 @@ service = "musteri-avcisi-channel-email"
 #
 # Istege bagli: NVIDIA_MODEL (var, secret degil) - build.nvidia.com'daki
 # model kimligi, tanimli degilse "meta/llama-3.1-70b-instruct" kullanilir.
-# [vars]
-# NVIDIA_MODEL = "meta/llama-3.1-70b-instruct"
+#
+# ALERT_EMAIL: tarama/gonderim worker'lari sessiz ariza bildirirse
+# (bkz. routes/alerts.ts) bu adrese e-posta gider. Gizli degil, sadece
+# bir hedef adres - EMAIL_WORKER binding'i uzerinden gonderiliyor.
+[vars]
+NVIDIA_MODEL = "meta/llama-3.1-70b-instruct"
+ALERT_EMAIL = "info@ajansim.net"

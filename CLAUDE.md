@@ -337,6 +337,19 @@ Neden bu yapı:
       "ay sonu tekrar ara" gibi takip notları için) -
       `evaluation_notes` sütunu şemada zaten vardı ama hiç
       kullanılmıyordu, `POST /candidates/:id/notes` ile devreye alındı.
+- [x] **Sessiz arıza bildirimleri eklendi.** `google-search-scanner`
+      artık Google Places API art arda 3 kez (~1.5 saat, 30dk cron ile)
+      hata verirse sahibine `info@ajansim.net` adresine bir uyarı
+      e-postası gönderiyor (bir kez, spam yapmıyor), sorun düzelince de
+      "tekrar normal" bildirimi atıyor (`SCAN_STATE` KV'de
+      `consecutive-failures`/`alert-sent` ile takip ediliyor).
+      `apps/control`'de yeni `POST /alerts` endpoint'i
+      (`routes/alerts.ts`, `SCAN_SHARED_SECRET` ile korunuyor) bunu
+      `EMAIL_WORKER` üzerinden gönderiyor - bu, "onay olmadan gönderim
+      yok" kuralını ihlal etmiyor, müşteri teklifi değil sahibine giden
+      bir sistem bildirimi. Hedef adres `ALERT_EMAIL` var'ı ile
+      değiştirilebilir. `workers/channels/email`'e özel başlık
+      (`subject`) alanı eklendi (önceden hep sabitti).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
