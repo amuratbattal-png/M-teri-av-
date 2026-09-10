@@ -1,4 +1,4 @@
-import { SECTORS, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
+import { SECTORS, CITIES, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
@@ -140,6 +140,7 @@ async function looksOutdated(url: string): Promise<boolean> {
 
 export interface ScanDebugInfo {
   sectorLabel: string;
+  cityLabel: string;
   query: string;
   placesReturned: number;
   apiError?: string;
@@ -156,12 +157,19 @@ export interface ScanDebugInfo {
   webApiKeyPrefix?: string;
 }
 
-/** "google_maps" kanalı: Places API sonuçlarını ScanResult'a çevirir. */
+/**
+ * "google_maps" kanalı: Places API sonuçlarını ScanResult'a çevirir.
+ *
+ * Sorgu "{sektör} {şehir}" şeklinde - taramanın tamamı 81 ilin hepsini
+ * kapsıyor (bkz. scanNextSector'daki sektör × şehir matrisi). Bu, "sadece
+ * Türkiye" yerine daha isabetli/yerel sonuçlar getiriyor.
+ */
 async function collectMapsResults(
   sector: (typeof SECTORS)[number],
+  city: (typeof CITIES)[number],
   apiKey: string,
 ): Promise<{ results: ScanResult[]; placesReturned: number; apiError?: string }> {
-  const query = `${sector.labelTr} Türkiye`;
+  const query = `${sector.labelTr} ${city.labelTr}`;
   const { data, apiError } = await searchPlaces(query, apiKey);
   const places = data.places ?? [];
   const results: ScanResult[] = [];
@@ -192,7 +200,12 @@ async function collectMapsResults(
           : null),
       needTags,
       contactPhone: place.internationalPhoneNumber ?? place.nationalPhoneNumber ?? null,
-      rawMetadata: { placeId: place.id, formattedAddress: place.formattedAddress },
+      rawMetadata: {
+        placeId: place.id,
+        formattedAddress: place.formattedAddress,
+        citySlug: city.slug,
+        cityLabel: city.labelTr,
+      },
     });
   }
 
@@ -228,23 +241,34 @@ async function collectWebSearchResults(
   return { results, query, returned: items.length, apiError };
 }
 
+/**
+ * Sektör × şehir matrisinde ilerler: cursor tüm (sektör, şehir) çiftlerini
+ * sırayla dolaşır (önce bir sektörün tüm şehirleri, sonra sıradaki sektöre
+ * geçer). Matris boyutu SECTORS.length * CITIES.length - tam bir tur uzun
+ * sürer ama bu bilinen/kabul edilmiş bir durum (bkz. CLAUDE.md).
+ */
 export async function scanNextSector(
   cursorSectorIndex: number,
   env: ScanEnv,
 ): Promise<{ results: ScanResult[]; nextCursorIndex: number; debug: ScanDebugInfo }> {
-  const sector = SECTORS[cursorSectorIndex % SECTORS.length];
-  const nextCursorIndex = (cursorSectorIndex + 1) % SECTORS.length;
+  const matrixSize = SECTORS.length * CITIES.length;
+  const cursor = cursorSectorIndex % matrixSize;
+  const sector = SECTORS[cursor % SECTORS.length];
+  const city = CITIES[Math.floor(cursor / SECTORS.length) % CITIES.length];
+  const nextCursorIndex = (cursor + 1) % matrixSize;
+  const query = `${sector.labelTr} ${city.labelTr}`;
 
   if (!env.SEARCH_API_KEY) {
     console.warn(
-      `SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" sektörü için gerçek tarama atlandı.`,
+      `SEARCH_API_KEY tanımlı değil - "${sector.labelTr}" / "${city.labelTr}" için gerçek tarama atlandı.`,
     );
     return {
       results: [],
       nextCursorIndex,
       debug: {
         sectorLabel: sector.labelTr,
-        query: `${sector.labelTr} Türkiye`,
+        cityLabel: city.labelTr,
+        query,
         placesReturned: 0,
         apiError: "SEARCH_API_KEY tanımlı değil",
         apiKeyLength: 0,
@@ -253,12 +277,13 @@ export async function scanNextSector(
     };
   }
 
-  const maps = await collectMapsResults(sector, env.SEARCH_API_KEY);
+  const maps = await collectMapsResults(sector, city, env.SEARCH_API_KEY);
   const results = [...maps.results];
 
   const debug: ScanDebugInfo = {
     sectorLabel: sector.labelTr,
-    query: `${sector.labelTr} Türkiye`,
+    cityLabel: city.labelTr,
+    query,
     placesReturned: maps.placesReturned,
     apiError: maps.apiError,
     apiKeyLength: env.SEARCH_API_KEY.length,

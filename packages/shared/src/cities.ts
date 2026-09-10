@@ -1,0 +1,100 @@
+/**
+ * Türkiye'nin 81 ili - şehir bazlı tarama için.
+ *
+ * Karar: Google Maps taraması artık "{sektör} Türkiye" yerine
+ * "{sektör} {şehir}" sorgularıyla, tüm 81 il üzerinden yapılıyor - daha
+ * isabetli/yerel sonuçlar için. Bu, tarama matrisini (sektör × şehir)
+ * büyütüyor; tam bir A→Z + 81 il turu uzun sürer, ama bu zaten bilinen
+ * ve kabul edilmiş bir durum (bkz. CLAUDE.md "paralel iş kolu" kararı -
+ * company-formation-tracker bu turu beklemeden çalışır).
+ *
+ * Sıralama: plaka kodu (1-81), sabit ve tanıdık bir sıra.
+ */
+export interface City {
+  slug: string;
+  labelTr: string;
+}
+
+export const CITIES: City[] = [
+  { slug: "adana", labelTr: "Adana" },
+  { slug: "adiyaman", labelTr: "Adıyaman" },
+  { slug: "afyonkarahisar", labelTr: "Afyonkarahisar" },
+  { slug: "agri", labelTr: "Ağrı" },
+  { slug: "amasya", labelTr: "Amasya" },
+  { slug: "ankara", labelTr: "Ankara" },
+  { slug: "antalya", labelTr: "Antalya" },
+  { slug: "artvin", labelTr: "Artvin" },
+  { slug: "aydin", labelTr: "Aydın" },
+  { slug: "balikesir", labelTr: "Balıkesir" },
+  { slug: "bilecik", labelTr: "Bilecik" },
+  { slug: "bingol", labelTr: "Bingöl" },
+  { slug: "bitlis", labelTr: "Bitlis" },
+  { slug: "bolu", labelTr: "Bolu" },
+  { slug: "burdur", labelTr: "Burdur" },
+  { slug: "bursa", labelTr: "Bursa" },
+  { slug: "canakkale", labelTr: "Çanakkale" },
+  { slug: "cankiri", labelTr: "Çankırı" },
+  { slug: "corum", labelTr: "Çorum" },
+  { slug: "denizli", labelTr: "Denizli" },
+  { slug: "diyarbakir", labelTr: "Diyarbakır" },
+  { slug: "edirne", labelTr: "Edirne" },
+  { slug: "elazig", labelTr: "Elazığ" },
+  { slug: "erzincan", labelTr: "Erzincan" },
+  { slug: "erzurum", labelTr: "Erzurum" },
+  { slug: "eskisehir", labelTr: "Eskişehir" },
+  { slug: "gaziantep", labelTr: "Gaziantep" },
+  { slug: "giresun", labelTr: "Giresun" },
+  { slug: "gumushane", labelTr: "Gümüşhane" },
+  { slug: "hakkari", labelTr: "Hakkari" },
+  { slug: "hatay", labelTr: "Hatay" },
+  { slug: "isparta", labelTr: "Isparta" },
+  { slug: "mersin", labelTr: "Mersin" },
+  { slug: "istanbul", labelTr: "İstanbul" },
+  { slug: "izmir", labelTr: "İzmir" },
+  { slug: "kars", labelTr: "Kars" },
+  { slug: "kastamonu", labelTr: "Kastamonu" },
+  { slug: "kayseri", labelTr: "Kayseri" },
+  { slug: "kirklareli", labelTr: "Kırklareli" },
+  { slug: "kirsehir", labelTr: "Kırşehir" },
+  { slug: "kocaeli", labelTr: "Kocaeli" },
+  { slug: "konya", labelTr: "Konya" },
+  { slug: "kutahya", labelTr: "Kütahya" },
+  { slug: "malatya", labelTr: "Malatya" },
+  { slug: "manisa", labelTr: "Manisa" },
+  { slug: "kahramanmaras", labelTr: "Kahramanmaraş" },
+  { slug: "mardin", labelTr: "Mardin" },
+  { slug: "mugla", labelTr: "Muğla" },
+  { slug: "mus", labelTr: "Muş" },
+  { slug: "nevsehir", labelTr: "Nevşehir" },
+  { slug: "nigde", labelTr: "Niğde" },
+  { slug: "ordu", labelTr: "Ordu" },
+  { slug: "rize", labelTr: "Rize" },
+  { slug: "sakarya", labelTr: "Sakarya" },
+  { slug: "samsun", labelTr: "Samsun" },
+  { slug: "siirt", labelTr: "Siirt" },
+  { slug: "sinop", labelTr: "Sinop" },
+  { slug: "sivas", labelTr: "Sivas" },
+  { slug: "tekirdag", labelTr: "Tekirdağ" },
+  { slug: "tokat", labelTr: "Tokat" },
+  { slug: "trabzon", labelTr: "Trabzon" },
+  { slug: "tunceli", labelTr: "Tunceli" },
+  { slug: "sanliurfa", labelTr: "Şanlıurfa" },
+  { slug: "usak", labelTr: "Uşak" },
+  { slug: "van", labelTr: "Van" },
+  { slug: "yozgat", labelTr: "Yozgat" },
+  { slug: "zonguldak", labelTr: "Zonguldak" },
+  { slug: "aksaray", labelTr: "Aksaray" },
+  { slug: "bayburt", labelTr: "Bayburt" },
+  { slug: "karaman", labelTr: "Karaman" },
+  { slug: "kirikkale", labelTr: "Kırıkkale" },
+  { slug: "batman", labelTr: "Batman" },
+  { slug: "sirnak", labelTr: "Şırnak" },
+  { slug: "bartin", labelTr: "Bartın" },
+  { slug: "ardahan", labelTr: "Ardahan" },
+  { slug: "igdir", labelTr: "Iğdır" },
+  { slug: "yalova", labelTr: "Yalova" },
+  { slug: "karabuk", labelTr: "Karabük" },
+  { slug: "kilis", labelTr: "Kilis" },
+  { slug: "osmaniye", labelTr: "Osmaniye" },
+  { slug: "duzce", labelTr: "Düzce" },
+];

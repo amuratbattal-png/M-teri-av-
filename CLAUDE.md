@@ -220,6 +220,18 @@ Neden bu yapı:
       `x-outreach-secret` header'ı ile istek atıyor, worker'lar kendi
       kopyalarıyla eşleşmiyorsa 401 dönüyor. Secret olmadan doğrudan
       `/send` çağrısı denenip reddedildiği doğrulandı.
+- [x] **Google Maps taraması şehir bazlı hale getirildi.** Sorgular artık
+      `"{sektör} Türkiye"` yerine `"{sektör} {şehir}"` şeklinde, Türkiye'nin
+      tüm 81 ili üzerinden atılıyor (`packages/shared/src/cities.ts` -
+      `CITIES`). `google-search-scanner/src/scan.ts` içindeki
+      `scanNextSector`, sektör × şehir matrisinde (29 sektör × 81 il =
+      2.349 kombinasyon) ilerliyor - cursor önce bir sektörün tüm
+      şehirlerini, sonra sıradaki sektöre geçiyor. Tam bir tur uzun sürer
+      (bilinen/kabul edilmiş durum, bkz. paralel iş kolu kararı), ama her
+      sonucun `rawMetadata`'sında `citySlug`/`cityLabel` de tutuluyor.
+      **Dashboard'a sektör filtresi eklendi:** "Tüm Adaylar" sayfasında
+      (`/adaylar?sector=<slug>`) bir dropdown ile belirli bir sektördeki
+      adayları listeleyebiliyorsun (`apps/dashboard`).
 - [ ] WhatsApp Business API kimlik bilgileri eklenecek
       (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,

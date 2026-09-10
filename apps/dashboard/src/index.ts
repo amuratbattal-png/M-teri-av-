@@ -55,8 +55,9 @@ export default {
     }
 
     if (url.pathname === "/adaylar" && request.method === "GET") {
+      const sector = url.searchParams.get("sector") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
-      return new Response(renderAllCandidatesPage(counts, all), {
+      return new Response(renderAllCandidatesPage(counts, all, sector), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

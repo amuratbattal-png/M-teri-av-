@@ -309,18 +309,45 @@ function candidateRow(c: Candidate): string {
     </tr>`;
 }
 
+/** Sektör filtresi - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS listesi. */
+function sectorFilterSelect(selectedSlug: string | undefined): string {
+  const options = [
+    `<option value=""${selectedSlug ? "" : " selected"}>Tüm sektörler</option>`,
+    `<option value="${PARALLEL_TRACK.slug}"${
+      selectedSlug === PARALLEL_TRACK.slug ? " selected" : ""
+    }>${escapeHtml(PARALLEL_TRACK.labelTr)}</option>`,
+    ...SECTORS.map(
+      (s) =>
+        `<option value="${s.slug}"${selectedSlug === s.slug ? " selected" : ""}>${escapeHtml(
+          s.labelTr,
+        )}</option>`,
+    ),
+  ].join("");
+
+  return `
+    <form class="filter-bar" method="get" action="/adaylar">
+      <label for="sector-filter">Sektör</label>
+      <select id="sector-filter" name="sector" onchange="this.form.submit()">${options}</select>
+    </form>`;
+}
+
 export function renderAllCandidatesPage(
   counts: Record<string, number>,
   all: Candidate[],
+  selectedSector?: string,
 ): string {
-  const sorted = [...all].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
+  const filtered = selectedSector
+    ? all.filter((c) => c.sectorSlug === selectedSector)
+    : all;
+  const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const rows = sorted.length
     ? sorted.map(candidateRow).join("\n")
-    : `<tr><td colspan="5" class="muted">Henüz hiç aday bulunamadı.</td></tr>`;
+    : `<tr><td colspan="5" class="muted">Bu filtreyle hiç aday bulunamadı.</td></tr>`;
 
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
+    ${sectorFilterSelect(selectedSector)}
     <div class="table-wrap">
       <table>
         <thead>
@@ -493,6 +520,24 @@ const STYLES = `
   .tile--neutral .tile-icon { background: var(--violet-soft); color: var(--violet); }
 
   .section-title { font-size: 1.05rem; margin: 0 0 1rem; font-weight: 700; letter-spacing: -0.01em; }
+
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: -0.4rem 0 1rem;
+  }
+  .filter-bar label { font-size: 0.85rem; color: var(--text-muted); }
+  .filter-bar select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.45rem 0.7rem;
+    font-family: inherit;
+    font-size: 0.88rem;
+    max-width: 280px;
+  }
 
   .empty-state {
     background: var(--surface);
