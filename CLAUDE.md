@@ -176,18 +176,32 @@ Neden bu yapı:
 - [x] `google-search-scanner` gerçek Google Places API'sine (kanal:
       `google_maps`) bağlandı ve uçtan uca doğrulandı. `yahoo-search-scanner`
       hâlâ bekliyor.
-- [ ] **Bilinen sorun (beklemede):** düz Google web araması (kanal:
-      `google_search`, Custom Search JSON API) kodu yazıldı ve deploy
-      edildi (`GOOGLE_SEARCH_ENGINE_ID` ayarlı), ama Google tarafında
-      sürekli `403: This project does not have the access to Custom
-      Search JSON API` hatası alıyor - API "Enabled" görünmesine ve
-      API anahtarı kısıtlamasına eklenmesine rağmen. Muhtemelen
-      hesabın Google Cloud Organization politikalarıyla ilgili bir
-      kısıtlama (IAM & Admin → Organization Policies kontrol
-      edilmeli). Sistem bunu zarif karşılıyor - web arama hata verse
-      bile Maps sonuçları etkilenmeden kaydediliyor
-      (`workers/google-search-scanner/src/scan.ts`). Sahibi şimdilik
-      bu konuyu ertelemeyi tercih etti.
+- [ ] **Bilinen sorun (araştırma sürüyor):** düz Google web araması
+      (kanal: `google_search`, Custom Search JSON API) kodu yazıldı ve
+      deploy edildi (`GOOGLE_SEARCH_ENGINE_ID` ayarlı), ama Google
+      tarafında sürekli `403: This project does not have the access to
+      Custom Search JSON API` hatası alıyor. Denenip elenen nedenler:
+      API anahtarı kısıtlaması (Custom Search API eklendi), API
+      "Enabled" durumu (doğrulandı), Organization Policy
+      (`gcp.restrictServiceUsage` = "Allowed: All"), proje/anahtar
+      eşleşmesi (aynı proje doğrulandı), billing (aktif hesap bağlı,
+      kota sayfası 10.000 sorgu/gün gösteriyor), secret bozulması
+      (anahtar uzunluğu/prefix doğru: 39 karakter, "AIza"), API'yi
+      kapatıp yeniden açma, tamamen yeni/kısıtlamasız bir anahtarla
+      deneme, ve Cloudflare dışından doğrudan `curl` ile test - hepsinde
+      AYNI hata. Bu, sorunun anahtarda/ağda değil, doğrudan bu projenin
+      ("AMB Google Index Manager") Custom Search API'ye erişim
+      yetkisinde, Google tarafında kalan çözülemeyen bir tutarsızlık
+      olduğunu gösteriyor. Ara çözüm olarak Brave Search API'ye
+      geçilip tam çalışır hale getirildi, ancak Brave'in artık aylık
+      $5 ücretsiz kredi dışında ücretli olması nedeniyle sahibi bunu
+      istemedi - kod tekrar Google Custom Search'e revert edildi
+      (bkz. git log, "Revert" commit'leri). **Sıradaki adım:** eski,
+      sorunlu projeyi hiç kullanmadan **sıfırdan yeni bir Google Cloud
+      projesi** açıp Custom Search API'yi orada baştan kurmak (100%
+      ücretsiz, günde 100 sorgu kotası yeterli). Sistem bunu zarif
+      karşılıyor - web arama hata verse bile Maps sonuçları
+      etkilenmeden kaydediliyor (`workers/google-search-scanner/src/scan.ts`).
 - [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
       domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
       DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
