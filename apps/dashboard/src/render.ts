@@ -63,6 +63,26 @@ const SOURCE_LABELS_TR: Record<string, string> = {
   freelancer_gallery: "Freelancer Galerisi",
 };
 
+const CHANNEL_LABELS_TR: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  email: "E-posta",
+  voice_call: "Sesli Arama",
+};
+
+const COMM_STATUS_LABELS_TR: Record<string, string> = {
+  queued: "Kuyrukta",
+  sent: "Gönderildi",
+  failed: "Başarısız",
+  received: "Alındı",
+};
+
+const COMM_STATUS_TONE: Record<string, "warn" | "ok" | "bad" | "neutral"> = {
+  queued: "warn",
+  sent: "ok",
+  failed: "bad",
+  received: "ok",
+};
+
 function sectorLabel(slug: string): string {
   if (slug === PARALLEL_TRACK.slug) return PARALLEL_TRACK.labelTr;
   return SECTORS.find((s) => s.slug === slug)?.labelTr ?? slug;
@@ -110,7 +130,7 @@ const TILE_ICON: Record<string, string> = {
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
 function shell(opts: {
-  active: "onaylar" | "adaylar";
+  active: "onaylar" | "adaylar" | "gonderilenler";
   pendingCount: number;
   title: string;
   subtitle: string;
@@ -120,7 +140,7 @@ function shell(opts: {
     href: string,
     icon: string,
     label: string,
-    key: "onaylar" | "adaylar",
+    key: "onaylar" | "adaylar" | "gonderilenler",
     badge?: number,
   ) => `
     <a class="nav-item${opts.active === key ? " nav-item--active" : ""}" href="${href}">
@@ -153,6 +173,7 @@ function shell(opts: {
       <nav class="nav">
         ${navItem("/", ICONS.overview, "Onaylar", "onaylar", opts.pendingCount)}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot"></span> Sistem Aktif
@@ -414,6 +435,94 @@ export function renderAllCandidatesPage(
     pendingCount: counts.pending_approval ?? 0,
     title: "Tüm Adaylar",
     subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları.",
+    content,
+  });
+}
+
+// --- Gönderilenler sayfası --------------------------------------------------
+
+/** control'ün /communications endpoint'inden dönen, candidate ile join edilmiş satır. */
+export interface CommunicationRow {
+  id: string;
+  candidateId: string;
+  candidateName: string | null;
+  sectorSlug: string | null;
+  channel: string;
+  direction: string;
+  status: string;
+  createdAt: string;
+  rawMetadata?: Record<string, unknown> | null;
+}
+
+function communicationRow(r: CommunicationRow): string {
+  const tone = COMM_STATUS_TONE[r.status] ?? "neutral";
+  const cityLabel = r.rawMetadata?.cityLabel;
+  return `
+    <tr>
+      <td>${escapeHtml(r.candidateName ?? "(silinmiş aday)")}</td>
+      <td>${r.sectorSlug ? `<span class="badge">${escapeHtml(sectorLabel(r.sectorSlug))}</span>` : "—"}</td>
+      <td>${typeof cityLabel === "string" ? escapeHtml(cityLabel) : "—"}</td>
+      <td><span class="badge badge--source">${escapeHtml(CHANNEL_LABELS_TR[r.channel] ?? r.channel)}</span></td>
+      <td><span class="status status--${tone}">${COMM_STATUS_LABELS_TR[r.status] ?? r.status}</span></td>
+      <td class="muted">${fmtDate(r.createdAt)}</td>
+    </tr>`;
+}
+
+export function renderSentPage(
+  counts: Record<string, number>,
+  communications: CommunicationRow[],
+  selectedChannel?: string,
+  selectedStatus?: string,
+): string {
+  const filtered = communications.filter(
+    (r) =>
+      (!selectedChannel || r.channel === selectedChannel) &&
+      (!selectedStatus || r.status === selectedStatus),
+  );
+  const rows = filtered.length
+    ? filtered.map(communicationRow).join("\n")
+    : `<tr><td colspan="6" class="muted">Henüz hiç gönderim yapılmadı.</td></tr>`;
+
+  const channelOptions = [
+    `<option value=""${selectedChannel ? "" : " selected"}>Tüm kanallar</option>`,
+    ...Object.entries(CHANNEL_LABELS_TR).map(
+      ([value, label]) =>
+        `<option value="${value}"${selectedChannel === value ? " selected" : ""}>${escapeHtml(label)}</option>`,
+    ),
+  ].join("");
+
+  const statusOptions = [
+    `<option value=""${selectedStatus ? "" : " selected"}>Tüm durumlar</option>`,
+    ...Object.entries(COMM_STATUS_LABELS_TR).map(
+      ([value, label]) =>
+        `<option value="${value}"${selectedStatus === value ? " selected" : ""}>${escapeHtml(label)}</option>`,
+    ),
+  ].join("");
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Gönderilenler (${filtered.length})</h2>
+    <form class="filter-bar" method="get" action="/gonderilenler">
+      <label for="channel-filter">Kanal</label>
+      <select id="channel-filter" name="channel" onchange="this.form.submit()">${channelOptions}</select>
+      <label for="status-filter">İletim durumu</label>
+      <select id="status-filter" name="status" onchange="this.form.submit()">${statusOptions}</select>
+    </form>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kanal</th><th>İletim durumu</th><th>Tarih</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  return shell({
+    active: "gonderilenler",
+    pendingCount: counts.pending_approval ?? 0,
+    title: "Gönderilenler",
+    subtitle: "E-posta ve WhatsApp üzerinden gönderilen tekliflerin iletim durumu.",
     content,
   });
 }

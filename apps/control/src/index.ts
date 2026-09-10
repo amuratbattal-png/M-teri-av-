@@ -3,6 +3,7 @@ import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import type { Env, OutreachJob } from "./env";
 import { handleScanResults, handleListCandidates, handleStats } from "./routes/candidates";
 import { handleApprove, handleReject } from "./routes/approvals";
+import { handleListCommunications } from "./routes/communications";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -31,6 +32,10 @@ export default {
 
     if (pathname === "/stats" && method === "GET") {
       return handleStats(env);
+    }
+
+    if (pathname === "/communications" && method === "GET") {
+      return handleListCommunications(env);
     }
 
     const approveMatch = pathname.match(/^\/candidates\/([^/]+)\/approve$/);
@@ -111,6 +116,21 @@ export default {
         message.ack();
       } catch (err) {
         console.error("outreach dispatch failed", err);
+
+        // Başarısız her deneme de loglanır - dashboard'daki "Gönderilenler"
+        // sayfası iletim durumunu (sent/failed) buradan okur. Cloudflare
+        // Queues bu mesajı otomatik retry edecek; başarılı olursa yukarıdaki
+        // "sent" satırı da eklenecek, aynı adayın geçmişinde ikisi de durur.
+        await db.insert(communicationLog).values({
+          id: crypto.randomUUID(),
+          candidateId,
+          channel,
+          direction: "outbound",
+          content: candidate.proposalDraft ?? "",
+          status: "failed",
+          createdAt: new Date().toISOString(),
+        });
+
         message.retry();
       }
     }

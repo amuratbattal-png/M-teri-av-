@@ -1,5 +1,10 @@
 import type { Candidate } from "@musteri-avcisi/shared";
-import { renderApprovalsPage, renderAllCandidatesPage } from "./render";
+import {
+  renderApprovalsPage,
+  renderAllCandidatesPage,
+  renderSentPage,
+  type CommunicationRow,
+} from "./render";
 
 export interface Env {
   CONTROL_WORKER: Fetcher;
@@ -37,6 +42,12 @@ async function fetchCandidates(env: Env, status?: string): Promise<Candidate[]> 
   return candidates;
 }
 
+async function fetchCommunications(env: Env): Promise<CommunicationRow[]> {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/communications");
+  const { communications } = (await res.json()) as { communications: CommunicationRow[] };
+  return communications;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const unauthorized = requireAuth(request, env);
@@ -61,6 +72,18 @@ export default {
       const city = url.searchParams.get("city") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
       return new Response(renderAllCandidatesPage(counts, all, sector, city), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/gonderilenler" && request.method === "GET") {
+      const channel = url.searchParams.get("channel") || undefined;
+      const status = url.searchParams.get("status") || undefined;
+      const [counts, communications] = await Promise.all([
+        fetchStats(env),
+        fetchCommunications(env),
+      ]);
+      return new Response(renderSentPage(counts, communications, channel, status), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

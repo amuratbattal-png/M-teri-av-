@@ -232,6 +232,15 @@ Neden bu yapı:
       **Dashboard'a sektör filtresi eklendi:** "Tüm Adaylar" sayfasında
       (`/adaylar?sector=<slug>`) bir dropdown ile belirli bir sektördeki
       adayları listeleyebiliyorsun (`apps/dashboard`).
+- [x] **"Gönderilenler" sayfası eklendi** (`/gonderilenler`): e-posta veya
+      WhatsApp üzerinden gönderilen (veya gönderimi denenip başarısız
+      olan) her mesaj, kanal + iletim durumu (Gönderildi/Başarısız) ile
+      birlikte listeleniyor. Kanal ve durum bazında filtrelenebiliyor.
+      `apps/control` tarafında yeni `GET /communications` endpoint'i
+      (`communication_log` tablosunu `candidates` ile join eder) ve
+      `queue()` handler'ı artık başarısız gönderim denemelerini de
+      (`status: "failed"`) logluyor - önceden sadece başarılı gönderimler
+      loglanıyordu.
 - [ ] WhatsApp Business API kimlik bilgileri eklenecek
       (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
