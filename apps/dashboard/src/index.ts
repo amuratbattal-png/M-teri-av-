@@ -2,6 +2,7 @@ import type { Candidate } from "@musteri-avcisi/shared";
 import {
   renderApprovalsPage,
   renderAllCandidatesPage,
+  renderApprovedPage,
   renderSentPage,
   type CommunicationRow,
 } from "./render";
@@ -63,6 +64,18 @@ export default {
         fetchCandidates(env, "pending_approval"),
       ]);
       return new Response(renderApprovalsPage(counts, pending, sector, city), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/onaylananlar" && request.method === "GET") {
+      const sector = url.searchParams.get("sector") || undefined;
+      const city = url.searchParams.get("city") || undefined;
+      const [counts, approved] = await Promise.all([
+        fetchStats(env),
+        fetchCandidates(env, "approved"),
+      ]);
+      return new Response(renderApprovedPage(counts, approved, sector, city), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

@@ -241,6 +241,13 @@ Neden bu yapı:
       `queue()` handler'ı artık başarısız gönderim denemelerini de
       (`status: "failed"`) logluyor - önceden sadece başarılı gönderimler
       loglanıyordu.
+- [x] **"Onaylananlar" sayfası eklendi** (`/onaylananlar`): `status:
+      "approved"` olan adaylar (onaylanmış, gönderim kuyruğuna alınmış
+      ama henüz `sent`e geçmemiş) artık kendi sayfasında listeleniyor.
+      "Tüm Adaylar" sayfasından (`/adaylar`) onaylanmış adaylar
+      çıkarıldı - orada artık sadece onaylanmamış durumlar görünüyor.
+      Sidebar sırası: Onaylar → Onaylananlar → Gönderilenler → Tüm
+      Adaylar.
 - [ ] WhatsApp Business API kimlik bilgileri eklenecek
       (`workers/channels/whatsapp`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,

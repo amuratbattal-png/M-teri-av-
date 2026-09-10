@@ -130,7 +130,7 @@ const TILE_ICON: Record<string, string> = {
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
 function shell(opts: {
-  active: "onaylar" | "adaylar" | "gonderilenler";
+  active: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar";
   pendingCount: number;
   title: string;
   subtitle: string;
@@ -140,7 +140,7 @@ function shell(opts: {
     href: string,
     icon: string,
     label: string,
-    key: "onaylar" | "adaylar" | "gonderilenler",
+    key: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar",
     badge?: number,
   ) => `
     <a class="nav-item${opts.active === key ? " nav-item--active" : ""}" href="${href}">
@@ -172,8 +172,9 @@ function shell(opts: {
       </div>
       <nav class="nav">
         ${navItem("/", ICONS.overview, "Onaylar", "onaylar", opts.pendingCount)}
-        ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/onaylananlar", ICONS.check, "Onaylananlar", "onaylananlar")}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
+        ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot"></span> Sistem Aktif
@@ -406,8 +407,11 @@ export function renderAllCandidatesPage(
   selectedSector?: string,
   selectedCity?: string,
 ): string {
+  // Onaylanmış adaylar artık kendi sayfasında (bkz. renderApprovedPage) -
+  // burada tekrar gösterilmiyor.
   const filtered = all.filter(
     (c) =>
+      c.status !== "approved" &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity),
   );
@@ -434,7 +438,48 @@ export function renderAllCandidatesPage(
     active: "adaylar",
     pendingCount: counts.pending_approval ?? 0,
     title: "Tüm Adaylar",
-    subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları.",
+    subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları (onaylananlar hariç).",
+    content,
+  });
+}
+
+// --- Onaylananlar sayfası ----------------------------------------------------
+
+export function renderApprovedPage(
+  counts: Record<string, number>,
+  approved: Candidate[],
+  selectedSector?: string,
+  selectedCity?: string,
+): string {
+  const filtered = approved.filter(
+    (c) =>
+      (!selectedSector || c.sectorSlug === selectedSector) &&
+      (!selectedCity || candidateCitySlug(c) === selectedCity),
+  );
+  const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
+  const rows = sorted.length
+    ? sorted.map(candidateRow).join("\n")
+    : `<tr><td colspan="6" class="muted">Onaylanmış aday yok.</td></tr>`;
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Onaylananlar (${sorted.length})</h2>
+    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity })}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kaynak</th><th>Durum</th><th>Keşif tarihi</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  return shell({
+    active: "onaylananlar",
+    pendingCount: counts.pending_approval ?? 0,
+    title: "Onaylananlar",
+    subtitle: "Onaylanıp gönderim kuyruğuna alınan adaylar - gönderim durumu için Gönderilenler sayfasına bak.",
     content,
   });
 }
