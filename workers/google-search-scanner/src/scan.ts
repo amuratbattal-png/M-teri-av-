@@ -115,6 +115,24 @@ async function searchGoogleWeb(
 }
 
 /**
+ * Sitenin ana sayfasını çeker. Hata/zaman aşımı durumunda null döner -
+ * çağıran taraf bunu "karar veremeyiz, güvenli tarafta kal" olarak
+ * yorumlamalı.
+ */
+async function fetchSiteHtml(url: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WEBSITE_FETCH_TIMEOUT_MS);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Basit "eski site" sinyali: sayfa kaynağında mobil uyum (viewport) meta
  * etiketi yoksa, muhtemelen responsive olmayan/eski bir site - yenileme
  * teklifi için aday sayılır.
@@ -122,20 +140,39 @@ async function searchGoogleWeb(
  * TODO: daha güvenilir sinyaller eklenebilir (SSL yok, çok eski bir CMS
  * imzası, son güncelleme tarihi çok eski vb.) - bu ilk, basit bir sürüm.
  */
-async function looksOutdated(url: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), WEBSITE_FETCH_TIMEOUT_MS);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return false;
-    const html = await res.text();
-    return !/<meta[^>]+name=["']viewport["']/i.test(html);
-  } catch {
-    // Siteye erişilemiyorsa (zaman aşımı, sertifika hatası vb.) karar
-    // veremeyiz - güvenli tarafta kalıp aday olarak işaretlemiyoruz.
-    return false;
-  }
+function looksOutdated(html: string): boolean {
+  return !/<meta[^>]+name=["']viewport["']/i.test(html);
+}
+
+const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+/** "info@", "iletisim@" gibi genel adresler, kişi adı içeren adreslerden
+ * daha güvenilir bir iletişim noktası - varsa öncelik bunlara verilir. */
+const GENERIC_EMAIL_PREFIXES = ["info", "iletisim", "contact", "destek", "merhaba", "hello"];
+
+/**
+ * Sitenin HTML kaynağından basit bir regex ile e-posta adresi çıkarır
+ * (kanal: "google_maps", need tag "website_redesign" olan adaylar için -
+ * eski sitesi olan ama Places API'nin e-posta vermediği işletmelerde bu,
+ * teklifi doğrudan e-postayla göndermeyi mümkün kılıyor).
+ *
+ * TODO: sadece ana sayfa taranıyor - "/iletisim", "/contact" gibi alt
+ * sayfalar taranmıyor, bu ilk basit sürüm.
+ */
+function extractEmail(html: string): string | null {
+  const matches = html.match(EMAIL_REGEX);
+  if (!matches) return null;
+
+  const candidates = matches
+    .map((m) => m.toLowerCase())
+    // Görsel dosya adlarında ("logo@2x.png" gibi) yanlışlıkla e-posta
+    // sanılabilecek eşleşmeleri ele
+    .filter((m) => !/\.(png|jpe?g|gif|svg|webp|css|js)$/.test(m));
+  if (candidates.length === 0) return null;
+
+  const generic = candidates.find((m) =>
+    GENERIC_EMAIL_PREFIXES.some((p) => m.startsWith(`${p}@`)),
+  );
+  return generic ?? candidates[0];
 }
 
 export interface ScanDebugInfo {
@@ -179,12 +216,19 @@ async function collectMapsResults(
     if (!name) continue;
 
     let needTags: NeedTag[];
+    let contactEmail: string | null = null;
     if (!place.websiteUri) {
       needTags = ["website_new"];
     } else {
-      const outdated = await looksOutdated(place.websiteUri);
-      if (!outdated) continue; // sağlıklı bir sitesi var, hedef değil
+      const html = await fetchSiteHtml(place.websiteUri);
+      if (!html) continue; // siteye erişilemedi, karar veremeyiz
+      if (!looksOutdated(html)) continue; // sağlıklı bir sitesi var, hedef değil
       needTags = ["website_redesign"];
+      // Aynı fetch'in sonucundan e-posta da çıkarıyoruz - ekstra istek yok.
+      // Places API e-posta vermiyor, bu yüzden e-posta ile gönderim
+      // (dashboard'daki mailto: linki) sadece eski sitesi taranan
+      // adaylarda mümkün oluyor.
+      contactEmail = extractEmail(html);
     }
 
     results.push({
@@ -199,6 +243,7 @@ async function collectMapsResults(
             )}`
           : null),
       needTags,
+      contactEmail,
       contactPhone: place.internationalPhoneNumber ?? place.nationalPhoneNumber ?? null,
       rawMetadata: {
         placeId: place.id,

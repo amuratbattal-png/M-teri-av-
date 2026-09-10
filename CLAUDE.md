@@ -289,6 +289,18 @@ Neden bu yapı:
         istenirse hazır dursun diye) ama artık hiçbir yerden
         çağrılmıyor - **WhatsApp Business API kimlik bilgisi eklemeye
         gerek kalmadı**.
+- [x] **Eski sitesi taranan adaylardan e-posta çıkarımı eklendi**
+      (`workers/google-search-scanner/src/scan.ts`): Places API e-posta
+      vermediği için, `website_redesign` etiketi alan adaylar için
+      zaten yapılan "eski site mi?" (viewport meta) kontrolünün
+      indirdiği HTML'den regex ile e-posta adresi de çıkarılıyor (ekstra
+      istek yok - aynı fetch kullanılıyor). "info@", "iletisim@" gibi
+      genel adresler varsa öncelikli seçiliyor. Sadece ana sayfa
+      taranıyor (ilk basit sürüm) - `/iletisim`, `/contact` gibi alt
+      sayfalar taranmıyor. Yeni şirket/web sitesi olmayan adaylarda
+      (`website_new`) taranacak bir site olmadığı için e-posta
+      çıkarılamıyor - bu adaylarda sadece WhatsApp/telefon linki
+      mümkün.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
