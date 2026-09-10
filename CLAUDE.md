@@ -196,12 +196,18 @@ Neden bu yapı:
       geçilip tam çalışır hale getirildi, ancak Brave'in artık aylık
       $5 ücretsiz kredi dışında ücretli olması nedeniyle sahibi bunu
       istemedi - kod tekrar Google Custom Search'e revert edildi
-      (bkz. git log, "Revert" commit'leri). **Sıradaki adım:** eski,
-      sorunlu projeyi hiç kullanmadan **sıfırdan yeni bir Google Cloud
-      projesi** açıp Custom Search API'yi orada baştan kurmak (100%
-      ücretsiz, günde 100 sorgu kotası yeterli). Sistem bunu zarif
-      karşılıyor - web arama hata verse bile Maps sonuçları
-      etkilenmeden kaydediliyor (`workers/google-search-scanner/src/scan.ts`).
+      (bkz. git log, "Revert" commit'leri). Sıfırdan yeni bir Google
+      Cloud projesiyle deneme fikri de konuşuldu (100% ücretsiz, günde
+      100 sorgu kotası yeterli olurdu) ama sahibi **bu konuyu şimdilik
+      tamamen ertelemeyi** tercih etti - başka bir şeyle (örn. Ollama/
+      yerel AI) çözmeyi düşündü, ama bu "7/24 kesintisiz, Cloudflare
+      üzerinde" kararıyla çeliştiği için (yerel makine kapalıyken
+      sistem durur) o da yapılmadı. Sistem bunu zarif karşılıyor - web
+      arama hata verse/atlansa bile Maps sonuçları etkilenmeden
+      kaydediliyor (`workers/google-search-scanner/src/scan.ts`).
+      İstenirse ileride: (a) sıfırdan yeni Google Cloud projesi, veya
+      (b) Brave Search API (kod hazır, `git revert` ile geri getirilebilir,
+      bkz. commit 7c788b3) ile devam edilebilir.
 - [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
       domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
       DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
