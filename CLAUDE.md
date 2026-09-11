@@ -377,6 +377,63 @@ Neden bu yapı:
       bakmaya gerek kalmıyor. NGC "Legacy Key" ile
       `integrate.api.nvidia.com`'un çalışıp çalışmadığı henüz
       doğrulanmadı - bu hata mesajı doğrulamak için kullanılacak.
+- [x] **Güvenlik denetimi yapıldı, 3 gerçek açık bulunup düzeltildi
+      (kod tarafı hazır, CANLIYA REDEPLOY + yeni secret gerekiyor,
+      aşağıya bkz.):**
+      1. **`apps/control` kimlik doğrulaması olmadan herkese açıktı.**
+         `apps/control`'ün kendi `*.workers.dev` adresi (hiçbir
+         worker'da `workers_dev = false` yoktu) üzerinden, dashboard'daki
+         Basic Auth'u tamamen atlayarak `GET /candidates` (tüm müşteri
+         PII'si: isim/e-posta/telefon), `GET /stats`,
+         `GET /communications` okunabiliyor; `approve`/`reject`/
+         `bulk-approve`/`proposal`/`mark-sent` gibi yazma uçları
+         çağrılabiliyordu - "onay mekanizması zorunlu" kuralını fiilen
+         geçersiz kılıyordu. **Düzeltme:** diğer worker'lardaki
+         `SCAN_SHARED_SECRET`/`OUTREACH_SHARED_SECRET` deseniyle aynı
+         şekilde yeni bir `CONTROL_SHARED_SECRET` eklendi - `apps/control`
+         artık `/health`, `/scan-results`, `/alerts` DIŞINDAKİ her isteği
+         `x-control-secret` header'ı eşleşmeden 401 ile reddediyor
+         (`apps/control/src/index.ts` `requireControlSecret`,
+         `apps/dashboard/src/index.ts` `callControl`). Ayrıca
+         `apps/control/wrangler.toml`'a `workers_dev = false` eklendi
+         (ikinci savunma katmanı - control zaten sadece service binding
+         ile çağrılıyor, genel adrese hiç ihtiyacı yok).
+      2. **"Secret set edilmemiş = herkese açık" mantık hatası, 5
+         yerde.** `workers/channels/{whatsapp,email,voice-call}/src/index.ts`
+         ve `workers/google-search-scanner/src/index.ts` (`/run-now` VE
+         bu oturumda eklenen `/diagnose-search`) içindeki secret
+         kontrolleri `sağlanan !== beklenen` şeklindeydi - ama secret
+         henüz `wrangler secret put` ile ayarlanmamışsa `env.X_SECRET`
+         `undefined` olur, ve istekte header/param hiç yoksa `sağlanan`
+         da `undefined`/`""` olur - `undefined !== undefined` ya da
+         `"" !== ""` YANLIŞ (false) döner, yani istek YETKİLİYMİŞ GİBİ
+         kabul edilirdi. Yedi pasif worker'ın `SCAN_SHARED_SECRET`'ının
+         "bu yöntemle doğrulanmadığı" zaten biliniyordu (bkz. yukarıdaki
+         "Bilinen risk") - bu, o riski "muhtemelen sorun olur" seviyesinden
+         "secret unutulursa/bozulursa endpoint sessizce herkese açılır"
+         seviyesine taşıyordu. **Düzeltme:** her 5 yerde de "beklenen
+         DOLU mu" kontrolü eklendi (`!expected || sağlanan !== expected`) -
+         secret set edilmemişse istek her zaman reddedilir, asla
+         sessizce izin verilmez.
+      3. **Aday tekrar-kontrolü (dedup) şehri hesaba katmıyordu.**
+         `apps/control/src/routes/candidates.ts` `handleScanResults`,
+         aynı adayı tekrar eklememek için sadece isim + sektör + kaynak
+         kanalına bakıyordu - şehir YOK. Maps taraması artık 81 il
+         üzerinden yapıldığından ("Merkez Kuaför" gibi yaygın isimler
+         onlarca ilde farklı gerçek işletme olabilir), bu YANLIŞLIKLA
+         farklı şehirlerdeki gerçek adayları "zaten var" sanıp sessizce
+         atıyordu - sistemin asıl amacını (müşteri bulma) doğrudan
+         zayıflatan, sessiz bir veri kaybıydı. **Düzeltme:** Places
+         API'nin verdiği `placeId` varsa (kanal: `google_maps`) ONUNLA
+         eşleştiriliyor (en güvenilir - Google'ın kendi işletme kimliği);
+         yoksa isim + sektör + kaynak + (varsa) `citySlug` ile
+         eşleştiriliyor (`json_extract(raw_metadata, ...)` ile).
+      **Redeploy/secret notu:** (1) ve (2) için canlıda hiçbir kod
+      çalışmıyor olsa da yeni secret set edilip worker'lar redeploy
+      edilene kadar düzeltme etkisiz - `docs/deployment.md` adım 5
+      güncellendi (`CONTROL_SHARED_SECRET` üretme/set etme adımları
+      eklendi). (3) sadece `apps/control`'ün redeploy edilmesini
+      gerektiriyor, yeni secret gerekmiyor.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

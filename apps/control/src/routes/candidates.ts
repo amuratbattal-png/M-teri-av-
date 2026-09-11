@@ -23,10 +23,21 @@ function sectorLabel(slug: string): string {
 }
 
 /**
- * Tarama worker'larının bulduğu adayları merkezi tabloya yazar.
- * Basit bir eşleşme ile (isim + sektör + kaynak) aynı adayı tekrar
- * eklemeyi engeller. Her yeni aday otomatik olarak `pending_approval`
- * durumuna kadar işlenir - AMA HİÇBİR ŞEY GÖNDERİLMEZ, gönderim sadece
+ * Tarama worker'larının bulduğu adayları merkezi tabloya yazar. Aynı
+ * adayın tekrar eklenmesini önlemek için:
+ * - `google_maps` sonuçlarında Places API'nin verdiği `placeId` varsa
+ *   (kanal + placeId eşleşmesi) ONU kullanır - bu, Google'ın kendi
+ *   işletme kimliği olduğu için en güvenilir eşleşme.
+ * - Yoksa isim + sektör + kaynak + (varsa) şehir ile eşleştirir. ŞEHİR
+ *   ÖNEMLİ: Maps taraması artık 81 il üzerinden yapıldığı için ("X
+ *   Kuaför" gibi yaygın isimler onlarca ilde ayrı ayrı gerçek işletme
+ *   olabilir) - şehri hesaba katmayan bir eşleşme, farklı şehirlerdeki
+ *   gerçek adayları "zaten var" sanıp sessizce atlar. Şehir bilgisi
+ *   olmayan kaynaklarda (ör. google_search) eskisi gibi sadece isim +
+ *   sektör + kaynak kullanılır.
+ *
+ * Her yeni aday otomatik olarak `pending_approval` durumuna kadar
+ * işlenir - AMA HİÇBİR ŞEY GÖNDERİLMEZ, gönderim sadece
  * `/candidates/:id/approve` çağrıldığında tetiklenir.
  */
 export async function handleScanResults(request: Request, env: Env): Promise<Response> {
@@ -44,16 +55,28 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
   const created: string[] = [];
 
   for (const result of body.results) {
+    const placeId = result.rawMetadata?.placeId;
+    const citySlug = result.rawMetadata?.citySlug;
+
+    const dedupConditions = [
+      eq(candidates.sectorSlug, result.sectorSlug),
+      eq(candidates.sourceChannel, result.sourceChannel),
+    ];
+    if (typeof placeId === "string" && placeId) {
+      dedupConditions.push(sql`json_extract(${candidates.rawMetadata}, '$.placeId') = ${placeId}`);
+    } else {
+      dedupConditions.push(eq(candidates.name, result.name));
+      if (typeof citySlug === "string" && citySlug) {
+        dedupConditions.push(
+          sql`json_extract(${candidates.rawMetadata}, '$.citySlug') = ${citySlug}`,
+        );
+      }
+    }
+
     const existing = await db
       .select({ id: candidates.id })
       .from(candidates)
-      .where(
-        and(
-          eq(candidates.name, result.name),
-          eq(candidates.sectorSlug, result.sectorSlug),
-          eq(candidates.sourceChannel, result.sourceChannel),
-        ),
-      )
+      .where(and(...dedupConditions))
       .limit(1);
 
     if (existing.length > 0) continue;

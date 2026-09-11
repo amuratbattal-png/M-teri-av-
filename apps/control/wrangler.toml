@@ -2,6 +2,15 @@ name = "musteri-avcisi-control"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+# control HİÇBİR ZAMAN doğrudan tarayıcıdan/genel internetten çağrılmamalı
+# - sadece dashboard, tarama worker'ları ve gönderim kanalı worker'ları
+# service binding ile erişir. Genel *.workers.dev adresini kapatarak
+# CONTROL_SHARED_SECRET'ı ikinci bir savunma katmanı haline getiriyoruz
+# (bkz. src/index.ts requireControlSecret - tek başına da yeterli ama
+# "önce" bu satırı devre dışı bırakmak isteyen biri secret'ı bilmeden
+# içeri giremesin diye).
+workers_dev = false
+
 # Merkezi veritabani - gercek Cloudflare hesabinda `wrangler d1 create`
 # ile olusturulup asagidaki database_id doldurulmali.
 [[d1_databases]]
@@ -32,6 +41,13 @@ service = "musteri-avcisi-channel-email"
 # Tarama worker'larinin control API'ye yazarken kullandigi paylasilan sir.
 # Repoda PLAINTEXT tutulmaz - `wrangler secret put SCAN_SHARED_SECRET` ile
 # ayarlanmali (ayni deger her tarama worker'inda da secret olarak set edilmeli).
+
+# dashboard'un /candidates, /stats, /communications ve onay/red/duzenleme
+# uc noktalarina erismek icin gonderdigi paylasilan sir - bu olmadan
+# control butun bu istekleri 401 ile reddeder (bkz. src/index.ts
+# requireControlSecret). Repoda PLAINTEXT tutulmaz -
+# `wrangler secret put CONTROL_SHARED_SECRET` ile ayarlanmali (ayni deger
+# apps/dashboard'da da secret olarak set edilmeli).
 
 # Teklif metinlerini kisisellestirmek icin NVIDIA API (integrate.api.nvidia.com).
 # Tanimli degilse basit sablon metne dusulur, hata vermez.

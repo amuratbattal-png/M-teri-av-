@@ -21,6 +21,24 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+/**
+ * `/health`, `/scan-results` (kendi SCAN_SHARED_SECRET'ı var) ve `/alerts`
+ * (kendi SCAN_SHARED_SECRET'ı var) DIŞINDAKİ her şey dashboard'a özel -
+ * adayları okuyan/onaylayan/reddeden/düzenleyen tüm uç noktalar.
+ * control'ün kendi *.workers.dev adresi kapatılmadığı sürece herkese açık
+ * olduğundan (bkz. CLAUDE.md), bu kontrol olmadan dashboard'daki Basic
+ * Auth tamamen anlamsız kalır - müşteri PII'si sızar, onaysız
+ * onaylama/reddetme yapılabilir.
+ */
+function requireControlSecret(request: Request, env: Env): Response | null {
+  const provided = request.headers.get("x-control-secret")?.trim() ?? "";
+  const expected = env.CONTROL_SHARED_SECRET?.trim() ?? "";
+  if (!expected || provided !== expected) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -35,6 +53,14 @@ export default {
       return handleScanResults(request, env);
     }
 
+    if (pathname === "/alerts" && method === "POST") {
+      return handleAlert(request, env);
+    }
+
+    // Buradan sonrasının hepsi dashboard'a özel - tek bir yerden korunuyor.
+    const unauthorized = requireControlSecret(request, env);
+    if (unauthorized) return unauthorized;
+
     if (pathname === "/candidates" && method === "GET") {
       return handleListCandidates(request, env);
     }
@@ -45,10 +71,6 @@ export default {
 
     if (pathname === "/communications" && method === "GET") {
       return handleListCommunications(env);
-    }
-
-    if (pathname === "/alerts" && method === "POST") {
-      return handleAlert(request, env);
     }
 
     if (pathname === "/candidates/bulk-approve" && method === "POST") {

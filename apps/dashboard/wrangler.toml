@@ -15,3 +15,10 @@ DASHBOARD_USERNAME = "admin"
 
 # DASHBOARD_PASSWORD repoda PLAINTEXT tutulmaz -
 # `wrangler secret put DASHBOARD_PASSWORD` ile ayarlanmalı.
+
+# apps/control'e her istekte x-control-secret header'ı olarak gönderilir -
+# control bu değer eşleşmeden hiçbir aday/istatistik isteğine yanıt
+# vermiyor (bkz. apps/control/src/index.ts requireControlSecret).
+# apps/control'deki CONTROL_SHARED_SECRET ile AYNI değer olmalı. Repoda
+# PLAINTEXT tutulmaz - `wrangler secret put CONTROL_SHARED_SECRET` ile
+# ayarlanmalı.

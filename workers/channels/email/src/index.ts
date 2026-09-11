@@ -19,7 +19,14 @@ export default {
       return new Response("not found", { status: 404 });
     }
 
-    if (request.headers.get("x-outreach-secret")?.trim() !== env.OUTREACH_SHARED_SECRET?.trim()) {
+    // NOT: OUTREACH_SHARED_SECRET henüz secret olarak set edilmemişse
+    // (env değeri undefined) basit bir "?.trim() !== ?.trim()"
+    // karşılaştırması undefined !== undefined => false döner ve isteği
+    // YANLIŞLIKLA yetkili sayar - secret'ın DOLU olması ayrıca kontrol
+    // edilmeli.
+    const providedSecret = request.headers.get("x-outreach-secret")?.trim();
+    const expectedSecret = env.OUTREACH_SHARED_SECRET?.trim();
+    if (!expectedSecret || providedSecret !== expectedSecret) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { "content-type": "application/json" },

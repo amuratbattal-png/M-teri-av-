@@ -98,7 +98,7 @@ cd ../freelancer-gallery-scanner              && pnpm exec wrangler secret put S
 cd ../company-formation-tracker               && pnpm exec wrangler secret put SCAN_SHARED_SECRET
 ```
 
-## 5. Dashboard şifresini ayarla
+## 5. Dashboard şifresini ve dashboard↔control sırrını ayarla
 
 ```bash
 cd ../../apps/dashboard
@@ -106,6 +106,23 @@ pnpm exec wrangler secret put DASHBOARD_PASSWORD
 # istediğin bir şifre gir (DASHBOARD_USERNAME varsayılan "admin" -
 # değiştirmek istersen apps/dashboard/wrangler.toml içindeki
 # DASHBOARD_USERNAME satırını düzenle)
+```
+
+`CONTROL_SHARED_SECRET`: dashboard'un control'e istek atarken gönderdiği
+ayrı bir ortak parola - control bu değer eşleşmeden hiçbir aday
+listeleme/onaylama/reddetme isteğine yanıt vermiyor. **Bu adımı atlama** -
+control'ün kendi `*.workers.dev` adresi `workers_dev = false` ile
+kapatılmış olsa da, bu secret olmadan `CONTROL_SHARED_SECRET` boş
+karşılaştırılacağından (`requireControlSecret`, boş beklenen değeri asla
+kabul etmez) dashboard hiçbir sayfayı yükleyemez - yani unutulursa hemen
+fark edilir, sessizce güvensiz kalmaz. Adım 4'teki gibi rastgele bir değer
+üret, control ve dashboard'a AYNI değeri gir:
+
+```bash
+openssl rand -hex 32
+
+cd ../../apps/control    && pnpm exec wrangler secret put CONTROL_SHARED_SECRET
+cd ../dashboard          && pnpm exec wrangler secret put CONTROL_SHARED_SECRET
 ```
 
 ## 6. Deploy sırası
@@ -164,13 +181,23 @@ git push
 
 ## 9. Doğrula
 
+control'ün `workers_dev = false` olduğunu unutma - kendi `*.workers.dev`
+adresine artık doğrudan `curl` ile erişilemez (bu kasıtlı, bkz. adım 5).
+Deploy'un başarılı olduğunu görmek için:
+
 ```bash
-curl https://musteri-avcisi-control.<SENIN-SUBDOMAIN>.workers.dev/health
-# {"ok":true,"service":"musteri-avcisi-control"}
+cd ../../apps/control && pnpm exec wrangler deployments list
 ```
 
+Asıl uçtan uca doğrulama dashboard üzerinden yapılır - dashboard,
+control'e service binding + `CONTROL_SHARED_SECRET` ile bağlanıyor, bu
+yüzden dashboard'un açılması control'ün de doğru çalıştığının kanıtı:
+
 Dashboard'a tarayıcıdan git: `https://musteri-avcisi-dashboard.<SENIN-SUBDOMAIN>.workers.dev`
-(Basic Auth ile `admin` / az önce belirlediğin şifre).
+(Basic Auth ile `admin` / az önce belirlediğin şifre). Sayfa açılıp
+sayaçlar/adaylar görünüyorsa control + `CONTROL_SHARED_SECRET` doğru
+kurulmuş demektir; "Unauthorized" ya da boş/hata sayfası alırsan adım
+5'teki `CONTROL_SHARED_SECRET`'ın iki tarafta da AYNI olduğunu kontrol et.
 
 ## Sırada ne var
 

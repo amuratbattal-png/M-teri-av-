@@ -18,6 +18,21 @@ interface ScanDiagnostics {
   scan: ScanDebugInfo;
 }
 
+/**
+ * `?secret=` query param'ını SCAN_SHARED_SECRET ile karşılaştırır.
+ * NOT: sadece `provided !== expected` yeterli DEĞİL - SCAN_SHARED_SECRET
+ * henüz bu worker'a secret olarak set edilmemişse (env değeri undefined,
+ * `?? ""` ile expected="" olur) ve istek `?secret=` parametresini hiç
+ * içermiyorsa (provided de "" olur), "" !== "" => false döner ve istek
+ * YANLIŞLIKLA yetkili sayılır. Secret'ın gerçekten DOLU olması ayrıca
+ * kontrol edilmeli.
+ */
+function checkScanSecret(url: URL, env: Env): boolean {
+  const provided = url.searchParams.get("secret")?.trim() ?? "";
+  const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
+  return Boolean(expected) && provided === expected;
+}
+
 const CURSOR_KEY = "sector-cursor-index";
 const FAIL_COUNT_KEY = "consecutive-failures";
 const ALERT_SENT_KEY = "alert-sent";
@@ -120,9 +135,7 @@ export default {
     // tetikler. SCAN_SHARED_SECRET ile korunuyor (rastgele biri API
     // kotasını tüketemesin diye).
     if (url.pathname === "/run-now") {
-      const provided = url.searchParams.get("secret")?.trim() ?? "";
-      const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
-      if (provided !== expected) {
+      if (!checkScanSecret(url, env)) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
           headers: { "content-type": "application/json" },
@@ -141,9 +154,7 @@ export default {
     // hatasını araştırırken hızlı, tekrarlanabilir bir teşhis için (bkz.
     // CLAUDE.md "Bilinen sorun").
     if (url.pathname === "/diagnose-search") {
-      const provided = url.searchParams.get("secret")?.trim() ?? "";
-      const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
-      if (provided !== expected) {
+      if (!checkScanSecret(url, env)) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
           headers: { "content-type": "application/json" },

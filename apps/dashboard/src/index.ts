@@ -11,6 +11,19 @@ export interface Env {
   CONTROL_WORKER: Fetcher;
   DASHBOARD_USERNAME: string;
   DASHBOARD_PASSWORD: string;
+  /** control'e her istekte x-control-secret header'ı ile gönderilir - bkz. apps/control/src/env.ts. */
+  CONTROL_SHARED_SECRET: string;
+}
+
+/**
+ * env.CONTROL_WORKER.fetch()'in tüm çağrılarını tek yerden sarmalar -
+ * control artık x-control-secret olmadan hiçbir dashboard isteğini kabul
+ * etmiyor (bkz. apps/control/src/index.ts requireControlSecret).
+ */
+function callControl(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("x-control-secret", env.CONTROL_SHARED_SECRET?.trim() ?? "");
+  return env.CONTROL_WORKER.fetch(`https://internal${path}`, { ...init, headers });
 }
 
 function requireAuth(request: Request, env: Env): Response | null {
@@ -31,20 +44,20 @@ function requireAuth(request: Request, env: Env): Response | null {
 }
 
 async function fetchStats(env: Env): Promise<Record<string, number>> {
-  const res = await env.CONTROL_WORKER.fetch("https://internal/stats");
+  const res = await callControl(env, "/stats");
   const { counts } = (await res.json()) as { counts: Record<string, number> };
   return counts;
 }
 
 async function fetchCandidates(env: Env, status?: string): Promise<Candidate[]> {
   const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-  const res = await env.CONTROL_WORKER.fetch(`https://internal/candidates${qs}`);
+  const res = await callControl(env, `/candidates${qs}`);
   const { candidates } = (await res.json()) as { candidates: Candidate[] };
   return candidates;
 }
 
 async function fetchCommunications(env: Env): Promise<CommunicationRow[]> {
-  const res = await env.CONTROL_WORKER.fetch("https://internal/communications");
+  const res = await callControl(env, "/communications");
   const { communications } = (await res.json()) as { communications: CommunicationRow[] };
   return communications;
 }
@@ -121,7 +134,7 @@ export default {
     const approveMatch = url.pathname.match(/^\/approve\/([^/]+)$/);
     if (approveMatch && request.method === "POST") {
       const form = await request.formData();
-      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${approveMatch[1]}/approve`, {
+      await callControl(env, `/candidates/${approveMatch[1]}/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ approvedBy: env.DASHBOARD_USERNAME }),
@@ -132,9 +145,7 @@ export default {
     const rejectMatch = url.pathname.match(/^\/reject\/([^/]+)$/);
     if (rejectMatch && request.method === "POST") {
       const form = await request.formData();
-      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${rejectMatch[1]}/reject`, {
-        method: "POST",
-      });
+      await callControl(env, `/candidates/${rejectMatch[1]}/reject`, { method: "POST" });
       return safeRedirect(url.origin, form.get("redirect"));
     }
 
@@ -147,7 +158,7 @@ export default {
         .map((id) => id.trim())
         .filter(Boolean);
       if (candidateIds.length > 0) {
-        await env.CONTROL_WORKER.fetch("https://internal/candidates/bulk-approve", {
+        await callControl(env, "/candidates/bulk-approve", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ candidateIds, approvedBy: env.DASHBOARD_USERNAME }),
@@ -161,7 +172,7 @@ export default {
     if (notesMatch && request.method === "POST") {
       const form = await request.formData();
       const evaluationNotes = String(form.get("evaluationNotes") ?? "");
-      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${notesMatch[1]}/notes`, {
+      await callControl(env, `/candidates/${notesMatch[1]}/notes`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ evaluationNotes }),
@@ -176,7 +187,7 @@ export default {
     if (proposalMatch && request.method === "POST") {
       const form = await request.formData();
       const proposalDraft = String(form.get("proposalDraft") ?? "");
-      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${proposalMatch[1]}/proposal`, {
+      await callControl(env, `/candidates/${proposalMatch[1]}/proposal`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ proposalDraft }),
@@ -191,10 +202,9 @@ export default {
     // dönen proposalDraft'ı doğrudan metin kutusuna yazıyor.
     const regenerateMatch = url.pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
     if (regenerateMatch && request.method === "POST") {
-      const res = await env.CONTROL_WORKER.fetch(
-        `https://internal/candidates/${regenerateMatch[1]}/regenerate-proposal`,
-        { method: "POST" },
-      );
+      const res = await callControl(env, `/candidates/${regenerateMatch[1]}/regenerate-proposal`, {
+        method: "POST",
+      });
       const data = await res.text();
       return new Response(data, { headers: { "content-type": "application/json" } });
     }
@@ -205,7 +215,7 @@ export default {
     if (markSentMatch && request.method === "POST") {
       const form = await request.formData();
       const channel = String(form.get("channel") ?? "");
-      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${markSentMatch[1]}/mark-sent`, {
+      await callControl(env, `/candidates/${markSentMatch[1]}/mark-sent`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ channel }),
