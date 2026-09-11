@@ -58,26 +58,38 @@ interface AuthCheck {
   username: string | null;
 }
 
-const UNAUTHORIZED: AuthCheck = {
-  response: new Response("Unauthorized", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="musteri-avcisi-dashboard"' },
-  }),
-  username: null,
-};
+/**
+ * ÖNEMLİ: bu bilerek bir sabit (module-level constant) DEĞİL, bir
+ * fonksiyon - Cloudflare Workers, I/O nesnelerinin (Response/Request/
+ * fetch gibi) global scope'ta (handler dışında) oluşturulmasına izin
+ * vermiyor ("Disallowed operation called within global scope" / kod
+ * 10021) - global scope sadece bir kere, cold start'ta çalışıyor ve
+ * orada üretilen bir Response, birbirinden bağımsız farklı isteklerin
+ * I/O bağlamı arasında güvensiz şekilde paylaşılmış olurdu. Bu yüzden
+ * her çağrıda TAZE bir Response üretiyoruz.
+ */
+function unauthorized(): AuthCheck {
+  return {
+    response: new Response("Unauthorized", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="musteri-avcisi-dashboard"' },
+    }),
+    username: null,
+  };
+}
 
 function checkAuth(request: Request, env: Env): AuthCheck {
   const header = request.headers.get("authorization");
-  if (!header) return UNAUTHORIZED;
+  if (!header) return unauthorized();
 
   const [scheme, encoded] = header.split(" ");
-  if (scheme !== "Basic" || !encoded) return UNAUTHORIZED;
+  if (scheme !== "Basic" || !encoded) return unauthorized();
 
   let decoded: string;
   try {
     decoded = atob(encoded);
   } catch {
-    return UNAUTHORIZED;
+    return unauthorized();
   }
   // decoded.split(":") KULLANMIYORUZ - parola ":" içerirse ilk ":"'dan
   // sonrasını sessizce kaybederdi (eski koddaki bir hataydı).
@@ -102,7 +114,7 @@ function checkAuth(request: Request, env: Env): AuthCheck {
     }
   }
 
-  return UNAUTHORIZED;
+  return unauthorized();
 }
 
 async function fetchStats(env: Env): Promise<Record<string, number>> {
