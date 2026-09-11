@@ -3,6 +3,7 @@ import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import { SECTORS, PARALLEL_TRACK, type NeedTag } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
+import { loadSettings } from "../lib/settings";
 
 /** Slug'dan Türkçe sektör etiketi - apps/dashboard'daki sectorLabel() ile aynı mantık. */
 function sectorLabel(slug: string): string {
@@ -148,6 +149,7 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
   if (!candidate) return json({ error: "candidate not found" }, 404);
 
   const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+  const settings = await loadSettings(env);
   const proposal = await draftProposal(
     {
       candidateName: candidate.name,
@@ -156,6 +158,7 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
       cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
     },
     env,
+    settings,
   );
 
   await db.update(candidates).set({ proposalDraft: proposal.text }).where(eq(candidates.id, candidateId));

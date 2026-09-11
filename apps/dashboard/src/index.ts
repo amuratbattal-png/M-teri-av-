@@ -4,7 +4,9 @@ import {
   renderAllCandidatesPage,
   renderApprovedPage,
   renderSentPage,
+  renderSettingsPage,
   type CommunicationRow,
+  type SettingsData,
 } from "./render";
 
 export interface Env {
@@ -62,6 +64,12 @@ async function fetchCommunications(env: Env): Promise<CommunicationRow[]> {
   return communications;
 }
 
+async function fetchSettings(env: Env): Promise<SettingsData> {
+  const res = await callControl(env, "/settings");
+  const { settings } = (await res.json()) as { settings: SettingsData };
+  return settings;
+}
+
 /**
  * Aday popup'ları (bkz. apps/dashboard/src/render.ts candidateDetailDialog)
  * artık Onaylar/Onaylananlar/Tüm Adaylar sayfalarının hepsinde aynı - her
@@ -86,11 +94,12 @@ export default {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
       const q = url.searchParams.get("q") || undefined;
+      const need = url.searchParams.get("need") || undefined;
       const [counts, pending] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "pending_approval"),
       ]);
-      return new Response(renderApprovalsPage(counts, pending, sector, city, q), {
+      return new Response(renderApprovalsPage(counts, pending, sector, city, q, need), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -99,11 +108,12 @@ export default {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
       const q = url.searchParams.get("q") || undefined;
+      const need = url.searchParams.get("need") || undefined;
       const [counts, approved] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "approved"),
       ]);
-      return new Response(renderApprovedPage(counts, approved, sector, city, q), {
+      return new Response(renderApprovedPage(counts, approved, sector, city, q, need), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -112,8 +122,9 @@ export default {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
       const q = url.searchParams.get("q") || undefined;
+      const need = url.searchParams.get("need") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
-      return new Response(renderAllCandidatesPage(counts, all, sector, city, q), {
+      return new Response(renderAllCandidatesPage(counts, all, sector, city, q, need), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -221,6 +232,32 @@ export default {
         body: JSON.stringify({ channel }),
       });
       return safeRedirect(url.origin, form.get("redirect"));
+    }
+
+    if (url.pathname === "/ayarlar" && request.method === "GET") {
+      const saved = url.searchParams.get("saved") === "1";
+      const [counts, settings] = await Promise.all([fetchStats(env), fetchSettings(env)]);
+      return new Response(renderSettingsPage(counts, settings, saved), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Otomatik teklif metni şablonu / AI sistem promptu / AI aç-kapat -
+    // apps/control'deki settings tablosuna yazılır (bkz. render.ts
+    // renderSettingsPage, apps/control/src/lib/settings.ts).
+    if (url.pathname === "/ayarlar" && request.method === "POST") {
+      const form = await request.formData();
+      await callControl(env, "/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          proposalTemplate: String(form.get("proposalTemplate") ?? ""),
+          aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
+          aiEnabled: form.get("aiEnabled") === "true",
+          aiModel: String(form.get("aiModel") ?? ""),
+        }),
+      });
+      return Response.redirect(url.origin + "/ayarlar?saved=1", 303);
     }
 
     return new Response("not found", { status: 404 });

@@ -16,6 +16,13 @@ export const candidates = sqliteTable("candidates", {
   sectorSlug: text("sector_slug").notNull(),
   sourceChannel: text("source_channel").notNull(),
   sourceUrl: text("source_url"),
+  /**
+   * İşletmenin KENDİ web sitesi (varsa) - `sourceUrl`'den ayrı tutulur,
+   * çünkü sourceUrl bazen (website yoksa) bir Google Maps arama linkine
+   * düşüyor. Bu alan sadece gerçek bir site bulunduysa dolu olur -
+   * dashboard'da net bir "Web sitesi" satırı göstermek için.
+   */
+  websiteUrl: text("website_url"),
   country: text("country").notNull().default("TR"),
   /** NeedTag[] JSON dizisi */
   needTags: text("need_tags", { mode: "json" }).notNull().$type<string[]>(),
@@ -60,4 +67,20 @@ export const scanProgress = sqliteTable("scan_progress", {
   lastScannedAt: text("last_scanned_at"),
   cursor: text("cursor"), // kaynak API'nin sayfalama/cursor bilgisi
   status: text("status").notNull().default("pending"), // pending | in_progress | done
+});
+
+/**
+ * Basit key/value ayar deposu - dashboard'daki Ayarlar sayfasının
+ * düzenlediği, kod deploy etmeden değişebilecek davranış ayarları
+ * (teklif metni şablonu, AI sistem promptu, AI aç/kapat vb.).
+ *
+ * KASITLI OLARAK burada tutulmayanlar: API anahtarları / secret'lar
+ * (NVIDIA_API_KEY, SCAN_SHARED_SECRET, vb.) - bunlar Cloudflare secret
+ * olarak kalmaya devam eder, D1'de düz metin olarak saklanmaz (bkz.
+ * güvenlik denetimi notları, CLAUDE.md).
+ */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });

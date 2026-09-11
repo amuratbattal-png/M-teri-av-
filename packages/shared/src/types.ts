@@ -39,6 +39,8 @@ export interface Candidate {
   sectorSlug: string;
   sourceChannel: SourceChannel;
   sourceUrl: string | null;
+  /** İşletmenin kendi web sitesi (varsa) - sourceUrl'den ayrı, bkz. packages/db/schema.ts. */
+  websiteUrl: string | null;
   country: string; // Faz 1: her zaman "TR"
   needTags: NeedTag[];
   contactEmail: string | null;
@@ -72,6 +74,7 @@ export interface ScanResult {
   sectorSlug: string;
   sourceChannel: SourceChannel;
   sourceUrl: string | null;
+  websiteUrl?: string | null;
   needTags: NeedTag[];
   contactEmail?: string | null;
   contactPhone?: string | null;

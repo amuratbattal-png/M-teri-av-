@@ -206,3 +206,24 @@ kurulmuş demektir; "Unauthorized" ya da boş/hata sayfası alırsan adım
 - WhatsApp/e-posta gönderimi için `workers/channels/whatsapp` ve
   `workers/channels/email` altına gerçek sağlayıcı kimlik bilgilerini
   ekle (bkz. `docs/roadmap.md`).
+
+## Mevcut (canlı) kuruluma yeni migration uygulama
+
+`packages/db/migrations/` altına `0001_init.sql`'den SONRA eklenen her
+dosya (ör. `0002_website_and_settings.sql`) canlı D1'e **elle**
+uygulanmalı - `wrangler deploy` şemayı OTOMATİK GÜNCELLEMEZ.
+
+**SIRASI ÖNEMLİ:** yeni sütun/tablo kullanan kodu (`apps/control`)
+migration'dan ÖNCE deploy edersen, o sütun/tabloya yazan/okuyan HER
+istek ("no such column"/"no such table") hatasıyla başarısız olur - bu,
+aday kaydının (tarama sonuçlarının control'e yazılması) tamamen durması
+anlamına gelir. Sıra:
+
+```bash
+cd apps/control
+pnpm exec wrangler d1 execute musteri-avcisi-db --remote \
+  --file=../../packages/db/migrations/0002_website_and_settings.sql
+```
+
+Migration başarıyla uygulandıktan SONRA `apps/control`'ü (ve varsa
+o migration'ı kullanan diğer worker'ları) deploy et.

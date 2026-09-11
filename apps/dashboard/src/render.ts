@@ -1,10 +1,12 @@
 import {
+  NEED_TAGS,
   NEED_TAG_LABELS_TR,
   CANDIDATE_STATUSES,
   SECTORS,
   PARALLEL_TRACK,
   CITIES,
   type Candidate,
+  type NeedTag,
 } from "@musteri-avcisi/shared";
 
 /** Adayın rawMetadata'sında saklanan şehir bilgisini okur (bkz. google-search-scanner/src/scan.ts). */
@@ -121,6 +123,7 @@ const ICONS = {
   star: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 4l2.3 5.1 5.5.6-4.1 3.8 1.1 5.5-4.8-2.8-4.8 2.8 1.1-5.5-4.1-3.8 5.5-.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="1.7"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   xcircle: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5v2.1M12 18.4v2.1M20.5 12h-2.1M5.6 12H3.5M17.7 6.3l-1.5 1.5M7.8 16.2l-1.5 1.5M17.7 17.7l-1.5-1.5M7.8 7.8L6.3 6.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
 const TILE_ICON: Record<string, string> = {
@@ -135,20 +138,16 @@ const TILE_ICON: Record<string, string> = {
 
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
+type NavKey = "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar" | "ayarlar";
+
 function shell(opts: {
-  active: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar";
+  active: NavKey;
   pendingCount: number;
   title: string;
   subtitle: string;
   content: string;
 }): string {
-  const navItem = (
-    href: string,
-    icon: string,
-    label: string,
-    key: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar",
-    badge?: number,
-  ) => `
+  const navItem = (href: string, icon: string, label: string, key: NavKey, badge?: number) => `
     <a class="nav-item${opts.active === key ? " nav-item--active" : ""}" href="${href}">
       <span class="nav-icon">${icon}</span>
       <span>${label}</span>
@@ -181,6 +180,7 @@ function shell(opts: {
         ${navItem("/onaylananlar", ICONS.check, "Onaylananlar", "onaylananlar")}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/ayarlar", ICONS.settings, "Ayarlar", "ayarlar")}
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot"></span> Sistem Aktif
@@ -217,6 +217,39 @@ function shell(opts: {
         el.checked = false;
       });
       updateBulkBar();
+    }
+
+    // WhatsApp/e-posta "Gönder" linkleri sayfa render edilirken hazırlanan
+    // METNİ taşıyordu - kullanıcı kutuda yazıp "Metni Kaydet"e basmadan
+    // (ya da bastıktan sonra ama popup hâlâ eski render'daysa) doğrudan
+    // Gönder'e basarsa GÜNCEL DEĞİL eski metin gidiyordu. Bu fonksiyon
+    // tıklama anında linkin text/body parametresini kutudaki güncel
+    // metinle değiştirir VE aynı metni arka planda kaydeder - "Metni
+    // Kaydet"e ayrıca basmaya gerek kalmaz, gönderilen ile kaydedilen
+    // her zaman aynı olur.
+    function prepareSendLink(event, id) {
+      var link = event.currentTarget;
+      var textarea = document.getElementById('proposal-' + id);
+      var text = textarea ? textarea.value : '';
+
+      try {
+        var url = new URL(link.href);
+        if (url.searchParams.has('text')) url.searchParams.set('text', text);
+        if (url.searchParams.has('body')) url.searchParams.set('body', text);
+        link.href = url.toString();
+      } catch (err) {
+        console.error('[prepareSendLink] href güncellenemedi', err);
+      }
+
+      fetch('/candidates/' + id + '/proposal', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'proposalDraft=' + encodeURIComponent(text),
+      }).catch(function (err) {
+        console.error('[prepareSendLink] arka plan kaydı başarısız', err);
+      });
+
+      return true; // varsayılan navigasyona (wa.me/mailto açılışına) izin ver
     }
 
     // "AI ile Yeniden Yaz" - popup'ı kapatmadan (sayfa yenilemeden) metni
@@ -301,6 +334,21 @@ function contactLine(c: Candidate): string {
     c.contactPhone ? `Telefon: ${c.contactPhone}` : null,
   ].filter(Boolean) as string[];
   return parts.length ? parts.map((p) => escapeHtml(p)).join(" · ") : "İletişim bilgisi yok";
+}
+
+/**
+ * İşletmenin kendi web sitesi - ayrı bir satır olarak, net şekilde
+ * gösterilir (sourceUrl'den farklı: sourceUrl website yoksa bir Google
+ * Maps arama linkine düşebiliyor, bu satır SADECE gerçek bir site
+ * bulunduysa link gösterir).
+ */
+function websiteLine(c: Candidate): string {
+  if (!c.websiteUrl) {
+    return `<p class="contact">Web sitesi: <span class="muted">yok (yeni site teklifi için aday)</span></p>`;
+  }
+  return `<p class="contact">Web sitesi: <a class="source-link" href="${escapeHtml(
+    c.websiteUrl,
+  )}" target="_blank" rel="noopener">${escapeHtml(c.websiteUrl)} ${ICONS.external}</a></p>`;
 }
 
 /**
@@ -415,6 +463,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
+        ${websiteLine(c)}
 
         <form method="post" action="/candidates/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
           <input type="hidden" name="redirect" value="${redirectTo}">
@@ -429,7 +478,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         <div class="send-actions" onclick="event.stopPropagation()">
           ${
             wa
-              ? `<a class="btn btn--approve" href="${wa}" target="_blank" rel="noopener">${ICONS.chat} WhatsApp'ta Gönder</a>
+              ? `<a id="wa-link-${c.id}" class="btn btn--approve" href="${wa}" target="_blank" rel="noopener" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.chat} WhatsApp'ta Gönder</a>
                  <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
                    <input type="hidden" name="channel" value="whatsapp">
                    <input type="hidden" name="redirect" value="${redirectTo}">
@@ -439,7 +488,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
           }
           ${
             mail
-              ? `<a class="btn btn--approve" href="${mail}">${ICONS.send} E-posta ile Gönder</a>
+              ? `<a id="mail-link-${c.id}" class="btn btn--approve" href="${mail}" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.send} E-posta ile Gönder</a>
                  <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
                    <input type="hidden" name="channel" value="email">
                    <input type="hidden" name="redirect" value="${redirectTo}">
@@ -452,6 +501,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
               ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
               : ""
           }
+          ${wa || mail ? `<p class="muted send-hint">Gönder'e bastığında kutudaki GÜNCEL metin kullanılır ve otomatik kaydedilir.</p>` : ""}
         </div>
 
         ${
@@ -516,12 +566,14 @@ export function renderApprovalsPage(
   selectedSector?: string,
   selectedCity?: string,
   selectedQuery?: string,
+  selectedNeed?: string,
 ): string {
   const filtered = pending.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedNeed || c.needTags.includes(selectedNeed as NeedTag)),
   );
   const sortedPending = [...filtered].sort((a, b) =>
     a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
@@ -530,7 +582,7 @@ export function renderApprovalsPage(
     sortedPending,
     "/",
     "🔍",
-    selectedSector || selectedCity || selectedQuery
+    selectedSector || selectedCity || selectedQuery || selectedNeed
       ? "Bu filtreyle onay bekleyen aday yok."
       : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir.",
   );
@@ -538,7 +590,7 @@ export function renderApprovalsPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
-    ${filterBar({ action: "/", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/", selectedSector, selectedCity, selectedNeed, selectedQuery })}
     ${bulkActionBar("/")}
     ${list}
   `;
@@ -554,13 +606,24 @@ export function renderApprovalsPage(
 
 // --- Tüm Adaylar sayfası --------------------------------------------------
 
-/** Sektör + şehir + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
+/** Sektör + şehir + ihtiyaç türü + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il / NEED_TAGS. */
 function filterBar(opts: {
   action: string;
   selectedSector?: string;
   selectedCity?: string;
+  selectedNeed?: string;
   selectedQuery?: string;
 }): string {
+  const needOptions = [
+    `<option value=""${opts.selectedNeed ? "" : " selected"}>Tüm ihtiyaçlar</option>`,
+    ...NEED_TAGS.map(
+      (tag) =>
+        `<option value="${tag}"${
+          opts.selectedNeed === tag ? " selected" : ""
+        }>${escapeHtml(NEED_TAG_LABELS_TR[tag])}</option>`,
+    ),
+  ].join("");
+
   const sectorOptions = [
     `<option value=""${opts.selectedSector ? "" : " selected"}>Tüm sektörler</option>`,
     `<option value="${PARALLEL_TRACK.slug}"${
@@ -599,6 +662,8 @@ function filterBar(opts: {
       <select id="sector-filter" name="sector" onchange="this.form.submit()">${sectorOptions}</select>
       <label for="city-filter">Şehir</label>
       <select id="city-filter" name="city" onchange="this.form.submit()">${cityOptions}</select>
+      <label for="need-filter">İhtiyaç</label>
+      <select id="need-filter" name="need" onchange="this.form.submit()">${needOptions}</select>
       <button type="submit" class="btn--filter">Ara</button>
     </form>`;
 }
@@ -609,6 +674,7 @@ export function renderAllCandidatesPage(
   selectedSector?: string,
   selectedCity?: string,
   selectedQuery?: string,
+  selectedNeed?: string,
 ): string {
   // Onaylanmış adaylar artık kendi sayfasında (bkz. renderApprovedPage) -
   // burada tekrar gösterilmiyor.
@@ -617,7 +683,8 @@ export function renderAllCandidatesPage(
       c.status !== "approved" &&
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedNeed || c.needTags.includes(selectedNeed as NeedTag)),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
@@ -630,7 +697,7 @@ export function renderAllCandidatesPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
-    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedNeed, selectedQuery })}
     ${bulkActionBar("/adaylar")}
     ${list}
   `;
@@ -652,19 +719,21 @@ export function renderApprovedPage(
   selectedSector?: string,
   selectedCity?: string,
   selectedQuery?: string,
+  selectedNeed?: string,
 ): string {
   const filtered = approved.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedNeed || c.needTags.includes(selectedNeed as NeedTag)),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
     sorted,
     "/onaylananlar",
     "✓",
-    selectedSector || selectedCity || selectedQuery
+    selectedSector || selectedCity || selectedQuery || selectedNeed
       ? "Bu filtreyle onaylanmış aday yok."
       : "Henüz onaylanmış aday yok.",
   );
@@ -672,7 +741,7 @@ export function renderApprovedPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onaylananlar (${sorted.length})</h2>
-    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedNeed, selectedQuery })}
     ${list}
   `;
 
@@ -776,6 +845,69 @@ export function renderSentPage(
     pendingCount: counts.pending_approval ?? 0,
     title: "Gönderilenler",
     subtitle: "E-posta ve WhatsApp üzerinden gönderilen tekliflerin iletim durumu.",
+    content,
+  });
+}
+
+// --- Ayarlar sayfası ---------------------------------------------------------
+
+/** apps/control'deki AppSettings ile aynı şekil (bkz. apps/control/src/lib/settings.ts) - iki uygulama ayrı worker olduğu için burada tekrar tanımlanıyor. */
+export interface SettingsData {
+  proposalTemplate: string;
+  aiSystemPrompt: string;
+  aiEnabled: boolean;
+  aiModel: string;
+}
+
+export function renderSettingsPage(
+  counts: Record<string, number>,
+  settings: SettingsData,
+  saved: boolean,
+): string {
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Sistem Ayarları</h2>
+    <p class="muted settings-intro">
+      Burada değiştirdiklerin kod deploy etmeden hemen etkili olur - yeni
+      taranan her aday ve "AI ile Yeniden Yaz" bu ayarları kullanır. API
+      anahtarları/secret'lar (NVIDIA_API_KEY, SCAN_SHARED_SECRET vb.)
+      güvenlik nedeniyle burada DEĞİL - onlar Cloudflare secret olarak
+      kalır (bkz. docs/deployment.md).
+    </p>
+    ${saved ? `<div class="settings-saved">${ICONS.check} Ayarlar kaydedildi.</div>` : ""}
+    <form method="post" action="/ayarlar" class="settings-form">
+      <div class="settings-card">
+        <label class="toggle">
+          <input type="checkbox" name="aiEnabled" value="true" ${settings.aiEnabled ? "checked" : ""}>
+          <span>Yapay zeka ile teklif yazımı aktif</span>
+        </label>
+        <p class="muted">Kapatılırsa NVIDIA_API_KEY tanımlı olsa bile hiç çağrılmaz - her aday doğrudan aşağıdaki şablon metinle taslaklanır.</p>
+
+        <label class="proposal-label" for="aiModel">AI model kimliği (boş bırakılırsa varsayılan/env kullanılır)</label>
+        <input type="text" id="aiModel" name="aiModel" value="${escapeHtml(settings.aiModel)}" placeholder="ör. meta/llama-3.1-70b-instruct" class="settings-input">
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="aiSystemPrompt">AI sistem promptu</label>
+        <p class="muted">NVIDIA'ya mesajın üslubunu/kurallarını anlatan talimat.</p>
+        <textarea id="aiSystemPrompt" name="aiSystemPrompt" rows="7" class="settings-textarea">${escapeHtml(settings.aiSystemPrompt)}</textarea>
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="proposalTemplate">Şablon teklif metni (AI kapalıyken ya da başarısız olduğunda kullanılır)</label>
+        <p class="muted">Yer tutucular: <code>{{isim}}</code> (aday/firma adı), <code>{{ihtiyac}}</code> (tespit edilen ihtiyaç(lar)).</p>
+        <textarea id="proposalTemplate" name="proposalTemplate" rows="7" class="settings-textarea">${escapeHtml(settings.proposalTemplate)}</textarea>
+      </div>
+
+      <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
+    </form>
+  `;
+
+  return shell({
+    active: "ayarlar",
+    pendingCount: counts.pending_approval ?? 0,
+    title: "Ayarlar",
+    subtitle: "Otomatik teklif metinleri ve yapay zeka davranışı için sistem ayarları.",
     content,
   });
 }
@@ -1178,6 +1310,33 @@ const STYLES = `
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface-2); }
   .muted { color: var(--text-muted); }
+
+  .settings-intro { max-width: 640px; margin: -0.6rem 0 1.4rem; line-height: 1.5; }
+  .settings-saved {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(52,211,153,0.35);
+    border-radius: 10px; padding: 0.55rem 0.9rem; font-size: 0.85rem; font-weight: 600;
+    margin-bottom: 1.2rem;
+  }
+  .settings-saved svg { width: 15px; height: 15px; }
+  .settings-form { display: flex; flex-direction: column; gap: 1rem; max-width: 640px; }
+  .settings-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.1rem 1.2rem; box-shadow: var(--shadow-sm);
+  }
+  .settings-card .proposal-label { margin-top: 0; }
+  .settings-card .muted { font-size: 0.8rem; margin: 0.3rem 0 0; }
+  .settings-card code { background: var(--surface-2); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.82em; }
+  .settings-input, .settings-textarea {
+    width: 100%; margin-top: 0.6rem;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.75rem 0.9rem; color: var(--text); font-family: inherit; font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .settings-textarea { resize: vertical; }
+  .toggle { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+  .toggle input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
+  .send-hint { font-size: 0.76rem; width: 100%; margin: 0.3rem 0 0; }
 
   @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

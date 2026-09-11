@@ -434,6 +434,71 @@ Neden bu yapı:
       güncellendi (`CONTROL_SHARED_SECRET` üretme/set etme adımları
       eklendi). (3) sadece `apps/control`'ün redeploy edilmesini
       gerektiriyor, yeni secret gerekmiyor.
+- [x] **Website alanı, e-posta çıkarımı, ihtiyaç filtresi, WhatsApp
+      gönderim hatası ve Ayarlar sayfası** (kod hazır, **CANLIYA ALMADAN
+      ÖNCE D1 MIGRATION UYGULANMALI**, aşağıya bkz.):
+      1. **`websiteUrl` ayrı bir alan oldu.** Önceden işletmenin web
+         sitesi sadece `sourceUrl`'e (bazen bir Maps arama linkine
+         düşebilen, "nereden bulundu" alanı) karışıktı. Şimdi
+         `candidates.website_url` ayrı bir sütun (`packages/db/schema.ts`,
+         migration `0002_website_and_settings.sql`) - dashboard'daki aday
+         popup'ında net bir "Web sitesi: ..." satırı olarak gösteriliyor
+         (`apps/dashboard/src/render.ts` `websiteLine()`), site yoksa
+         "yok (yeni site teklifi için aday)" yazıyor.
+      2. **E-posta çıkarımı ana sayfayla sınırlı kalmıyor artık.**
+         `workers/google-search-scanner/src/scan.ts` `findContactEmail()`
+         - önce ana sayfada arar (ekstra istek yok), bulamazsa `/iletisim`
+         ve `/contact` yollarını dener (en fazla 2 ek istek, bulunca
+         durur). Sahibinin "e-posta WhatsApp kadar önemli" geri
+         bildirimine karşılık.
+      3. **Dashboard'a ihtiyaç türü (need tag) filtresi eklendi.**
+         Onaylar, Onaylananlar ve Tüm Adaylar sayfalarındaki filtre
+         çubuğuna sektör/şehir/isim aramasının yanına "İhtiyaç" dropdown'ı
+         eklendi (`NEED_TAGS`'teki 14 seçenek, "Yeni web sitesi" ve
+         "Web sitesi yenileme" dahil) - `?need=<tag>` query param'ı ile
+         (`apps/dashboard/src/render.ts` `filterBar`, `apps/dashboard/src/index.ts`).
+      4. **WhatsApp'tan güncel olmayan mesaj gitme hatası düzeltildi.**
+         Kök neden: `wa.me`/`mailto:` linklerinin `href`'i SADECE sayfa
+         ilk render edilirken (DB'deki kayıtlı `proposalDraft`'tan)
+         hesaplanıyordu - kullanıcı kutuda metni değiştirip "Metni
+         Kaydet"e basmadan (ya da basıp popup'ın yeniden render
+         edilmesini beklemeden) doğrudan "Gönder"e basarsa link hâlâ ESKİ
+         metni taşıyordu. **Düzeltme:** gönder linklerine `onclick`
+         (`prepareSendLink`, `apps/dashboard/src/render.ts` shell script'i)
+         eklendi - tıklama anında textarea'daki GÜNCEL metni okuyup
+         linkin `text`/`body` parametresini onunla değiştiriyor VE aynı
+         metni arka planda `/candidates/:id/proposal`'a kaydediyor -
+         "Metni Kaydet"e ayrıca basmaya gerek kalmadı, gönderilen ile
+         kaydedilen her zaman aynı.
+      5. **Yeni Ayarlar sayfası (`/ayarlar`).** Otomatik teklif
+         metinlerinin şablonu ve AI davranışı artık kod deploy etmeden
+         değiştirilebiliyor:
+         - **Şablon teklif metni** (AI kapalıyken/başarısızken
+           kullanılır) - `{{isim}}`/`{{ihtiyac}}` yer tutucularını
+           destekliyor, önceden `apps/control/src/lib/proposal.ts`
+           içinde sabit kodluydu.
+         - **AI sistem promptu** - NVIDIA'ya gönderilen üslup talimatı,
+           önceden sabit kodluydu.
+         - **AI aç/kapat anahtarı** - kapatılırsa `NVIDIA_API_KEY`
+           tanımlı olsa bile hiç çağrılmaz.
+         - **AI model kimliği override'ı** (boşsa `NVIDIA_MODEL` env
+           var'ına/varsayılana düşer).
+         Yeni `settings` tablosu (key/value, migration
+         `0002_website_and_settings.sql`) - `apps/control/src/lib/settings.ts`
+         (`loadSettings`/`updateSettings`), yeni `GET/POST /settings`
+         uç noktaları (`routes/settings.ts`, diğerleri gibi
+         `CONTROL_SHARED_SECRET` gerektiriyor). **Kasıtlı olarak BURADA
+         OLMAYAN:** API anahtarları/secret'lar (`NVIDIA_API_KEY`,
+         `SCAN_SHARED_SECRET` vb.) - güvenlik nedeniyle Cloudflare secret
+         olarak kalmaya devam ediyor, D1'de düz metin tutulmuyor.
+      **KRİTİK - deploy sırası:** `websiteUrl` sütunu ve `settings`
+      tablosu olmadan `apps/control` deploy edilirse, onlara
+      yazan/okuyan HER istek ("no such column"/"no such table") hata
+      verir - bu, YENİ ADAY KAYDININ TAMAMEN DURMASI demek (her tarama
+      sonucu `draftProposal` için `loadSettings`'i çağırıyor). Migration
+      MUTLAKA `apps/control` redeploy'undan ÖNCE canlı D1'e uygulanmalı
+      - adımlar `docs/deployment.md`'nin "Mevcut (canlı) kuruluma yeni
+      migration uygulama" bölümünde.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

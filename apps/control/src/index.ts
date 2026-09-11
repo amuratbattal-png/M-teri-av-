@@ -13,6 +13,7 @@ import {
 } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
 import { handleAlert } from "./routes/alerts";
+import { handleGetSettings, handleUpdateSettings } from "./routes/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -71,6 +72,14 @@ export default {
 
     if (pathname === "/communications" && method === "GET") {
       return handleListCommunications(env);
+    }
+
+    if (pathname === "/settings" && method === "GET") {
+      return handleGetSettings(env);
+    }
+
+    if (pathname === "/settings" && method === "POST") {
+      return handleUpdateSettings(request, env);
     }
 
     if (pathname === "/candidates/bulk-approve" && method === "POST") {

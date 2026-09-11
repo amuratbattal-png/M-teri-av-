@@ -1,4 +1,5 @@
 import { NEED_TAG_LABELS_TR, type NeedTag } from "@musteri-avcisi/shared";
+import type { AppSettings } from "./settings";
 
 export interface ProposalContext {
   candidateName: string;
@@ -24,21 +25,18 @@ const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
 
 /**
- * Çok basit, şablon tabanlı bir taslak - NVIDIA_API_KEY tanımlı
- * değilse (ya da API çağrısı başarısız olursa) buna düşülür. Sistem
- * hiçbir zaman "boş" bir teklif göndermez, en kötü ihtimalle bu şablon
- * kullanılır.
+ * Şablon tabanlı bir taslak - NVIDIA_API_KEY tanımlı değilse, AI
+ * ayarlardan kapatılmışsa ya da API çağrısı başarısız olursa buna
+ * düşülür. Sistem hiçbir zaman "boş" bir teklif göndermez, en kötü
+ * ihtimalle bu şablon kullanılır. Şablon metni artık sabit kod değil,
+ * ayarlar sayfasından (`AppSettings.proposalTemplate`) düzenlenebiliyor -
+ * `{{isim}}` ve `{{ihtiyac}}` yer tutucularını destekler.
  */
-function templateProposal(ctx: ProposalContext): string {
+function templateProposal(ctx: ProposalContext, settings: AppSettings): string {
   const services = ctx.needTags.map((tag) => NEED_TAG_LABELS_TR[tag] ?? tag).join(", ");
-  return [
-    `Merhaba ${ctx.candidateName},`,
-    "",
-    `${services} konusunda ihtiyacınız olabileceğini fark ettik. ` +
-      "Sizin için özel bir teklif hazırlamak isteriz.",
-    "",
-    "Uygun olduğunuzda kısaca görüşebilir miyiz?",
-  ].join("\n");
+  return settings.proposalTemplate
+    .replaceAll("{{isim}}", ctx.candidateName)
+    .replaceAll("{{ihtiyac}}", services);
 }
 
 /**
@@ -54,8 +52,15 @@ function templateProposal(ctx: ProposalContext): string {
  * Sahibi her zaman bu metni Onaylar/Onaylananlar popup'ında okuyup
  * düzenleyebiliyor, gönderim hâlâ tamamen manuel (bkz. CLAUDE.md).
  */
-export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Promise<ProposalResult> {
-  const fallback = templateProposal(ctx);
+export async function draftProposal(
+  ctx: ProposalContext,
+  env: ProposalEnv,
+  settings: AppSettings,
+): Promise<ProposalResult> {
+  const fallback = templateProposal(ctx, settings);
+  if (!settings.aiEnabled) {
+    return { text: fallback, usedAI: false, error: "AI ayarlardan kapatılmış (Ayarlar sayfası)" };
+  }
   if (!env.NVIDIA_API_KEY) {
     return { text: fallback, usedAI: false, error: "NVIDIA_API_KEY tanımlı değil" };
   }
@@ -78,19 +83,11 @@ export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Pro
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: env.NVIDIA_MODEL || DEFAULT_MODEL,
+        model: settings.aiModel || env.NVIDIA_MODEL || DEFAULT_MODEL,
         messages: [
           {
             role: "system",
-            content:
-              "Sen bir grafik tasarım/web tasarım ajansı için soğuk satış mesajı yazan " +
-              "bir asistansın. Türkçe, doğal, samimi ama profesyonel bir dille, kısa " +
-              "(en fazla 5-6 cümle) bir ilk temas mesajı yaz. Şablon/klişe ifadelerden " +
-              "kaçın ('değerli müşterimiz', 'firmanız' gibi genel kalıplar yerine " +
-              "işletmenin adını ve sektörünü/şehrini gerçekten kullan). Fiyat/rakam " +
-              "verme, abartılı satış dili kullanma. Sadece mesaj metnini yaz, başlık, " +
-              "açıklama ya da tırnak işareti ekleme. WhatsApp veya e-posta ile " +
-              "gönderilecek, ikisine de uyacak sade bir format kullan (markdown yok).",
+            content: settings.aiSystemPrompt,
           },
           {
             role: "user",

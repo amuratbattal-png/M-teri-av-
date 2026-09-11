@@ -232,6 +232,43 @@ function extractEmail(html: string): string | null {
   return generic ?? candidates[0];
 }
 
+/**
+ * Ana sayfada e-posta yoksa denenecek, yaygın iletişim sayfası yolları.
+ * WhatsApp kadar önemli bir kanal olduğu için (bkz. CLAUDE.md), sadece
+ * ana sayfayla yetinmek yerine birkaç bilinen yolu da deniyoruz - ama
+ * sınırsız değil: en fazla bu kadar EK istek atılır (zaten bulunduysa
+ * hiç atılmaz).
+ */
+const CONTACT_PAGE_PATHS = ["/iletisim", "/contact"];
+
+/**
+ * Önce ana sayfanın HTML'inden (zaten indirilmiş, ekstra istek yok)
+ * e-posta çıkarmayı dener; bulamazsa CONTACT_PAGE_PATHS'teki sayfaları
+ * sırayla dener (e-posta bulunur bulunmaz durur). E-posta, WhatsApp
+ * kadar önemli bir iletişim kanalı olduğu için sadece ana sayfayla
+ * yetinmek yeterli bulunmadı.
+ */
+async function findContactEmail(websiteUrl: string, homepageHtml: string): Promise<string | null> {
+  const fromHomepage = extractEmail(homepageHtml);
+  if (fromHomepage) return fromHomepage;
+
+  let base: URL;
+  try {
+    base = new URL(websiteUrl);
+  } catch {
+    return null;
+  }
+
+  for (const path of CONTACT_PAGE_PATHS) {
+    const pageUrl = new URL(path, base).toString();
+    const html = await fetchSiteHtml(pageUrl);
+    if (!html) continue;
+    const email = extractEmail(html);
+    if (email) return email;
+  }
+  return null;
+}
+
 export interface ScanDebugInfo {
   sectorLabel: string;
   cityLabel: string;
@@ -281,17 +318,22 @@ async function collectMapsResults(
       if (!html) continue; // siteye erişilemedi, karar veremeyiz
       if (!looksOutdated(html)) continue; // sağlıklı bir sitesi var, hedef değil
       needTags = ["website_redesign"];
-      // Aynı fetch'in sonucundan e-posta da çıkarıyoruz - ekstra istek yok.
       // Places API e-posta vermiyor, bu yüzden e-posta ile gönderim
-      // (dashboard'daki mailto: linki) sadece eski sitesi taranan
-      // adaylarda mümkün oluyor.
-      contactEmail = extractEmail(html);
+      // (dashboard'daki mailto: linki) sadece bir web sitesi bulunan
+      // adaylarda mümkün. E-posta WhatsApp kadar önemli bir kanal
+      // olduğu için sadece ana sayfayla yetinmiyoruz - bkz.
+      // findContactEmail (ana sayfa + birkaç bilinen iletişim yolu).
+      contactEmail = await findContactEmail(place.websiteUri, html);
     }
 
     results.push({
       name,
       sectorSlug: sector.slug,
       sourceChannel: "google_maps",
+      // İşletmenin KENDİ sitesi varsa ayrı bir alanda da tutulur -
+      // dashboard'da net bir "Web sitesi" satırı için (bkz.
+      // packages/db/schema.ts websiteUrl).
+      websiteUrl: place.websiteUri ?? null,
       sourceUrl:
         place.websiteUri ??
         (place.formattedAddress

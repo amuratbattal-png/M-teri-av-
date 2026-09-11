@@ -8,6 +8,7 @@ import {
 } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
+import { loadSettings } from "../lib/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -53,6 +54,10 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
 
   const db = createDb(env.DB);
   const created: string[] = [];
+  // Bu taramadaki tüm sonuçlar için TEK sefer okunur (her aday için ayrı
+  // DB sorgusu yerine) - Ayarlar sayfasından değiştirilen teklif
+  // şablonu/AI ayarları burada uygulanır.
+  const settings = await loadSettings(env);
 
   for (const result of body.results) {
     const placeId = result.rawMetadata?.placeId;
@@ -93,6 +98,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
       },
       env,
+      settings,
     );
     if (!proposal.usedAI) {
       console.warn(`AI teklif metni üretilemedi (${result.name}): ${proposal.error}`);
@@ -104,6 +110,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       sectorSlug: result.sectorSlug,
       sourceChannel: result.sourceChannel,
       sourceUrl: result.sourceUrl ?? null,
+      websiteUrl: result.websiteUrl ?? null,
       country: "TR",
       needTags: result.needTags,
       contactEmail: result.contactEmail ?? null,
