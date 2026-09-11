@@ -7,6 +7,10 @@ import {
   renderSettingsPage,
   renderFollowUpsPage,
   renderReportPage,
+  renderPublicProposalPage,
+  PWA_MANIFEST_JSON,
+  PWA_SERVICE_WORKER_JS,
+  PWA_ICON_SVG,
   matchesCandidateFilters,
   candidateCsvRow,
   CANDIDATE_CSV_HEADERS,
@@ -14,6 +18,7 @@ import {
   type SettingsData,
   type ReportData,
   type ScanProgressRow,
+  type PublicProposalData,
 } from "./render";
 
 export interface Env {
@@ -22,6 +27,17 @@ export interface Env {
   DASHBOARD_PASSWORD: string;
   /** control'e her istekte x-control-secret header'ı ile gönderilir - bkz. apps/control/src/env.ts. */
   CONTROL_SHARED_SECRET: string;
+  /**
+   * Çoklu kullanıcı desteği - opsiyonel. JSON dizi:
+   * `[{"username":"ayse","password":"..."},{"username":"mehmet","password":"..."}]`.
+   * DASHBOARD_USERNAME/PASSWORD birincil hesap olarak AYNEN çalışmaya
+   * devam eder - bu SADECE ek hesap eklemenin yolu, tanımlı değilse
+   * (varsayılan) davranış hiç değişmez. `wrangler secret put
+   * DASHBOARD_USERS_JSON` ile ayarlanır. Onaylayan/reddeden kişi artık
+   * sabit "admin" değil, giriş yapan gerçek kullanıcı adı olarak
+   * kaydediliyor (bkz. checkAuth, approvedBy kullanımları).
+   */
+  DASHBOARD_USERS_JSON?: string;
 }
 
 /**
@@ -35,21 +51,58 @@ function callControl(env: Env, path: string, init: RequestInit = {}): Promise<Re
   return env.CONTROL_WORKER.fetch(`https://internal${path}`, { ...init, headers });
 }
 
-function requireAuth(request: Request, env: Env): Response | null {
-  const header = request.headers.get("authorization");
-  if (header) {
-    const [scheme, encoded] = header.split(" ");
-    if (scheme === "Basic" && encoded) {
-      const [user, pass] = atob(encoded).split(":");
-      if (user === env.DASHBOARD_USERNAME && pass === env.DASHBOARD_PASSWORD) {
-        return null;
-      }
-    }
-  }
-  return new Response("Unauthorized", {
+interface AuthCheck {
+  /** null ise yetkili - fetch() akışı devam eder. Dolu ise doğrudan bu Response döndürülmeli. */
+  response: Response | null;
+  /** Giriş yapan kullanıcı adı (yetkiliyse dolu) - approvedBy gibi alanlarda "admin" yerine gerçek kullanıcı için kullanılır. */
+  username: string | null;
+}
+
+const UNAUTHORIZED: AuthCheck = {
+  response: new Response("Unauthorized", {
     status: 401,
     headers: { "WWW-Authenticate": 'Basic realm="musteri-avcisi-dashboard"' },
-  });
+  }),
+  username: null,
+};
+
+function checkAuth(request: Request, env: Env): AuthCheck {
+  const header = request.headers.get("authorization");
+  if (!header) return UNAUTHORIZED;
+
+  const [scheme, encoded] = header.split(" ");
+  if (scheme !== "Basic" || !encoded) return UNAUTHORIZED;
+
+  let decoded: string;
+  try {
+    decoded = atob(encoded);
+  } catch {
+    return UNAUTHORIZED;
+  }
+  // decoded.split(":") KULLANMIYORUZ - parola ":" içerirse ilk ":"'dan
+  // sonrasını sessizce kaybederdi (eski koddaki bir hataydı).
+  const sep = decoded.indexOf(":");
+  const user = sep === -1 ? decoded : decoded.slice(0, sep);
+  const pass = sep === -1 ? "" : decoded.slice(sep + 1);
+
+  if (user === env.DASHBOARD_USERNAME && pass === env.DASHBOARD_PASSWORD) {
+    return { response: null, username: user };
+  }
+
+  if (env.DASHBOARD_USERS_JSON) {
+    try {
+      const users = JSON.parse(env.DASHBOARD_USERS_JSON) as Array<{
+        username?: string;
+        password?: string;
+      }>;
+      const match = users.find((u) => u.username && u.username === user && u.password === pass);
+      if (match?.username) return { response: null, username: match.username };
+    } catch (err) {
+      console.error("DASHBOARD_USERS_JSON ayrıştırılamadı - JSON formatını kontrol et", err);
+    }
+  }
+
+  return UNAUTHORIZED;
 }
 
 async function fetchStats(env: Env): Promise<Record<string, number>> {
@@ -111,10 +164,40 @@ function csvCell(value: string): string {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const unauthorized = requireAuth(request, env);
-    if (unauthorized) return unauthorized;
-
     const url = new URL(request.url);
+
+    // Hosted teklif sayfası (/teklif/:token) - adayın/müşterinin
+    // KENDİSİ açıyor, dashboard şifresi olmayacak, bu yüzden Basic
+    // Auth'tan BİLİNÇLİ OLARAK muaf. Erişim kontrolü token'ın kendisi
+    // (rastgele, tahmin edilemez UUID) - bkz.
+    // apps/control/src/routes/public-proposal.ts.
+    const publicProposalMatch = url.pathname.match(/^\/teklif\/([^/]+)$/);
+    if (publicProposalMatch && request.method === "GET") {
+      const res = await callControl(env, `/public-proposal/${publicProposalMatch[1]}`);
+      const data = res.ok ? ((await res.json()) as PublicProposalData) : null;
+      return new Response(renderPublicProposalPage(data), {
+        status: data ? 200 : 404,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // PWA dosyaları - tarayıcının kurulabilirlik kontrolü bunları
+    // kimlik doğrulama olmadan isteyebiliyor, bu yüzden Basic Auth'tan
+    // muaf (içerikleri zaten hassas değil - genel marka/ikon/boş bir
+    // service worker).
+    if (url.pathname === "/manifest.json" && request.method === "GET") {
+      return new Response(PWA_MANIFEST_JSON, { headers: { "content-type": "application/manifest+json" } });
+    }
+    if (url.pathname === "/sw.js" && request.method === "GET") {
+      return new Response(PWA_SERVICE_WORKER_JS, { headers: { "content-type": "application/javascript" } });
+    }
+    if (url.pathname === "/icon.svg" && request.method === "GET") {
+      return new Response(PWA_ICON_SVG, { headers: { "content-type": "image/svg+xml" } });
+    }
+
+    const auth = checkAuth(request, env);
+    if (auth.response) return auth.response;
+    const currentUser = auth.username ?? env.DASHBOARD_USERNAME;
 
     if (url.pathname === "/" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
@@ -221,7 +304,7 @@ export default {
       await callControl(env, `/candidates/${approveMatch[1]}/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approvedBy: env.DASHBOARD_USERNAME }),
+        body: JSON.stringify({ approvedBy: currentUser }),
       });
       return safeRedirect(url.origin, form.get("redirect"));
     }
@@ -245,7 +328,7 @@ export default {
         await callControl(env, "/candidates/bulk-approve", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ candidateIds, approvedBy: env.DASHBOARD_USERNAME }),
+          body: JSON.stringify({ candidateIds, approvedBy: currentUser }),
         });
       }
       return safeRedirect(url.origin, form.get("redirect"));
@@ -362,6 +445,8 @@ export default {
           aiEnabled: form.get("aiEnabled") === "true",
           aiModel: String(form.get("aiModel") ?? ""),
           meetingLink: String(form.get("meetingLink") ?? ""),
+          publicBaseUrl: String(form.get("publicBaseUrl") ?? ""),
+          retentionDays: Number.parseInt(String(form.get("retentionDays") ?? "0"), 10) || 0,
         }),
       });
       return Response.redirect(url.origin + "/ayarlar?saved=1", 303);

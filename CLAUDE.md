@@ -658,6 +658,77 @@ Neden bu yapı:
       uydurulamaz), PWA (manifest + service worker, ayrı bir kapsam),
       sesli arama modülünü gerçek AI'a çevirmek (telefoni + ses AI
       sağlayıcısı gerekiyor - en büyük, en pahalı kalem).
+- [x] **"Hepsini yap" turu - kalan 12 fikirden dış hesap GEREKTİRMEYEN
+      7'si de kodlandı (kod hazır, CANLIYA ALMADAN ÖNCE D1 MIGRATION
+      UYGULANMALI - `migrations/0005_public_proposal_and_retention.sql`):**
+      1. **AI "neden şimdi" sinyal motoru.** Places API isteğine
+         `places.reviews` field mask'ı eklendi
+         (`workers/google-search-scanner/src/scan.ts`), en fazla 3
+         yorum metni `rawMetadata.reviewSnippets` olarak saklanıyor,
+         `apps/control/src/lib/proposal.ts` `draftProposal()` bunu
+         AI'a bağlam olarak veriyor ("SADECE gerçekten alakalıysa
+         kullan, ASLA uydurma" talimatıyla). **DOĞRULANMADI:** Places
+         API (New) Text Search'ün `reviews` alanını GERÇEKTEN
+         döndürüp döndürmediği (bazı SKU seviyelerinde ayrı, ücretli
+         bir Place Details isteği gerektirebilir) bu oturumda canlıda
+         test edilemedi - dönmezse `reviewSnippets` boş kalır, sistemin
+         geri kalanı etkilenmez, ama özellik sessizce devre dışı kalmış
+         olur. **Deploy sonrası kontrol edilmeli** (Cloudflare loglarında
+         ya da bir adayın `rawMetadata`'sında `reviewSnippets` var mı
+         bak).
+      2. **Hosted teklif sayfası (PDF yerine).** `mailto:` linkleri
+         DOSYA EKİ desteklemediği için "PDF teklif" fikri yerine: her
+         adaya oluşturulduğu anda rastgele bir `proposalToken`
+         üretiliyor (`candidates.proposal_token`), Ayarlar sayfasındaki
+         `publicBaseUrl` doluysa şablonlarda `{{teklif_sayfasi}}` yer
+         tutucusu `<dashboard-adresi>/teklif/<token>`'a genişliyor. Bu
+         link **Basic Auth GEREKTİRMEZ** (adayın/müşterinin kendisi
+         açacağı için `apps/dashboard/src/index.ts`'te kasıtlı olarak
+         muaf tutuldu) - erişim kontrolü token'ın kendisi (tahmin
+         edilemez UUID). Sayfa `apps/control`'deki yeni
+         `GET /public-proposal/:token` endpoint'inden SADECE isim,
+         sektör, teklif metni, durum döner (not/etiket/iletişim gibi
+         iç veriler ASLA dönmez). **Bu aynı zamanda "basit müşteri
+         portalı" fikrini de karşılıyor:** durum `sent` ötesindeyse
+         (responded/converted) sayfa farklı bir teşekkür mesajı
+         gösteriyor.
+      3. **Çoklu kullanıcı desteği.** Yeni opsiyonel
+         `DASHBOARD_USERS_JSON` secret'ı (JSON dizi:
+         `[{"username":...,"password":...}]`) - mevcut
+         `DASHBOARD_USERNAME`/`PASSWORD` birincil hesap olarak AYNEN
+         çalışmaya devam ediyor, bu SADECE ek hesap eklemenin yolu
+         (set edilmezse davranış hiç değişmez). Onaylayan/reddeden
+         artık sabit "admin" değil, giriş yapan GERÇEK kullanıcı adı
+         olarak kaydediliyor (`apps/dashboard/src/index.ts` `checkAuth`,
+         `currentUser`). Yan not: eski `requireAuth`'taki
+         `decoded.split(":")` bir parola ":" içerirse sessizce
+         bozulan bir hataydı - `checkAuth`'ta düzeltildi.
+      4. **Otomatik veri temizliği - ALTYAPI hazır, KAPALI varsayılan.**
+         Ayarlar sayfasına `retentionDays` alanı eklendi (0 = kapalı).
+         **BİLİNÇLİ OLARAK sadece ayar eklendi, silme cron'u YAZILMADI**
+         - gerçek iş verisini geri dönüşsüz silen bir mekanizmayı
+         sahibinin açıkça onayladığı bir sayı olmadan aktive etmek,
+         tek taraflı alınacak bir karar değil. Sahibi bir gün sayısı
+         + "sadece reddedilmiş adaylar" kuralını onaylarsa, silme
+         cron'u (`apps/control`'e yeni bir `scheduled()` görevi ya da
+         mevcut günlük özet cron'una eklenerek) ayrı bir adımda
+         yazılabilir.
+      **YAPILMADI, gerekçesiyle:**
+      - **Harita görünümü**: gerçek bir TR il sınırları veri seti
+        gerektiriyor - doğrulanmamış coğrafi veriyi canlı sisteme
+        gömmek yerine ERTELENDİ. Aynı bilginin veri karşılığı zaten
+        Rapor sayfasındaki "şehre göre dağılım" çubuk grafiğinde var.
+      - **Referans/vaka galerisi**: sahibinin GERÇEK geçmiş işlerinin
+        içeriği gerekiyor, uydurulamaz - içerik gelirse hızlıca
+        eklenecek bir sayfa/ayar.
+      - **`yahoo-search-scanner`, "yakında bitecek domain" taraması,
+        sosyal dinleme/forum taraması, sesli arama modülünü gerçek
+        AI'a çevirmek**: hâlâ dış hesap/API anahtarı/sahibin somut bir
+        kararı gerektiriyor - bkz. önceki maddedeki liste.
+      **Deploy sırası:** `candidates.proposal_token` sütunu olmadan
+      `apps/control` deploy edilirse aday oluşturma ("no such column")
+      hata verir. Migration MUTLAKA redeploy'dan ÖNCE canlı D1'e
+      uygulanmalı.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

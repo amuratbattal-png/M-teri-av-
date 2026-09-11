@@ -217,20 +217,37 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
   const candidate = rows[0];
   if (!candidate) return json({ error: "candidate not found" }, 404);
 
-  const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+  const rawMetadata = candidate.rawMetadata as Record<string, unknown> | null;
+  const cityLabel = rawMetadata?.cityLabel;
+  const reviewSnippets = rawMetadata?.reviewSnippets;
   const settings = await loadSettings(env);
+
+  // Migration'dan önce oluşturulmuş adaylarda proposalToken boş olabilir -
+  // burada telafi edilir (bir daha hiç üretilmemiş olmasın diye).
+  const proposalToken = candidate.proposalToken ?? crypto.randomUUID();
+  const proposalPageUrl = settings.publicBaseUrl
+    ? `${settings.publicBaseUrl}/teklif/${proposalToken}`
+    : undefined;
+
   const proposal = await draftProposal(
     {
       candidateName: candidate.name,
       needTags: candidate.needTags as NeedTag[],
       sectorLabel: sectorLabel(candidate.sectorSlug),
       cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+      reviewSnippets: Array.isArray(reviewSnippets)
+        ? reviewSnippets.filter((s): s is string => typeof s === "string")
+        : undefined,
+      proposalPageUrl,
     },
     env,
     settings,
   );
 
-  await db.update(candidates).set({ proposalDraft: proposal.text }).where(eq(candidates.id, candidateId));
+  await db
+    .update(candidates)
+    .set({ proposalDraft: proposal.text, proposalToken })
+    .where(eq(candidates.id, candidateId));
   await logActivity(
     env,
     candidateId,

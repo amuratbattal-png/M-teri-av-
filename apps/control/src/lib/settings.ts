@@ -38,6 +38,20 @@ export interface AppSettings {
    * metne dönüşür (şablonu bozmaz, sadece linksiz kalır).
    */
   meetingLink: string;
+  /**
+   * Dashboard'un genel (internetten erişilebilir) adresi - hosted
+   * teklif sayfası linkini (`{{teklif_sayfasi}}`) kurmak için kullanılır,
+   * ör. "https://musteri-avcisi-dashboard.<subdomain>.workers.dev". Boşsa
+   * yer tutucu boş metne dönüşür.
+   */
+  publicBaseUrl: string;
+  /**
+   * KVKK/veri saklama - kaç gün işlem görmemiş (reddedilmiş/yanıtsız)
+   * bir aday otomatik silinsin. 0 = KAPALI (varsayılan) - sahibinin
+   * AÇIKÇA bir sayı girmesi gerekiyor, gerçek iş verisini geri dönüşsüz
+   * silen bir mekanizma kendiliğinden aktif olmamalı.
+   */
+  retentionDays: number;
 }
 
 export const DEFAULT_PROPOSAL_TEMPLATE = [
@@ -66,6 +80,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiEnabled: true,
   aiModel: "",
   meetingLink: "",
+  publicBaseUrl: "",
+  retentionDays: 0,
 };
 
 /** DB satırlarındaki key isimleri - dashboard formu da bunları kullanır. */
@@ -77,6 +93,8 @@ const KEYS: Record<keyof AppSettings, string> = {
   aiEnabled: "ai_enabled",
   aiModel: "ai_model",
   meetingLink: "meeting_link",
+  publicBaseUrl: "public_base_url",
+  retentionDays: "retention_days",
 };
 
 /** settings tablosundan ayarları okur - satır yoksa ilgili alan için varsayılana düşer. */
@@ -95,6 +113,10 @@ export async function loadSettings(env: Env): Promise<AppSettings> {
     aiEnabled: map.has(KEYS.aiEnabled) ? map.get(KEYS.aiEnabled) === "true" : DEFAULT_SETTINGS.aiEnabled,
     aiModel: map.get(KEYS.aiModel) ?? DEFAULT_SETTINGS.aiModel,
     meetingLink: map.get(KEYS.meetingLink) ?? DEFAULT_SETTINGS.meetingLink,
+    publicBaseUrl: map.get(KEYS.publicBaseUrl) ?? DEFAULT_SETTINGS.publicBaseUrl,
+    retentionDays: map.has(KEYS.retentionDays)
+      ? Number.parseInt(map.get(KEYS.retentionDays) ?? "0", 10) || 0
+      : DEFAULT_SETTINGS.retentionDays,
   };
 }
 
@@ -113,6 +135,8 @@ export async function updateSettings(env: Env, patch: Partial<AppSettings>): Pro
   if (patch.aiEnabled !== undefined) entries.push([KEYS.aiEnabled, String(patch.aiEnabled)]);
   if (patch.aiModel !== undefined) entries.push([KEYS.aiModel, patch.aiModel]);
   if (patch.meetingLink !== undefined) entries.push([KEYS.meetingLink, patch.meetingLink]);
+  if (patch.publicBaseUrl !== undefined) entries.push([KEYS.publicBaseUrl, patch.publicBaseUrl]);
+  if (patch.retentionDays !== undefined) entries.push([KEYS.retentionDays, String(patch.retentionDays)]);
 
   for (const [key, value] of entries) {
     await db

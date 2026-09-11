@@ -6,6 +6,17 @@ export interface ProposalContext {
   needTags: NeedTag[];
   sectorLabel?: string;
   cityLabel?: string;
+  /**
+   * Google yorumlarından (Places API `reviews` alanı, bkz.
+   * google-search-scanner/src/scan.ts) alınan kısa metinler - "AI neden
+   * şimdi sinyal motoru". SADECE AI'a bağlam olarak verilir, AI'a
+   * "sadece gerçekten ilgiliyse ve doğal bir şekilde kullan, uydurma"
+   * talimatı veriliyor - şablon metinde hiç kullanılmaz (şablonlar sabit
+   * metin, yorum içeriğini doğal biçimde işleyemez).
+   */
+  reviewSnippets?: string[];
+  /** Hosted teklif sayfasının tam URL'si (varsa) - `{{teklif_sayfasi}}` yer tutucusu için. */
+  proposalPageUrl?: string;
 }
 
 export interface ProposalEnv {
@@ -55,7 +66,8 @@ function templateProposal(ctx: ProposalContext, settings: AppSettings): string {
   return template
     .replaceAll("{{isim}}", ctx.candidateName)
     .replaceAll("{{ihtiyac}}", services)
-    .replaceAll("{{randevu}}", settings.meetingLink);
+    .replaceAll("{{randevu}}", settings.meetingLink)
+    .replaceAll("{{teklif_sayfasi}}", ctx.proposalPageUrl ?? "");
 }
 
 /**
@@ -92,6 +104,9 @@ export async function draftProposal(
     `Tespit edilen ihtiyaç: ${services}`,
     settings.meetingLink
       ? `Randevu/toplantı linki (uygunsa mesaja doğal bir şekilde dahil et): ${settings.meetingLink}`
+      : null,
+    ctx.reviewSnippets && ctx.reviewSnippets.length > 0
+      ? `Google yorumlarından örnekler (SADECE tespit edilen ihtiyaçla gerçekten alakalıysa, doğal ve nazik bir şekilde referans ver - alakasızsa ya da belirsizse HİÇ kullanma, ASLA uydurma/abartma):\n${ctx.reviewSnippets.map((s) => `- "${s}"`).join("\n")}`
       : null,
   ]
     .filter(Boolean)

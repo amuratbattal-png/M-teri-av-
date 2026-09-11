@@ -18,6 +18,7 @@ import { handleGetSettings, handleUpdateSettings } from "./routes/settings";
 import { handleGetReport } from "./routes/reports";
 import { handleGetActivity } from "./routes/activity";
 import { handleReportScanProgress, handleGetScanProgress } from "./routes/scan-progress";
+import { handleGetPublicProposal } from "./routes/public-proposal";
 import { sendDailyDigest } from "./lib/digest";
 
 function json(data: unknown, status = 200): Response {
@@ -140,6 +141,11 @@ export default {
     const activityMatch = pathname.match(/^\/candidates\/([^/]+)\/activity$/);
     if (activityMatch && method === "GET") {
       return handleGetActivity(env, activityMatch[1]);
+    }
+
+    const publicProposalMatch = pathname.match(/^\/public-proposal\/([^/]+)$/);
+    if (publicProposalMatch && method === "GET") {
+      return handleGetPublicProposal(env, publicProposalMatch[1]);
     }
 
     return json({ error: "not found" }, 404);

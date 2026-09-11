@@ -56,6 +56,8 @@ export interface Candidate {
   tags: string[] | null;
   /** true ise gönderim linkleri/aksiyonları dashboard'da hiç gösterilmez. */
   doNotContact: boolean;
+  /** Hosted teklif sayfasının (/teklif/:token) genel erişim anahtarı - kimlik doğrulama gerektirmez. */
+  proposalToken: string | null;
   proposalDraft: string | null;
   approvedBy: string | null;
   approvedAt: string | null;

@@ -16,6 +16,13 @@ DASHBOARD_USERNAME = "admin"
 # DASHBOARD_PASSWORD repoda PLAINTEXT tutulmaz -
 # `wrangler secret put DASHBOARD_PASSWORD` ile ayarlanmalı.
 
+# Çoklu kullanıcı - OPSİYONEL. DASHBOARD_USERNAME/PASSWORD birincil
+# hesap olarak aynen çalışmaya devam eder, bu SADECE ek hesap eklemenin
+# yolu. JSON dizi olarak set edilmeli, ör:
+# [{"username":"ayse","password":"..."},{"username":"mehmet","password":"..."}]
+# Repoda PLAINTEXT tutulmaz - `wrangler secret put DASHBOARD_USERS_JSON`
+# ile ayarlanmalı (opsiyonel - hiç set etmezsen tek kullanıcılı çalışır).
+
 # apps/control'e her istekte x-control-secret header'ı olarak gönderilir -
 # control bu değer eşleşmeden hiçbir aday/istatistik isteğine yanıt
 # vermiyor (bkz. apps/control/src/index.ts requireControlSecret).

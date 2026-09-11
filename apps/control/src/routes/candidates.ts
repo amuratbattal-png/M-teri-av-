@@ -90,6 +90,15 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const cityLabel = result.rawMetadata?.cityLabel;
+    const reviewSnippets = result.rawMetadata?.reviewSnippets;
+    // Hosted teklif sayfası (/teklif/:token) - aday oluşturulur
+    // oluşturulmaz üretilir, çünkü şablon metni ({{teklif_sayfasi}})
+    // BURADA (henüz onaylanmadan) yazılıyor - onayı beklemek "tavuk-
+    // yumurta" sorunu yaratırdı.
+    const proposalToken = crypto.randomUUID();
+    const proposalPageUrl = settings.publicBaseUrl
+      ? `${settings.publicBaseUrl}/teklif/${proposalToken}`
+      : undefined;
 
     const proposal = await draftProposal(
       {
@@ -97,6 +106,10 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         needTags: result.needTags,
         sectorLabel: sectorLabel(result.sectorSlug),
         cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+        reviewSnippets: Array.isArray(reviewSnippets)
+          ? reviewSnippets.filter((s): s is string => typeof s === "string")
+          : undefined,
+        proposalPageUrl,
       },
       env,
       settings,
@@ -121,6 +134,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       discoveredAt: now,
       status: "pending_approval",
       proposalDraft: proposal.text,
+      proposalToken,
       rawMetadata: result.rawMetadata ?? null,
     });
     await logActivity(env, id, "created", `Kaynak: ${result.sourceChannel}`);

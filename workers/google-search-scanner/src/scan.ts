@@ -21,6 +21,18 @@ interface PlacesSearchResponse {
     websiteUri?: string;
     internationalPhoneNumber?: string;
     nationalPhoneNumber?: string;
+    /**
+     * "AI neden şimdi" sinyal motoru için - en fazla 5 en alakalı yorum.
+     * NOT (doğrulanmadı): Places API (New) Text Search'ün `reviews`
+     * alanını gerçekten döndürüp döndürmediği (bazı Google Places SKU
+     * seviyelerinde "reviews" sadece ayrı bir Place Details isteğiyle,
+     * ek ücretle geliyor) bu oturumda CANLIDA TEST EDİLEMEDİ. Kod bunu
+     * varsayımsal olarak deniyor - gelmezse `reviewSnippets` boş kalır,
+     * sistemin geri kalanı etkilenmez. Canlıda kontrol edip
+     * (Cloudflare Workers loglarında `debug.placesReturned` ile
+     * birlikte) maliyet/davranış doğrulanmalı.
+     */
+    reviews?: Array<{ text?: { text?: string } }>;
   }>;
 }
 
@@ -50,7 +62,7 @@ async function searchPlaces(
       "Content-Type": "application/json",
       "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask":
-        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.internationalPhoneNumber,places.nationalPhoneNumber",
+        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.reviews",
     },
     body: JSON.stringify({
       textQuery: query,
@@ -326,6 +338,15 @@ async function collectMapsResults(
       contactEmail = await findContactEmail(place.websiteUri, html);
     }
 
+    // "AI neden şimdi" sinyal motoru - reviews alanı gerçekten dönerse
+    // (bkz. PlacesSearchResponse'daki NOT) en fazla 3 kısa yorum metni
+    // AI'a bağlam olarak veriliyor (apps/control/src/lib/proposal.ts) -
+    // AI'a "sadece alakalıysa kullan, uydurma" talimatı veriliyor.
+    const reviewSnippets = (place.reviews ?? [])
+      .map((r) => r.text?.text?.trim())
+      .filter((t): t is string => Boolean(t))
+      .slice(0, 3);
+
     results.push({
       name,
       sectorSlug: sector.slug,
@@ -349,6 +370,7 @@ async function collectMapsResults(
         formattedAddress: place.formattedAddress,
         citySlug: city.slug,
         cityLabel: city.labelTr,
+        ...(reviewSnippets.length > 0 ? { reviewSnippets } : {}),
       },
     });
   }

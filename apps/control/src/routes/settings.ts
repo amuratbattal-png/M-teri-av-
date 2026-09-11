@@ -28,6 +28,10 @@ export async function handleUpdateSettings(request: Request, env: Env): Promise<
   if (typeof body.meetingLink === "string") patch.meetingLink = body.meetingLink;
   if (typeof body.aiEnabled === "boolean") patch.aiEnabled = body.aiEnabled;
   if (typeof body.aiModel === "string") patch.aiModel = body.aiModel;
+  if (typeof body.publicBaseUrl === "string") patch.publicBaseUrl = body.publicBaseUrl.replace(/\/+$/, "");
+  if (typeof body.retentionDays === "number" && Number.isFinite(body.retentionDays)) {
+    patch.retentionDays = Math.max(0, Math.floor(body.retentionDays));
+  }
 
   if (Object.keys(patch).length === 0) {
     return json({ error: "invalid body: no known settings field provided" }, 400);

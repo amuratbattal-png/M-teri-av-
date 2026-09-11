@@ -39,6 +39,13 @@ export const candidates = sqliteTable("candidates", {
   tags: text("tags", { mode: "json" }).$type<string[]>(),
   /** true ise dashboard gönderim linklerini/aksiyonlarını hiç göstermez - "bir daha iletişime geçme" işareti. */
   doNotContact: integer("do_not_contact", { mode: "boolean" }).notNull().default(false),
+  /**
+   * Rastgele, tahmin edilemez token - "hosted teklif sayfası"nın
+   * (`/teklif/:token`) genel erişim anahtarı. Aday oluşturulurken
+   * üretilir (bkz. handleScanResults), kimlik doğrulama GEREKTİRMEZ -
+   * bu adayın KENDİSİNE gönderilen bir link olduğu için.
+   */
+  proposalToken: text("proposal_token"),
   proposalDraft: text("proposal_draft"),
   approvedBy: text("approved_by"),
   approvedAt: text("approved_at"),

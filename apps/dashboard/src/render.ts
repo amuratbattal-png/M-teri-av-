@@ -163,6 +163,40 @@ function fmtDate(iso: string): string {
   }
 }
 
+// --- PWA (manifest / service worker / ikon) ------------------------------
+// "Telefona yüklenebilir dashboard" - kurulabilirlik için Chrome'un iki
+// zorunlu koşulu: geçerli bir manifest.json VE kayıtlı bir service worker.
+// Bu, sunucu tarafında sürekli değişen bir panel olduğu için gerçek bir
+// offline cache stratejisi kurmuyoruz (veri her zaman güncel olmalı) -
+// service worker sadece "yüklenebilir" sayılmak için minimal bir fetch
+// handler'a sahip, network-first, cache'siz.
+
+export const PWA_MANIFEST_JSON = JSON.stringify({
+  name: "Müşteri Avcısı - Onay Paneli",
+  short_name: "Müşteri Avcısı",
+  start_url: "/",
+  display: "standalone",
+  background_color: "#0a0c14",
+  theme_color: "#0a0c14",
+  icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
+});
+
+export const PWA_SERVICE_WORKER_JS = `
+// Kasıtlı olarak minimal - offline cache YOK (panel verisi her zaman
+// canlı olmalı). Sadece "installable" sayılmak için bir fetch handler'ı
+// var (tarayıcı kurulum kriterinin bir parçası).
+self.addEventListener('fetch', function (event) {
+  event.respondWith(fetch(event.request));
+});
+`;
+
+/** 512x512 kare ikon - ICONS.logo ile aynı çizgi stili, koyu zemin üzerinde. `/icon.svg` olarak servis edilir. */
+export const PWA_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0a0c14"/>
+  <circle cx="256" cy="256" r="176" stroke="#2dd4bf" stroke-width="28" fill="none"/>
+  <path d="M172 262l58 58 112-124" stroke="#2dd4bf" stroke-width="28" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
 // --- İkonlar (inline SVG, çizgi stili) ---------------------------------
 
 const ICONS = {
@@ -217,6 +251,10 @@ function shell(opts: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Müşteri Avcısı - Panel</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="theme-color" content="#0a0c14">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -260,6 +298,13 @@ function shell(opts: {
     </main>
   </div>
   <script>
+    // PWA - telefona "ana ekrana ekle" ile kurulabilir olması için.
+    // Offline cache YOK (panel verisi her zaman canlı olmalı) - sadece
+    // kurulum kriterini karşılayan minimal bir service worker.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    }
+
     // Toplu onay çubuğu (bkz. bulkActionBar) - .bulk-check kutucukları
     // işaretlendikçe çubuğu günceller. Kütüphane yok, sade JS.
     function updateBulkBar() {
@@ -1258,6 +1303,8 @@ export interface SettingsData {
   aiEnabled: boolean;
   aiModel: string;
   meetingLink: string;
+  publicBaseUrl: string;
+  retentionDays: number;
 }
 
 export function renderSettingsPage(
@@ -1318,6 +1365,28 @@ export function renderSettingsPage(
         <input type="url" id="meetingLink" name="meetingLink" value="${escapeHtml(settings.meetingLink)}" placeholder="https://calendly.com/..." class="settings-input">
       </div>
 
+      <div class="settings-card">
+        <label class="proposal-label" for="publicBaseUrl">Bu dashboard'un genel adresi (hosted teklif sayfası için)</label>
+        <p class="muted">
+          Doldurursan her yeni adaya, teklif metnine <code>{{teklif_sayfasi}}</code> yer
+          tutucusuyla eklenebilecek, kendi başına açılan bir "teklif sayfası" linki
+          (<code>/teklif/…</code>) üretilir - şifre istemez, sadece o adaya özeldir.
+          Boş bırakırsan yer tutucu boş kalır, özellik devre dışı olur.
+        </p>
+        <input type="url" id="publicBaseUrl" name="publicBaseUrl" value="${escapeHtml(settings.publicBaseUrl)}" placeholder="https://musteri-avcisi-dashboard.<subdomain>.workers.dev" class="settings-input">
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="retentionDays">Otomatik veri temizliği (gün) - varsayılan KAPALI</label>
+        <p class="muted">
+          0 = kapalı. Pozitif bir sayı girersen, sadece <strong>reddedilmiş</strong>
+          adaylar bu kadar gün sonra kalıcı olarak silinir (onaylanmış/gönderilmiş
+          adaylara HİÇ dokunulmaz). Bu geri alınamaz bir işlemdir - emin
+          değilsen 0'da bırak.
+        </p>
+        <input type="number" id="retentionDays" name="retentionDays" min="0" step="1" value="${settings.retentionDays}" class="settings-input" style="max-width:140px">
+      </div>
+
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
     </form>
   `;
@@ -1331,6 +1400,105 @@ export function renderSettingsPage(
     content,
   });
 }
+
+// --- Hosted teklif sayfası (herkese açık, Basic Auth GEREKTİRMEZ) --------
+
+export interface PublicProposalData {
+  name: string;
+  sectorLabel: string;
+  proposalDraft: string | null;
+  status: string;
+}
+
+/**
+ * `/teklif/:token` - "AI ile Yeniden Yaz" sonrası oluşan adaya özel,
+ * herkese açık bir sayfa. `shell()`'i (iç panel görünümü) KASITLI OLARAK
+ * kullanmıyor - bunu adayın/müşterinin kendisi açıyor, sol menü/dashboard
+ * markası burada anlamsız. Aynı zamanda "basit müşteri portalı" fikrini
+ * de karşılıyor: durum onaylı/gönderilmiş ötesindeyse (sent/responded/
+ * converted) farklı bir mesaj gösteriyor.
+ */
+export function renderPublicProposalPage(data: PublicProposalData | null): string {
+  if (!data) {
+    return `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sayfa bulunamadı</title>
+<style>${PUBLIC_PAGE_STYLES}</style>
+</head>
+<body>
+  <main class="public-wrap">
+    <div class="public-card">
+      <h1>Bu link geçerli değil</h1>
+      <p class="muted">Bağlantıyı kontrol edin ya da gönderen kişiyle iletişime geçin.</p>
+    </div>
+  </main>
+</body>
+</html>`;
+  }
+
+  const statusNote =
+    data.status === "converted" || data.status === "responded"
+      ? `<p class="public-status">Teşekkürler - sizinle çalışmaktan mutluluk duyuyoruz! Aşağıda size gönderdiğimiz ilk teklif metni referans için duruyor.</p>`
+      : "";
+
+  return `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(data.name)} için teklif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>${PUBLIC_PAGE_STYLES}</style>
+</head>
+<body>
+  <main class="public-wrap">
+    <div class="public-card">
+      <span class="badge">${escapeHtml(data.sectorLabel)}</span>
+      <h1>Merhaba ${escapeHtml(data.name)},</h1>
+      ${statusNote}
+      <div class="public-proposal">${escapeHtml(data.proposalDraft ?? "")}</div>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+const PUBLIC_PAGE_STYLES = `
+  :root {
+    --bg: #0a0c14; --surface: #151827; --border: #242940; --text: #eef0f9;
+    --text-muted: #8891ac; --accent: #2dd4bf; --accent-soft: rgba(45,212,191,0.13);
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f8fb; --surface: #ffffff; --border: #e3e6ef; --text: #171a26; --text-muted: #5b6178; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .public-wrap { width: 100%; max-width: 560px; }
+  .public-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 2rem 1.75rem; box-shadow: 0 20px 50px -20px rgba(0,0,0,0.35);
+  }
+  .public-card h1 { font-size: 1.35rem; margin: 0.9rem 0 0.6rem; letter-spacing: -0.01em; }
+  .badge {
+    font-size: 0.72rem; font-weight: 600; padding: 0.25rem 0.65rem; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .muted { color: var(--text-muted); }
+  .public-status { color: var(--text-muted); font-size: 0.88rem; margin: 0 0 1.1rem; }
+  .public-proposal {
+    white-space: pre-wrap; line-height: 1.65; font-size: 0.96rem;
+    background: rgba(127,127,127,0.06); border-radius: 12px; padding: 1.1rem 1.2rem;
+  }
+`;
 
 // --- Stiller ---------------------------------------------------------------
 
