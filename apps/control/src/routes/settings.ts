@@ -25,6 +25,7 @@ export async function handleUpdateSettings(request: Request, env: Env): Promise<
   if (typeof body.proposalTemplateWebsiteRedesign === "string")
     patch.proposalTemplateWebsiteRedesign = body.proposalTemplateWebsiteRedesign;
   if (typeof body.aiSystemPrompt === "string") patch.aiSystemPrompt = body.aiSystemPrompt;
+  if (typeof body.meetingLink === "string") patch.meetingLink = body.meetingLink;
   if (typeof body.aiEnabled === "boolean") patch.aiEnabled = body.aiEnabled;
   if (typeof body.aiModel === "string") patch.aiModel = body.aiModel;
 

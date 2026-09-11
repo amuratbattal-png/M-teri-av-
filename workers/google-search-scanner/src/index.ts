@@ -1,4 +1,8 @@
+import { SECTORS, CITIES } from "@musteri-avcisi/shared";
 import { scanNextSector, diagnoseCustomSearch, type ScanDebugInfo } from "./scan";
+
+/** scanNextSector'daki sektör × şehir matrisiyle AYNI hesap - ilerleme raporlaması için (bkz. runScan). */
+const MATRIX_SIZE = SECTORS.length * CITIES.length;
 
 export interface Env {
   SCAN_STATE: KVNamespace;
@@ -118,6 +122,28 @@ async function runScan(env: Env): Promise<ScanDiagnostics> {
   }
 
   await env.SCAN_STATE.put(CURSOR_KEY, String(nextCursorIndex));
+
+  // Dashboard'daki Rapor sayfasının "tur nerede kaldı" göstergesi için -
+  // en iyi çaba (best-effort): başarısız olursa taramayı engellemez,
+  // sadece loglanır.
+  try {
+    await env.CONTROL_WORKER.fetch("https://internal/scan-progress", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-scan-secret": env.SCAN_SHARED_SECRET?.trim() ?? "",
+      },
+      body: JSON.stringify({
+        trackSlug: "google_maps_city_matrix",
+        sourceChannel: "google_maps",
+        cursorIndex: nextCursorIndex,
+        total: MATRIX_SIZE,
+      }),
+    });
+  } catch (err) {
+    console.error("tarama ilerlemesi raporlanamadı", err);
+  }
+
   // SEARCH_API_KEY hiç tanımlı değilse (henüz kurulmamış worker) uyarı
   // spam'i olmasın diye alarm mekanizmasını atlıyoruz - bu "arıza" değil,
   // henüz aktifleştirilmemiş bir kanal.

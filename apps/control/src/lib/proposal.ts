@@ -52,7 +52,10 @@ function templateProposal(ctx: ProposalContext, settings: AppSettings): string {
     template = settings.proposalTemplateWebsiteRedesign;
   }
 
-  return template.replaceAll("{{isim}}", ctx.candidateName).replaceAll("{{ihtiyac}}", services);
+  return template
+    .replaceAll("{{isim}}", ctx.candidateName)
+    .replaceAll("{{ihtiyac}}", services)
+    .replaceAll("{{randevu}}", settings.meetingLink);
 }
 
 /**
@@ -87,6 +90,9 @@ export async function draftProposal(
     ctx.sectorLabel ? `Sektör: ${ctx.sectorLabel}` : null,
     ctx.cityLabel ? `Şehir: ${ctx.cityLabel}` : null,
     `Tespit edilen ihtiyaç: ${services}`,
+    settings.meetingLink
+      ? `Randevu/toplantı linki (uygunsa mesaja doğal bir şekilde dahil et): ${settings.meetingLink}`
+      : null,
   ]
     .filter(Boolean)
     .join("\n");

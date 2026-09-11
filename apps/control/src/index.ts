@@ -6,6 +6,7 @@ import {
   handleApprove,
   handleReject,
   handleBulkApprove,
+  handleBulkReject,
   handleUpdateProposal,
   handleRegenerateProposal,
   handleUpdateNotes,
@@ -15,6 +16,9 @@ import { handleListCommunications } from "./routes/communications";
 import { handleAlert } from "./routes/alerts";
 import { handleGetSettings, handleUpdateSettings } from "./routes/settings";
 import { handleGetReport } from "./routes/reports";
+import { handleGetActivity } from "./routes/activity";
+import { handleReportScanProgress, handleGetScanProgress } from "./routes/scan-progress";
+import { sendDailyDigest } from "./lib/digest";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -59,6 +63,10 @@ export default {
       return handleAlert(request, env);
     }
 
+    if (pathname === "/scan-progress" && method === "POST") {
+      return handleReportScanProgress(request, env);
+    }
+
     // Buradan sonrasının hepsi dashboard'a özel - tek bir yerden korunuyor.
     const unauthorized = requireControlSecret(request, env);
     if (unauthorized) return unauthorized;
@@ -87,8 +95,16 @@ export default {
       return handleGetReport(env);
     }
 
+    if (pathname === "/scan-progress" && method === "GET") {
+      return handleGetScanProgress(env);
+    }
+
     if (pathname === "/candidates/bulk-approve" && method === "POST") {
       return handleBulkApprove(request, env);
+    }
+
+    if (pathname === "/candidates/bulk-reject" && method === "POST") {
+      return handleBulkReject(request, env);
     }
 
     const approveMatch = pathname.match(/^\/candidates\/([^/]+)\/approve$/);
@@ -121,7 +137,20 @@ export default {
       return handleMarkSent(request, env, markSentMatch[1]);
     }
 
+    const activityMatch = pathname.match(/^\/candidates\/([^/]+)\/activity$/);
+    if (activityMatch && method === "GET") {
+      return handleGetActivity(env, activityMatch[1]);
+    }
+
     return json({ error: "not found" }, 404);
+  },
+
+  /**
+   * Günlük özet e-postası - cron tetikleyicisi (bkz. wrangler.toml,
+   * her gün 06:00 UTC = 09:00 İstanbul). `lib/digest.ts` sendDailyDigest.
+   */
+  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    await sendDailyDigest(env);
   },
 
   /**

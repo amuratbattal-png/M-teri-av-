@@ -11,6 +11,12 @@ compatibility_date = "2024-11-01"
 # içeri giremesin diye).
 workers_dev = false
 
+# Gunluk ozet e-postasi (bkz. src/lib/digest.ts) - her gun 06:00 UTC'de
+# tetiklenir (Turkiye 2016'dan beri yaz saati uygulamiyor, UTC+3 sabit -
+# yani bu her zaman 09:00 Istanbul saatine denk gelir).
+[triggers]
+crons = ["0 6 * * *"]
+
 # Merkezi veritabani - gercek Cloudflare hesabinda `wrangler d1 create`
 # ile olusturulup asagidaki database_id doldurulmali.
 [[d1_databases]]

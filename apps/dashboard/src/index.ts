@@ -13,6 +13,7 @@ import {
   type CommunicationRow,
   type SettingsData,
   type ReportData,
+  type ScanProgressRow,
 } from "./render";
 
 export interface Env {
@@ -79,6 +80,12 @@ async function fetchSettings(env: Env): Promise<SettingsData> {
 async function fetchReport(env: Env): Promise<ReportData> {
   const res = await callControl(env, "/report");
   return (await res.json()) as ReportData;
+}
+
+async function fetchScanProgress(env: Env): Promise<ScanProgressRow[]> {
+  const res = await callControl(env, "/scan-progress");
+  const { progress } = (await res.json()) as { progress: ScanProgressRow[] };
+  return progress;
 }
 
 /**
@@ -185,8 +192,12 @@ export default {
     }
 
     if (url.pathname === "/rapor" && request.method === "GET") {
-      const [counts, report] = await Promise.all([fetchStats(env), fetchReport(env)]);
-      return new Response(renderReportPage(counts, report), {
+      const [counts, report, scanProgress] = await Promise.all([
+        fetchStats(env),
+        fetchReport(env),
+        fetchScanProgress(env),
+      ]);
+      return new Response(renderReportPage(counts, report, scanProgress), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -240,19 +251,48 @@ export default {
       return safeRedirect(url.origin, form.get("redirect"));
     }
 
-    // Serbest metin not (mini-CRM) + tekrar arama/takip tarihi -
-    // popup'taki "Notu Kaydet" formu (bkz. render.ts Takip sayfası).
+    // Toplu red - bulkActionBar'daki AYNI form, sadece formaction farklı.
+    if (url.pathname === "/bulk-reject" && request.method === "POST") {
+      const form = await request.formData();
+      const candidateIds = String(form.get("ids") ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (candidateIds.length > 0) {
+        await callControl(env, "/candidates/bulk-reject", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ candidateIds }),
+        });
+      }
+      return safeRedirect(url.origin, form.get("redirect"));
+    }
+
+    // Serbest metin not (mini-CRM) + tekrar arama/takip tarihi + serbest
+    // etiketler + "bir daha iletişime geçme" - popup'taki "Notu Kaydet"
+    // formu (bkz. render.ts Takip sayfası, candidateDetailDialog).
     const notesMatch = url.pathname.match(/^\/candidates\/([^/]+)\/notes$/);
     if (notesMatch && request.method === "POST") {
       const form = await request.formData();
       const evaluationNotes = String(form.get("evaluationNotes") ?? "");
       const followUpDate = String(form.get("followUpDate") ?? "");
+      const tags = String(form.get("tags") ?? "");
+      const doNotContact = form.get("doNotContact") === "true";
       await callControl(env, `/candidates/${notesMatch[1]}/notes`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ evaluationNotes, followUpDate }),
+        body: JSON.stringify({ evaluationNotes, followUpDate, tags, doNotContact }),
       });
       return safeRedirect(url.origin, form.get("redirect"));
+    }
+
+    // Aday zaman çizelgesi - render.ts loadActivity() bunu fetch() ile
+    // arka planda çağırıyor (popup kapanmadan).
+    const activityMatch = url.pathname.match(/^\/candidates\/([^/]+)\/activity$/);
+    if (activityMatch && request.method === "GET") {
+      const res = await callControl(env, `/candidates/${activityMatch[1]}/activity`);
+      const data = await res.text();
+      return new Response(data, { headers: { "content-type": "application/json" } });
     }
 
     // Teklif metnini düzenleme (Onaylar/Onaylananlar/Tüm Adaylar
@@ -321,6 +361,7 @@ export default {
           aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
           aiEnabled: form.get("aiEnabled") === "true",
           aiModel: String(form.get("aiModel") ?? ""),
+          meetingLink: String(form.get("meetingLink") ?? ""),
         }),
       });
       return Response.redirect(url.origin + "/ayarlar?saved=1", 303);

@@ -9,6 +9,7 @@ import {
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 import { loadSettings } from "../lib/settings";
+import { logActivity } from "../lib/activity";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -122,6 +123,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       proposalDraft: proposal.text,
       rawMetadata: result.rawMetadata ?? null,
     });
+    await logActivity(env, id, "created", `Kaynak: ${result.sourceChannel}`);
 
     created.push(id);
   }

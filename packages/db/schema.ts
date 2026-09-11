@@ -35,6 +35,10 @@ export const candidates = sqliteTable("candidates", {
   evaluationNotes: text("evaluation_notes"),
   /** "YYYY-MM-DD" - sahibinin "ay sonu tekrar ara" gibi notlara eklediği takip tarihi. Dashboard'daki Takip sayfası bunu okur. */
   followUpDate: text("follow_up_date"),
+  /** Sahibinin kendi serbest etiketleri ("sıcak lead" vb.) - need tag'lerden bağımsız, string[] JSON. */
+  tags: text("tags", { mode: "json" }).$type<string[]>(),
+  /** true ise dashboard gönderim linklerini/aksiyonlarını hiç göstermez - "bir daha iletişime geçme" işareti. */
+  doNotContact: integer("do_not_contact", { mode: "boolean" }).notNull().default(false),
   proposalDraft: text("proposal_draft"),
   approvedBy: text("approved_by"),
   approvedAt: text("approved_at"),
@@ -55,6 +59,20 @@ export const communicationLog = sqliteTable("communication_log", {
   direction: text("direction").notNull(), // "outbound" | "inbound"
   content: text("content").notNull(),
   status: text("status").notNull().default("queued"),
+  createdAt: text("created_at").notNull(),
+});
+
+/**
+ * Aday zaman çizelgesi - onay/red/not/gönderim gibi her aksiyon burada
+ * kronolojik iz bırakır. Dashboard'daki popup'ta "Geçmişi Göster"
+ * butonuyla lazy-load edilir (her sayfa yüklemesinde otomatik çekilmez).
+ */
+export const activityLog = sqliteTable("activity_log", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id").notNull(),
+  /** ör. "created" | "approved" | "rejected" | "notes_updated" | "proposal_updated" | "ai_regenerated" | "marked_sent" */
+  action: text("action").notNull(),
+  detail: text("detail"),
   createdAt: text("created_at").notNull(),
 });
 

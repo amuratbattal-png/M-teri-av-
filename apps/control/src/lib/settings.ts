@@ -32,6 +32,12 @@ export interface AppSettings {
   aiEnabled: boolean;
   /** Boşsa env.NVIDIA_MODEL (ya da onun da boş olduğu varsayılan) kullanılır. */
   aiModel: string;
+  /**
+   * Randevu/toplantı linki (Calendly vb.) - opsiyonel. Şablonlarda
+   * `{{randevu}}` yer tutucusuyla kullanılabilir. Boşsa yer tutucu boş
+   * metne dönüşür (şablonu bozmaz, sadece linksiz kalır).
+   */
+  meetingLink: string;
 }
 
 export const DEFAULT_PROPOSAL_TEMPLATE = [
@@ -59,6 +65,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiSystemPrompt: DEFAULT_AI_SYSTEM_PROMPT,
   aiEnabled: true,
   aiModel: "",
+  meetingLink: "",
 };
 
 /** DB satırlarındaki key isimleri - dashboard formu da bunları kullanır. */
@@ -69,6 +76,7 @@ const KEYS: Record<keyof AppSettings, string> = {
   aiSystemPrompt: "ai_system_prompt",
   aiEnabled: "ai_enabled",
   aiModel: "ai_model",
+  meetingLink: "meeting_link",
 };
 
 /** settings tablosundan ayarları okur - satır yoksa ilgili alan için varsayılana düşer. */
@@ -86,6 +94,7 @@ export async function loadSettings(env: Env): Promise<AppSettings> {
     aiSystemPrompt: map.get(KEYS.aiSystemPrompt) ?? DEFAULT_SETTINGS.aiSystemPrompt,
     aiEnabled: map.has(KEYS.aiEnabled) ? map.get(KEYS.aiEnabled) === "true" : DEFAULT_SETTINGS.aiEnabled,
     aiModel: map.get(KEYS.aiModel) ?? DEFAULT_SETTINGS.aiModel,
+    meetingLink: map.get(KEYS.meetingLink) ?? DEFAULT_SETTINGS.meetingLink,
   };
 }
 
@@ -103,6 +112,7 @@ export async function updateSettings(env: Env, patch: Partial<AppSettings>): Pro
   if (patch.aiSystemPrompt !== undefined) entries.push([KEYS.aiSystemPrompt, patch.aiSystemPrompt]);
   if (patch.aiEnabled !== undefined) entries.push([KEYS.aiEnabled, String(patch.aiEnabled)]);
   if (patch.aiModel !== undefined) entries.push([KEYS.aiModel, patch.aiModel]);
+  if (patch.meetingLink !== undefined) entries.push([KEYS.meetingLink, patch.meetingLink]);
 
   for (const [key, value] of entries) {
     await db

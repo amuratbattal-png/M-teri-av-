@@ -579,6 +579,85 @@ Neden bu yapı:
       hata verir - `/stats` her sayfada çağrıldığı için TÜM SAYFALAR
       etkilenir. Migration `apps/control` redeploy'undan ÖNCE
       uygulanmalı (bkz. `docs/deployment.md`).
+- [x] **"Sistemi daha büyük bir sisteme dönüştürelim" turu - sahibi 20
+      fikirlik bir liste verdi, dış hesap/karar gerektirmeyen 8'i bu
+      oturumda kodlandı (kod hazır, CANLIYA ALMADAN ÖNCE D1 MIGRATION
+      UYGULANMALI - `migrations/0004_activity_tags_blacklist.sql`):**
+      1. **Aday zaman çizelgesi.** Yeni `activity_log` tablosu -
+         onay/red/toplu onay/toplu red/not-takip-etiket güncelleme/teklif
+         düzenleme/AI ile yeniden yazma/gönderildi işaretleme HER
+         AKSİYONDA otomatik satır ekliyor (`apps/control/src/lib/activity.ts`
+         `logActivity`, tüm `routes/approvals.ts`+`routes/candidates.ts`
+         mutasyon noktalarına eklendi). Dashboard'da popup'a **"Geçmişi
+         Göster"** butonu eklendi - her popup açılışında otomatik
+         çekilmiyor (gereksiz yük olmasın diye), butona basınca `fetch()`
+         ile lazy-load ediliyor (`GET /candidates/:id/activity`).
+      2. **Serbest etiketleme.** `candidates.tags` (string[] JSON) -
+         need tag'lerden bağımsız, sahibinin kendi etiketleri ("sıcak
+         lead" vb.). Popup'taki not formuna virgülle ayrılmış bir
+         "Etiketler" kutusu eklendi, kartlarda mor pill olarak
+         gösteriliyor.
+      3. **Toplu red.** `handleBulkApprove`'un aynısı (`handleBulkReject`,
+         `POST /candidates/bulk-reject`) - dashboard'daki toplu onay
+         çubuğunda AYNI form, `formaction="/bulk-reject"` olan ikinci bir
+         buton (`data-bulk-reject`) - JS `confirm()` ile onay istiyor
+         (red geri alması onaydan daha maliyetli bir hata olduğu için).
+      4. **Tek dokunuşlu hızlı aksiyonlar.** Not kutusunun üstüne
+         "İlgilenmiyor" / "Meşgul, sonra ara" / "Ulaşılamadı" butonları -
+         tıklanınca kutuyu doldurup formu doğrudan gönderiyor (tek
+         tıkla kaydediliyor).
+      5. **Tarama ilerleme göstergesi.** `scan_progress` tablosu
+         önceden şemada vardı ama HİÇ KULLANILMIYORDU - artık
+         `google-search-scanner` her taramadan sonra "nerede kaldım"
+         bilgisini `POST /scan-progress`'e (yeni,
+         `apps/control/src/routes/scan-progress.ts`,
+         `x-scan-secret` ile korunuyor) bildiriyor. Rapor sayfasında
+         "sektör × şehir turunun %kaçı tarandı" çubuğu olarak gösteriliyor.
+      6. **Günlük özet e-postası.** `apps/control`'e YENİ BİR
+         `scheduled()` handler'ı + cron tetikleyicisi eklendi
+         (`wrangler.toml` `[triggers] crons = ["0 6 * * *"]` - 09:00
+         İstanbul, Türkiye UTC+3 sabit/yaz saati yok). Her gün "Onay
+         bekleyen X, son 24 saatte bulunan Y, bugüne kadar takip
+         tarihi gelen Z" özetini `EMAIL_WORKER`/`ALERT_EMAIL` üzerinden
+         gönderiyor (`apps/control/src/lib/digest.ts`) - sessiz arıza
+         bildirimleriyle AYNI altyapı, ek kimlik bilgisi gerekmedi.
+      7. **Randevu linki ayarı.** Ayarlar sayfasına `meetingLink` alanı
+         eklendi - şablonlarda `{{randevu}}` yer tutucusu, AI'a da
+         context olarak veriliyor ("uygunsa mesaja doğal dahil et").
+         Calendly hesabı YOK - sahibi isterse kendi linkini buraya
+         yapıştırır, sistem sadece yer tutucuyu destekliyor.
+      8. **"Bir daha iletişime geçme" (kara liste).** `candidates.do_not_contact`
+         boolean - popup'ta bir onay kutusu. `true` ise dashboard
+         gönderim linklerini/aksiyonlarını kalıcı olarak gizliyor
+         (`canSend` kontrolüne eklendi), `handleMarkSent` de server
+         tarafında bunu reddediyor (409). **KVKK NOTU:** bu SADECE
+         "bir daha arama" işaretidir - otomatik veri silme/saklama
+         süresi mekanizması BİLİNÇLİ OLARAK yapılmadı (gerçek iş
+         verisini geri dönüşü olmayan şekilde silmek, sahibinin açık
+         onayı olmadan alınacak bir karar değil) - istenirse ayrı bir
+         adım olarak eklenebilir.
+      **Deploy sırası:** `activity_log` tablosu, `candidates.tags`,
+      `candidates.do_not_contact` sütunları olmadan `apps/control`
+      deploy edilirse aday oluşturma/onaylama/not güncelleme gibi HER
+      mutasyon ("no such table"/"no such column") hata verir. Migration
+      MUTLAKA `apps/control` redeploy'undan ÖNCE canlı D1'e uygulanmalı.
+      **KOD GEREKTİRMEYEN AMA DIŞ HESAP/SAHİBİN KARARI GEREKTİREN**
+      (bu oturumda yapılmadı, sırayla): `yahoo-search-scanner`'ı gerçek
+      API'ye bağlamak (API anahtarı/yöntem kararı), "yakında bitecek
+      domain" taraması (WHOIS/domain veri kaynağı seçimi), sosyal
+      dinleme/forum taraması (kaynak seçimi + kazıma yöntemi), AI
+      "neden şimdi" sinyal motoru (Places API review alanı + NVIDIA -
+      teknik olarak mevcut altyapıyla mümkün, ayrı bir oturumda
+      yapılabilir), PDF/görsel teklif (mailto: linkleri DOSYA EKİ
+      DESTEKLEMİYOR - bunun yerine hosted bir "teklif sayfası" linki
+      daha gerçekçi bir yaklaşım), çoklu kullanıcı (Basic Auth'tan
+      gerçek bir auth sistemine geçiş - mimari değişiklik), harita
+      görünümü (TR coğrafi veri seti gerekiyor), basit müşteri
+      portalı (yeni bir public erişim/kimlik modeli), referans/vaka
+      galerisi (sahibinin GERÇEK geçmiş işlerinin içeriği gerekiyor -
+      uydurulamaz), PWA (manifest + service worker, ayrı bir kapsam),
+      sesli arama modülünü gerçek AI'a çevirmek (telefoni + ses AI
+      sağlayıcısı gerekiyor - en büyük, en pahalı kalem).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

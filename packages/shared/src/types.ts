@@ -52,12 +52,25 @@ export interface Candidate {
   evaluationNotes: string | null;
   /** "YYYY-MM-DD" - sahibinin belirlediği tekrar arama/takip tarihi, yoksa null. */
   followUpDate: string | null;
+  /** Sahibinin serbest etiketleri ("sıcak lead" vb.) - need tag'lerden bağımsız. */
+  tags: string[] | null;
+  /** true ise gönderim linkleri/aksiyonları dashboard'da hiç gösterilmez. */
+  doNotContact: boolean;
   proposalDraft: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
   sentAt: string | null;
   lastContactChannel: OutreachChannel | null;
   rawMetadata: Record<string, unknown> | null;
+}
+
+/** Aday zaman çizelgesi girdisi (bkz. packages/db/schema.ts activityLog). */
+export interface ActivityLogEntry {
+  id: string;
+  candidateId: string;
+  action: string;
+  detail: string | null;
+  createdAt: string;
 }
 
 export interface CommunicationLogEntry {

@@ -277,6 +277,18 @@ function shell(opts: {
       });
       updateBulkBar();
     }
+    // Toplu red butonuna basıldığında (formaction="/bulk-reject") onay
+    // iste - toplu onayda böyle bir onay yok çünkü tersi (yanlışlıkla
+    // reddedilen bir adayı geri almak) burada mümkün değil, red'i geri
+    // alma daha maliyetli bir hata.
+    function confirmBulkReject(event) {
+      var submitter = event.submitter;
+      if (submitter && submitter.hasAttribute('data-bulk-reject')) {
+        var count = document.getElementById('bulk-count').textContent;
+        return confirm(count + ' adayı reddetmek istediğine emin misin?');
+      }
+      return true;
+    }
 
     // WhatsApp/e-posta "Gönder" linkleri sayfa render edilirken hazırlanan
     // METNİ taşıyordu - kullanıcı kutuda yazıp "Metni Kaydet"e basmadan
@@ -310,6 +322,60 @@ function shell(opts: {
 
       return true; // varsayılan navigasyona (wa.me/mailto açılışına) izin ver
     }
+
+    // Sunucudan gelen metinleri innerHTML'e yazmadan önce kaçırır -
+    // activity detail'leri arada dış kaynaklı metin (ör. NVIDIA hata
+    // mesajı) taşıyabiliyor.
+    function escHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Aday zaman çizelgesi - popup her açıldığında otomatik çekilmiyor
+    // (gereksiz yük olmasın diye), "Geçmişi Göster" butonuna basınca
+    // bir kere yükleniyor.
+    function loadActivity(id, btn) {
+      var container = document.getElementById('activity-' + id);
+      if (!container.hidden) {
+        container.hidden = true;
+        return;
+      }
+      var original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Yükleniyor...';
+      fetch('/candidates/' + id + '/activity')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var items = (data && data.activity) || [];
+          if (items.length === 0) {
+            container.innerHTML = '<p class="muted">Henüz bir kayıt yok.</p>';
+          } else {
+            container.innerHTML = items.map(function (a) {
+              var when = new Date(a.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              var label = escHtml(ACTIVITY_LABELS[a.action] || a.action);
+              var detail = a.detail ? ' — ' + escHtml(a.detail) : '';
+              return '<div class="activity-item"><span class="activity-when">' + when + '</span><span class="activity-what">' + label + detail + '</span></div>';
+            }).join('');
+          }
+          container.hidden = false;
+        })
+        .catch(function (err) {
+          container.innerHTML = '<p class="muted">Yüklenemedi: ' + err + '</p>';
+          container.hidden = false;
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = original;
+        });
+    }
+    var ACTIVITY_LABELS = {
+      created: 'Bulundu',
+      approved: 'Onaylandı',
+      rejected: 'Reddedildi',
+      notes_updated: 'Not güncellendi',
+      proposal_updated: 'Teklif metni düzenlendi',
+      ai_regenerated: 'AI ile yeniden yazıldı',
+      marked_sent: 'Gönderildi olarak işaretlendi'
+    };
 
     // "AI ile Yeniden Yaz" - popup'ı kapatmadan (sayfa yenilemeden) metni
     // NVIDIA API ile yeniden yazdırır. Başarısız olursa (ör. yanlış
@@ -462,6 +528,7 @@ function candidateCard(c: Candidate, redirectTo: string): string {
   const extra = c.needTags.length - needsPreview.length;
   const pills =
     needsPreview.map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`).join("") +
+    (c.tags ?? []).map((t) => `<span class="pill pill--tag">${escapeHtml(t)}</span>`).join("") +
     (extra > 0 ? `<span class="pill pill--muted">+${extra}</span>` : "");
   const cityLabel = candidateCityLabel(c);
   const tone = STATUS_TONE[c.status] ?? "neutral";
@@ -481,6 +548,7 @@ function candidateCard(c: Candidate, redirectTo: string): string {
         <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
         ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
         <span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span>
+        ${c.doNotContact ? `<span class="status status--bad">🚫 İletişim yok</span>` : ""}
       </div>
       <div class="pills">${pills}</div>
       <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
@@ -518,7 +586,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
   // bir adayın popup'ında bu linkleri göstermek, sahibini onay
   // adımından önce göndermeye teşvik eder - önceden tüm popup'lar tek
   // bileşende birleştirilirken bu kontrol atlanmıştı (bkz. CLAUDE.md).
-  const canSend = c.status !== "pending_approval" && c.status !== "rejected";
+  const canSend = c.status !== "pending_approval" && c.status !== "rejected" && !c.doNotContact;
 
   return `
     <dialog id="dlg-${c.id}" class="detail-dialog">
@@ -551,7 +619,9 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
               ? `<p class="muted">${
                   c.status === "pending_approval"
                     ? "Gönderim linkleri, aday ONAYLANDIKTAN sonra burada görünecek."
-                    : "Bu aday reddedildi - gönderim linkleri gösterilmiyor."
+                    : c.doNotContact
+                      ? "Bu aday \"bir daha iletişime geçme\" olarak işaretlenmiş - gönderim linkleri gösterilmiyor."
+                      : "Bu aday reddedildi - gönderim linkleri gösterilmiyor."
                 }</p>`
               : `${
                   wa
@@ -601,14 +671,33 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         <form method="post" action="/candidates/${c.id}/notes" class="proposal-edit" onclick="event.stopPropagation()">
           <input type="hidden" name="redirect" value="${redirectTo}">
           <div class="proposal-label">Not (ör. "ilgilenmiyor", "ay sonu tekrar ara")</div>
-          <textarea name="evaluationNotes" rows="3" placeholder="Serbest not...">${escapeHtml(c.evaluationNotes ?? "")}</textarea>
+          <div class="quick-actions">
+            ${["İlgilenmiyor", "Meşgul, sonra ara", "Ulaşılamadı"]
+              .map(
+                (preset) =>
+                  `<button type="submit" class="btn--filter btn--quick" onclick="document.getElementById('evalnotes-${c.id}').value=${JSON.stringify(preset)}">${escapeHtml(preset)}</button>`,
+              )
+              .join("")}
+          </div>
+          <textarea name="evaluationNotes" id="evalnotes-${c.id}" rows="3" placeholder="Serbest not...">${escapeHtml(c.evaluationNotes ?? "")}</textarea>
           <div class="proposal-label">Tekrar arama/takip tarihi (opsiyonel)</div>
           <input type="date" name="followUpDate" value="${escapeHtml(c.followUpDate ?? "")}" class="date-input">
+          <div class="proposal-label">Etiketler (virgülle ayır - ör. "sıcak lead, büyük bütçe")</div>
+          <input type="text" name="tags" value="${escapeHtml((c.tags ?? []).join(", "))}" class="settings-input" placeholder="sıcak lead, büyük bütçe...">
+          <label class="toggle toggle--sm">
+            <input type="checkbox" name="doNotContact" value="true" ${c.doNotContact ? "checked" : ""}>
+            <span>🚫 Bir daha iletişime geçme (gönderim linkleri kalıcı olarak gizlenir)</span>
+          </label>
           <div class="proposal-edit-row">
             <button type="submit" class="btn--filter">Notu Kaydet</button>
             ${c.followUpDate ? `<a class="detail-link" href="/takip">Takip listesinde gör →</a>` : ""}
           </div>
         </form>
+
+        <div class="activity-section" onclick="event.stopPropagation()">
+          <button type="button" class="btn--filter" onclick="loadActivity('${c.id}', this)">Geçmişi Göster</button>
+          <div id="activity-${c.id}" class="activity-list" hidden></div>
+        </div>
       </div>
     </dialog>`;
 }
@@ -628,17 +717,20 @@ function candidateListOrEmpty(
 }
 
 /**
- * Toplu onay çubuğu - listede en az bir onay bekleyen aday varsa
+ * Toplu onay/red çubuğu - listede en az bir onay bekleyen aday varsa
  * (bkz. candidateCard'daki .bulk-check kutucukları) görünür hale
  * gelir. JS (updateBulkBar/clearBulkSelection) shell()'de tanımlı.
+ * Tek form, iki farklı "formaction" ile onay/red - aynı seçili id
+ * listesini paylaşıyorlar.
  */
 function bulkActionBar(redirectTo: string): string {
   return `
-    <form id="bulk-approve-form" method="post" action="/bulk-approve" class="bulk-bar" hidden>
+    <form id="bulk-approve-form" method="post" action="/bulk-approve" class="bulk-bar" hidden onsubmit="return confirmBulkReject(event)">
       <input type="hidden" name="redirect" value="${redirectTo}">
       <input type="hidden" name="ids" id="bulk-ids">
       <span><span id="bulk-count">0</span> aday seçildi</span>
       <button type="submit" class="btn btn--approve">✓ Seçilenleri Onayla</button>
+      <button type="submit" formaction="/bulk-reject" class="btn btn--reject" data-bulk-reject>✕ Seçilenleri Reddet</button>
       <button type="button" class="btn--filter" onclick="clearBulkSelection()">Seçimi Temizle</button>
     </form>`;
 }
@@ -1034,6 +1126,20 @@ export interface ReportData {
   byCity: Array<{ citySlug: string | null; cityLabel: string | null; count: number }>;
 }
 
+/** apps/control routes/scan-progress.ts ScanProgressRow ile aynı şekil. */
+export interface ScanProgressRow {
+  trackSlug: string;
+  sourceChannel: string;
+  lastScannedAt: string | null;
+  cursorIndex: number;
+  total: number;
+  percent: number;
+}
+
+const SCAN_PROGRESS_LABELS_TR: Record<string, string> = {
+  google_maps_city_matrix: "Google Haritalar (sektör × şehir turu)",
+};
+
 function barList(rows: Array<{ label: string; count: number }>, max: number): string {
   if (!rows.length) return `<p class="muted">Henüz veri yok.</p>`;
   return rows
@@ -1066,7 +1172,11 @@ function funnelStage(label: string, count: number, total: number, tone: string):
  * tarama sonuçları doğrudan pending_approval olarak kaydediliyor - bkz.
  * apps/control/src/routes/candidates.ts handleScanResults).
  */
-export function renderReportPage(counts: Record<string, number>, report: ReportData): string {
+export function renderReportPage(
+  counts: Record<string, number>,
+  report: ReportData,
+  scanProgress: ScanProgressRow[],
+): string {
   const total = report.byStatus.reduce((sum, r) => sum + r.count, 0);
   const statusCount = (statuses: string[]) =>
     report.byStatus.filter((r) => statuses.includes(r.status)).reduce((sum, r) => sum + r.count, 0);
@@ -1108,6 +1218,23 @@ export function renderReportPage(counts: Record<string, number>, report: ReportD
         )}</div>
       </div>
     </div>
+
+    ${
+      scanProgress.length
+        ? `<h2 class="section-title report-section-spaced">Tarama ilerlemesi</h2>
+           <div class="bar-list">${scanProgress
+             .map(
+               (p) => `
+                 <div class="bar-row">
+                   <span class="bar-label">${escapeHtml(SCAN_PROGRESS_LABELS_TR[p.trackSlug] ?? p.trackSlug)}</span>
+                   <div class="bar-track"><div class="bar-fill" style="width:${p.percent}%"></div></div>
+                   <span class="bar-count">%${p.percent}</span>
+                 </div>`,
+             )
+             .join("")}</div>
+           <p class="muted funnel-note">Son güncelleme: ${scanProgress[0].lastScannedAt ? fmtDate(scanProgress[0].lastScannedAt) : "—"}. Yüzde, ${scanProgress[0].cursorIndex}/${scanProgress[0].total} kombinasyonun tarandığını gösterir (tur bitince baştan başlar).</p>`
+        : ""
+    }
   `;
 
   return shell({
@@ -1130,6 +1257,7 @@ export interface SettingsData {
   aiSystemPrompt: string;
   aiEnabled: boolean;
   aiModel: string;
+  meetingLink: string;
 }
 
 export function renderSettingsPage(
@@ -1182,6 +1310,12 @@ export function renderSettingsPage(
         <label class="proposal-label" for="proposalTemplateWebsiteRedesign">"Web sitesi yenileme" adayları için özel şablon (boşsa genel şablon kullanılır)</label>
         <p class="muted">Sadece <code>website_redesign</code> etiketli (eski/güncel olmayan sitesi olan) adaylarda kullanılır. Aynı yer tutucular geçerli.</p>
         <textarea id="proposalTemplateWebsiteRedesign" name="proposalTemplateWebsiteRedesign" rows="7" class="settings-textarea" placeholder="Boş bırakılırsa genel şablon kullanılır...">${escapeHtml(settings.proposalTemplateWebsiteRedesign)}</textarea>
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="meetingLink">Randevu/toplantı linki (opsiyonel)</label>
+        <p class="muted">Calendly vb. bir link - şablonlarda <code>{{randevu}}</code> yer tutucusuyla kullanılabilir, AI de uygunsa mesaja doğal şekilde dahil eder.</p>
+        <input type="url" id="meetingLink" name="meetingLink" value="${escapeHtml(settings.meetingLink)}" placeholder="https://calendly.com/..." class="settings-input">
       </div>
 
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
@@ -1527,6 +1661,7 @@ const STYLES = `
     border: 1px solid rgba(45,212,191,0.25);
   }
   .pill--muted { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
+  .pill--tag { background: var(--violet-soft); color: var(--violet); border-color: rgba(167,139,250,0.3); }
 
   .contact { font-size: 0.84rem; color: var(--text-muted); margin: 0.5rem 0; }
 
@@ -1628,9 +1763,25 @@ const STYLES = `
   .settings-textarea { resize: vertical; }
   .toggle { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
   .toggle input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
+  .toggle--sm { margin-top: 0.7rem; font-size: 0.81rem; font-weight: 500; color: var(--text-muted); }
+  .toggle--sm input { width: 15px; height: 15px; accent-color: var(--bad); }
+
+  .quick-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+  .btn--quick { font-size: 0.78rem; padding: 0.35rem 0.7rem; }
+
+  .activity-section { margin-top: 1rem; }
+  .activity-list { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; max-height: 220px; overflow-y: auto; }
+  .activity-item {
+    display: flex; flex-direction: column; gap: 0.15rem;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.5rem 0.7rem; font-size: 0.78rem;
+  }
+  .activity-when { color: var(--text-muted); font-size: 0.71rem; }
+  .activity-what { color: var(--text); }
 
   /* Rapor sayfası: huni + çubuk grafikler */
   .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1.75rem; }
+  .report-section-spaced { margin-top: 2.25rem; }
   .report-grid .card-title { margin-bottom: 0.9rem; }
   .bar-list { display: flex; flex-direction: column; gap: 0.55rem; }
   .bar-row { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 0.6rem; font-size: 0.82rem; }

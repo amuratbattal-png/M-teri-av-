@@ -4,6 +4,7 @@ import { SECTORS, PARALLEL_TRACK, type NeedTag } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 import { loadSettings } from "../lib/settings";
+import { logActivity } from "../lib/activity";
 
 /** Slug'dan Türkçe sektör etiketi - apps/dashboard'daki sectorLabel() ile aynı mantık. */
 function sectorLabel(slug: string): string {
@@ -50,6 +51,7 @@ export async function handleApprove(
     .update(candidates)
     .set({ status: "approved", approvedBy: body.approvedBy ?? "unknown", approvedAt: now })
     .where(eq(candidates.id, candidateId));
+  await logActivity(env, candidateId, "approved", body.approvedBy ? `Onaylayan: ${body.approvedBy}` : undefined);
 
   return json({ ok: true, candidateId });
 }
@@ -57,6 +59,7 @@ export async function handleApprove(
 export async function handleReject(env: Env, candidateId: string): Promise<Response> {
   const db = createDb(env.DB);
   await db.update(candidates).set({ status: "rejected" }).where(eq(candidates.id, candidateId));
+  await logActivity(env, candidateId, "rejected");
   return json({ ok: true, candidateId });
 }
 
@@ -90,10 +93,37 @@ export async function handleBulkApprove(request: Request, env: Env): Promise<Res
       .update(candidates)
       .set({ status: "approved", approvedBy: body.approvedBy ?? "unknown", approvedAt: now })
       .where(eq(candidates.id, candidateId));
+    await logActivity(env, candidateId, "approved", "Toplu onay");
     approved.push(candidateId);
   }
 
   return json({ ok: true, approved, skipped });
+}
+
+/** Toplu red - handleBulkApprove'un aynısı, sadece hedef durum "rejected". */
+export async function handleBulkReject(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { candidateIds?: string[] };
+  if (!Array.isArray(body.candidateIds) || body.candidateIds.length === 0) {
+    return json({ error: "invalid body: expected { candidateIds: string[] }" }, 400);
+  }
+
+  const db = createDb(env.DB);
+  const rejected: string[] = [];
+  const skipped: string[] = [];
+
+  for (const candidateId of body.candidateIds) {
+    const rows = await db.select().from(candidates).where(eq(candidates.id, candidateId)).limit(1);
+    const candidate = rows[0];
+    if (!candidate || candidate.status !== "pending_approval") {
+      skipped.push(candidateId);
+      continue;
+    }
+    await db.update(candidates).set({ status: "rejected" }).where(eq(candidates.id, candidateId));
+    await logActivity(env, candidateId, "rejected", "Toplu red");
+    rejected.push(candidateId);
+  }
+
+  return json({ ok: true, rejected, skipped });
 }
 
 /**
@@ -101,10 +131,16 @@ export async function handleBulkApprove(request: Request, env: Env): Promise<Res
  * ara" gibi takip notları için. Şemada zaten vardı (evaluation_notes)
  * ama hiçbir endpoint/arayüz kullanmıyordu, bu onu devreye alıyor.
  *
- * `followUpDate` (opsiyonel, "YYYY-MM-DD") aynı formla birlikte
- * kaydedilir - dashboard'daki Takip sayfası (`/takip`) bunu okuyup
- * "bugün/geçmiş" arananları listeler. Boş string gönderilirse tarih
- * temizlenir (null'a çekilir).
+ * Aynı formla birlikte üç opsiyonel alan daha kaydedilir:
+ * - `followUpDate` ("YYYY-MM-DD") - dashboard'daki Takip sayfası bunu
+ *   okuyup "bugün/geçmiş" arananları listeler.
+ * - `tags` (virgülle ayrılmış serbest metin, ör. "sıcak lead, büyük
+ *   bütçe") - need tag'lerden bağımsız, sahibinin kendi etiketleri.
+ * - `doNotContact` (boolean) - true ise dashboard bu adayda gönderim
+ *   linklerini/aksiyonlarını bir daha hiç göstermez (KVKK/"bir daha
+ *   arama" işareti).
+ * Hepsi opsiyonel - gönderilmeyen alan değiştirilmez, boş string
+ * gönderilen `followUpDate`/`tags` temizlenir (null'a çekilir).
  */
 export async function handleUpdateNotes(
   request: Request,
@@ -114,11 +150,21 @@ export async function handleUpdateNotes(
   const body = (await request.json().catch(() => ({}))) as {
     evaluationNotes?: string;
     followUpDate?: string;
+    tags?: string;
+    doNotContact?: boolean;
   };
   if (typeof body.evaluationNotes !== "string") {
     return json({ error: "invalid body: expected { evaluationNotes: string }" }, 400);
   }
   const db = createDb(env.DB);
+  const tagsArray =
+    body.tags !== undefined
+      ? body.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined;
+
   await db
     .update(candidates)
     .set({
@@ -126,8 +172,17 @@ export async function handleUpdateNotes(
       ...(body.followUpDate !== undefined
         ? { followUpDate: body.followUpDate.trim() === "" ? null : body.followUpDate.trim() }
         : {}),
+      ...(tagsArray !== undefined ? { tags: tagsArray.length > 0 ? tagsArray : null } : {}),
+      ...(typeof body.doNotContact === "boolean" ? { doNotContact: body.doNotContact } : {}),
     })
     .where(eq(candidates.id, candidateId));
+
+  await logActivity(
+    env,
+    candidateId,
+    "notes_updated",
+    body.evaluationNotes ? `Not: "${body.evaluationNotes.slice(0, 200)}"` : "Not temizlendi",
+  );
   return json({ ok: true, candidateId });
 }
 
@@ -146,6 +201,7 @@ export async function handleUpdateProposal(
     .update(candidates)
     .set({ proposalDraft: body.proposalDraft })
     .where(eq(candidates.id, candidateId));
+  await logActivity(env, candidateId, "proposal_updated", "Teklif metni elle düzenlendi");
   return json({ ok: true, candidateId });
 }
 
@@ -175,6 +231,12 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
   );
 
   await db.update(candidates).set({ proposalDraft: proposal.text }).where(eq(candidates.id, candidateId));
+  await logActivity(
+    env,
+    candidateId,
+    "ai_regenerated",
+    proposal.usedAI ? "AI ile yeniden yazıldı" : `Şablona düşüldü: ${proposal.error ?? "bilinmiyor"}`,
+  );
   return json({
     ok: true,
     candidateId,
@@ -216,6 +278,9 @@ export async function handleMarkSent(
       409,
     );
   }
+  if (candidate.doNotContact) {
+    return json({ error: "candidate marked do-not-contact - gönderildi işaretlenemez" }, 409);
+  }
 
   const now = new Date().toISOString();
   await db
@@ -232,6 +297,7 @@ export async function handleMarkSent(
     status: "sent",
     createdAt: now,
   });
+  await logActivity(env, candidateId, "marked_sent", `Kanal: ${body.channel}`);
 
   return json({ ok: true, candidateId });
 }
