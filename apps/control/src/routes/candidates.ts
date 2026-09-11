@@ -130,3 +130,39 @@ export async function handleStats(env: Env): Promise<Response> {
 
   return json({ counts });
 }
+
+/**
+ * "Rapor" sayfası için kırılım verisi - sektör/kanal/durum bazında sayaçlar
+ * (D1'de sqlite JSON içinden GROUP BY yapmak yerine, şehir kırılımı için
+ * rawMetadata'yı da çekip JS tarafında sayıyoruz - veri hacmi henüz küçük).
+ * Etiketleme (Türkçe sektör/kanal adı) dashboard tarafında yapılıyor -
+ * diğer endpoint'lerle aynı konvansiyon.
+ */
+export async function handleReport(env: Env): Promise<Response> {
+  const db = createDb(env.DB);
+  const rows = await db
+    .select({
+      sectorSlug: candidates.sectorSlug,
+      sourceChannel: candidates.sourceChannel,
+      status: candidates.status,
+      rawMetadata: candidates.rawMetadata,
+    })
+    .from(candidates);
+
+  const bySector: Record<string, number> = {};
+  const byChannel: Record<string, number> = {};
+  const byStatus: Record<string, number> = {};
+  const byCity: Record<string, number> = {};
+
+  for (const row of rows) {
+    bySector[row.sectorSlug] = (bySector[row.sectorSlug] ?? 0) + 1;
+    byChannel[row.sourceChannel] = (byChannel[row.sourceChannel] ?? 0) + 1;
+    byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+    const cityLabel = (row.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+    if (typeof cityLabel === "string") {
+      byCity[cityLabel] = (byCity[cityLabel] ?? 0) + 1;
+    }
+  }
+
+  return json({ total: rows.length, bySector, byChannel, byStatus, byCity });
+}

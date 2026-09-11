@@ -121,6 +121,8 @@ const ICONS = {
   star: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 4l2.3 5.1 5.5.6-4.1 3.8 1.1 5.5-4.8-2.8-4.8 2.8 1.1-5.5-4.1-3.8 5.5-.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="1.7"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   xcircle: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  chart: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4M17.7 17.7l-1.4-1.4M7.7 7.7L6.3 6.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
 const TILE_ICON: Record<string, string> = {
@@ -135,8 +137,10 @@ const TILE_ICON: Record<string, string> = {
 
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
+type NavKey = "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar" | "rapor" | "ayarlar";
+
 function shell(opts: {
-  active: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar";
+  active: NavKey;
   pendingCount: number;
   title: string;
   subtitle: string;
@@ -146,7 +150,7 @@ function shell(opts: {
     href: string,
     icon: string,
     label: string,
-    key: "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar",
+    key: NavKey,
     badge?: number,
   ) => `
     <a class="nav-item${opts.active === key ? " nav-item--active" : ""}" href="${href}">
@@ -181,6 +185,8 @@ function shell(opts: {
         ${navItem("/onaylananlar", ICONS.check, "Onaylananlar", "onaylananlar")}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/rapor", ICONS.chart, "Rapor", "rapor")}
+        ${navItem("/ayarlar", ICONS.gear, "Ayarlar", "ayarlar")}
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot"></span> Sistem Aktif
@@ -780,6 +786,144 @@ export function renderSentPage(
   });
 }
 
+// --- Rapor sayfası -----------------------------------------------------
+
+/** control'ün /report endpoint'inden dönen ham sayaçlar. */
+export interface ReportData {
+  total: number;
+  bySector: Record<string, number>;
+  byChannel: Record<string, number>;
+  byStatus: Record<string, number>;
+  byCity: Record<string, number>;
+}
+
+/** Sayaç kaydını büyükten küçüğe sıralı [etiket, sayı] listesine çevirir. */
+function topEntries(
+  counts: Record<string, number>,
+  labelFor: (key: string) => string,
+  limit = 12,
+): Array<[string, number]> {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key, count]) => [labelFor(key), count]);
+}
+
+/** Basit yatay çubuk grafik - en büyük değere göre orantılı genişlik. */
+function breakdownCard(title: string, entries: Array<[string, number]>): string {
+  const max = Math.max(1, ...entries.map(([, count]) => count));
+  const rows = entries.length
+    ? entries
+        .map(
+          ([label, count]) => `
+        <div class="bar-row">
+          <span class="bar-label">${escapeHtml(label)}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${Math.round((count / max) * 100)}%"></span></span>
+          <span class="bar-count">${count}</span>
+        </div>`,
+        )
+        .join("")
+    : `<p class="muted">Henüz veri yok.</p>`;
+  return `
+    <div class="report-card">
+      <h3 class="report-card-title">${escapeHtml(title)}</h3>
+      ${rows}
+    </div>`;
+}
+
+export function renderReportPage(counts: Record<string, number>, report: ReportData): string {
+  const bySector = topEntries(report.bySector, sectorLabel);
+  const byChannel = topEntries(report.byChannel, (slug) => SOURCE_LABELS_TR[slug] ?? slug);
+  const byCity = topEntries(report.byCity, (label) => label, 15);
+  const byStatus = topEntries(report.byStatus, (slug) => STATUS_LABELS_TR[slug] ?? slug, 20);
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Rapor - toplam ${report.total} aday</h2>
+    <div class="report-grid">
+      ${breakdownCard("Duruma göre", byStatus)}
+      ${breakdownCard("Sektöre göre (ilk 12)", bySector)}
+      ${breakdownCard("Kanala göre", byChannel)}
+      ${breakdownCard("Şehre göre (ilk 15)", byCity)}
+    </div>
+  `;
+
+  return shell({
+    active: "rapor",
+    pendingCount: counts.pending_approval ?? 0,
+    title: "Rapor",
+    subtitle: "Sistemin bugüne kadar bulduğu tüm adayların sektör/şehir/kanal/durum kırılımı.",
+    content,
+  });
+}
+
+// --- Ayarlar sayfası -----------------------------------------------------
+
+export interface SettingsData {
+  activeSourceChannels: string[];
+  voiceCallEnabled: boolean;
+  nvidiaModel: string;
+  nvidiaConfigured: boolean;
+  alertEmail: string | null;
+}
+
+export function renderSettingsPage(
+  counts: Record<string, number>,
+  settings: SettingsData,
+  dashboardUsername: string,
+): string {
+  const activeList = settings.activeSourceChannels
+    .map((slug) => `<span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[slug] ?? slug)}</span>`)
+    .join(" ");
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Ayarlar</h2>
+    <p class="muted" style="margin:-0.5rem 0 1.25rem;max-width:60ch">
+      Bu sayfa salt okunur - değerleri değiştirmek için Cloudflare'de
+      <code>wrangler secret put</code> / <code>wrangler.toml</code>
+      kullanılıyor (bkz. proje deposundaki CLAUDE.md).
+    </p>
+    <div class="report-grid">
+      <div class="report-card">
+        <h3 class="report-card-title">Aktif tarama kanalları</h3>
+        <div class="pills">${activeList || '<span class="muted">Hiçbiri aktif değil.</span>'}</div>
+        <p class="contact" style="margin-top:0.75rem">
+          Sesli arama modülü: ${settings.voiceCallEnabled ? "aktif" : "pasif (feature-flag ile kapalı)"}
+        </p>
+      </div>
+      <div class="report-card">
+        <h3 class="report-card-title">Teklif metni (NVIDIA API)</h3>
+        <p class="contact">Model: <strong>${escapeHtml(settings.nvidiaModel)}</strong></p>
+        <p class="contact">
+          Anahtar: ${
+            settings.nvidiaConfigured
+              ? '<span class="status status--ok">Tanımlı</span>'
+              : '<span class="status status--warn">Tanımlı değil - şablon metne düşülüyor</span>'
+          }
+        </p>
+      </div>
+      <div class="report-card">
+        <h3 class="report-card-title">Sistem uyarı e-postası</h3>
+        <p class="contact">${settings.alertEmail ? escapeHtml(settings.alertEmail) : '<span class="muted">Tanımlı değil</span>'}</p>
+      </div>
+      <div class="report-card">
+        <h3 class="report-card-title">Panel erişimi</h3>
+        <p class="contact">Kullanıcı adı: <strong>${escapeHtml(dashboardUsername)}</strong></p>
+        <p class="muted">Basic Auth ile korunuyor - üretimde Cloudflare Access önerilir.</p>
+      </div>
+    </div>
+  `;
+
+  return shell({
+    active: "ayarlar",
+    pendingCount: counts.pending_approval ?? 0,
+    title: "Ayarlar",
+    subtitle: "Sistemin şu anki yapılandırması (salt okunur).",
+    content,
+  });
+}
+
 // --- Stiller ---------------------------------------------------------------
 
 const STYLES = `
@@ -1179,6 +1323,33 @@ const STYLES = `
   tr:hover td { background: var(--surface-2); }
   .muted { color: var(--text-muted); }
 
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .report-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    box-shadow: var(--shadow-md);
+  }
+  .report-card-title { margin: 0 0 0.9rem; font-size: 0.95rem; font-weight: 700; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(60px, 30%) 2.4rem;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.32rem 0;
+    font-size: 0.83rem;
+  }
+  .bar-label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+  .bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .bar-count { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
   @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -1191,5 +1362,6 @@ const STYLES = `
     .main { padding: 1.25rem 1rem 2.5rem; }
     .topbar { flex-direction: column; }
     .cards { grid-template-columns: 1fr; }
+    .report-grid { grid-template-columns: 1fr; }
   }
 `;

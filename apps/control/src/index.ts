@@ -1,7 +1,12 @@
 import { eq } from "drizzle-orm";
 import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
 import type { Env, OutreachJob } from "./env";
-import { handleScanResults, handleListCandidates, handleStats } from "./routes/candidates";
+import {
+  handleScanResults,
+  handleListCandidates,
+  handleStats,
+  handleReport,
+} from "./routes/candidates";
 import {
   handleApprove,
   handleReject,
@@ -13,6 +18,7 @@ import {
 } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
 import { handleAlert } from "./routes/alerts";
+import { handleGetSettings } from "./routes/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -41,6 +47,14 @@ export default {
 
     if (pathname === "/stats" && method === "GET") {
       return handleStats(env);
+    }
+
+    if (pathname === "/report" && method === "GET") {
+      return handleReport(env);
+    }
+
+    if (pathname === "/settings" && method === "GET") {
+      return handleGetSettings(env);
     }
 
     if (pathname === "/communications" && method === "GET") {

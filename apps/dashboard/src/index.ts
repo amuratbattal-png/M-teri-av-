@@ -4,7 +4,11 @@ import {
   renderAllCandidatesPage,
   renderApprovedPage,
   renderSentPage,
+  renderReportPage,
+  renderSettingsPage,
   type CommunicationRow,
+  type ReportData,
+  type SettingsData,
 } from "./render";
 
 export interface Env {
@@ -47,6 +51,16 @@ async function fetchCommunications(env: Env): Promise<CommunicationRow[]> {
   const res = await env.CONTROL_WORKER.fetch("https://internal/communications");
   const { communications } = (await res.json()) as { communications: CommunicationRow[] };
   return communications;
+}
+
+async function fetchReport(env: Env): Promise<ReportData> {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/report");
+  return (await res.json()) as ReportData;
+}
+
+async function fetchSettings(env: Env): Promise<SettingsData> {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/settings");
+  return (await res.json()) as SettingsData;
 }
 
 /**
@@ -114,6 +128,20 @@ export default {
         fetchCommunications(env),
       ]);
       return new Response(renderSentPage(counts, communications, channel, status, q), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/rapor" && request.method === "GET") {
+      const [counts, report] = await Promise.all([fetchStats(env), fetchReport(env)]);
+      return new Response(renderReportPage(counts, report), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/ayarlar" && request.method === "GET") {
+      const [counts, settings] = await Promise.all([fetchStats(env), fetchSettings(env)]);
+      return new Response(renderSettingsPage(counts, settings, env.DASHBOARD_USERNAME), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

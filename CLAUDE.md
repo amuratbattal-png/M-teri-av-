@@ -358,9 +358,51 @@ Neden bu yapı:
       `{ text, usedAI, error }` döndürüyor - NVIDIA çağrısı başarısız
       olursa (yanlış anahtar türü, 401/403 vb.) sebep doğrudan
       dashboard'da bir uyarı olarak gösteriliyor, `wrangler tail`'e
-      bakmaya gerek kalmıyor. NGC "Legacy Key" ile
-      `integrate.api.nvidia.com`'un çalışıp çalışmadığı henüz
-      doğrulanmadı - bu hata mesajı doğrulamak için kullanılacak.
+      bakmaya gerek kalmıyor. **Kök sebep bulundu:** ilk ayarlanan
+      `NVIDIA_API_KEY`, ngc.nvidia.com'daki "Generate Legacy Key" ile
+      üretilmişti - bu, `nvcr.io` (Docker/NGC kayıt defteri) girişi
+      için bir kimlik bilgisi, `integrate.api.nvidia.com` (build.nvidia.com
+      NIM/chat completions) bunu kabul etmiyor. Doğru anahtar
+      build.nvidia.com'dan alınan `nvapi-...` formatındaki anahtar -
+      secret güncellendi (`wrangler secret put NVIDIA_API_KEY`).
+      Buton artık teşhis logları da basıyor (`[regenerateProposal] ...`,
+      Console'da görülebilir). AI çıktısının gerçekten kişiselleştiğini
+      teyit etme adımı, aşağıdaki `follow_up_date` arızası araya
+      girdiği için yarım kaldı - istendiğinde dashboard'da bir aday
+      popup'ında "AI ile Yeniden Yaz"a basıp doğrulanabilir.
+- [x] **Bilinmeyen sebepli D1 şema uyumsuzluğu (`follow_up_date`) -
+      dashboard tamamen çöktü, çözüldü.** Sahibi dashboard'da Error
+      1101 ("Worker threw exception") almaya başladı. `wrangler tail`
+      ile gerçek hata görüldü: `D1_ERROR: no such column:
+      candidates.follow_up_date`. Bu sütun bu repodaki
+      `packages/db/schema.ts`'de HİÇBİR ZAMAN olmadı (git geçmişinde de
+      yok) - yani o an Cloudflare'de çalışan `apps/control` worker'ı,
+      bu repodaki koddan farklı (muhtemelen daha eski ya da başka bir
+      yerel değişiklikle deploy edilmiş) bir sürümdü. `git status`
+      temiz çıktı (yerel fark yoktu), bu yüzden düzeltme sadece
+      `apps/control`'ü bu repodan (temiz `git pull` sonrası)
+      **yeniden deploy etmekti** - bu sorunu çözdü, `wrangler tail`
+      sonraki tüm isteklerin "Ok" döndüğünü doğruladı. Ders: bir worker
+      "tuhaf" bir hata veriyorsa ve repo geçmişinde o hatanın izi
+      yoksa, önce deploy edilen sürümün repoyla senkron olup
+      olmadığından şüphelen.
+- [x] **"Rapor" ve "Ayarlar" sayfaları eklendi.** Sahibi bu iki URL'i
+      (`/rapor`, `/ayarlar`) doğrudan denemiş ve yokluklarını "sayfa
+      çalışmıyor" olarak bildirmişti - önceden hiç yapılmamışlardı.
+      `apps/control`'e iki salt-okunur endpoint eklendi:
+      `GET /report` (`routes/candidates.ts` `handleReport` - sektör/
+      kanal/durum/şehir kırılımı, D1'den tüm adaylar çekilip JS
+      tarafında sayılıyor, veri hacmi küçük olduğu için SQL GROUP BY
+      yerine bu tercih edildi) ve `GET /settings`
+      (`routes/settings.ts` `handleGetSettings` - aktif tarama
+      kanalları, NVIDIA model adı, NVIDIA anahtarının TANIMLI OLUP
+      OLMADIĞI (değeri değil), uyarı e-postası - hiçbir gerçek secret
+      değeri döndürmüyor). Dashboard'a bu verileri basit yatay çubuk
+      grafiklerle (`renderReportPage`) ve salt-okunur bilgi kartlarıyla
+      (`renderSettingsPage`) gösteren iki yeni sayfa + sidebar'a iki
+      yeni nav öğesi eklendi. Ayarlar sayfası düzenleme yapmıyor -
+      değerler hâlâ `wrangler secret put` / `wrangler.toml` üzerinden
+      değiştiriliyor.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
