@@ -267,6 +267,51 @@ function shell(opts: {
         alert('Beklenmeyen bir hata oluştu: ' + err);
       }
     }
+
+    // Ayarlar sayfasındaki "Doğrula" butonları - formda O AN yazılı olan
+    // değeri (kaydetmeden) gerçek sağlayıcıya karşı test eder (bkz.
+    // apps/control/src/lib/verify.ts). Birden fazla alan gerektiren
+    // kontroller için (ör. Google Custom Search: anahtar + cx) formdaki
+    // TÜM field__* değerlerini + NVIDIA alanlarını birlikte gönderiyoruz.
+    function verifySetting(key, btn) {
+      var original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Kontrol ediliyor...';
+
+      var form = btn.closest('form');
+      var fields = {};
+      if (form) {
+        Array.prototype.slice.call(form.querySelectorAll('[name^="field__"]')).forEach(function (el) {
+          if (el.value) fields[el.name.slice('field__'.length)] = el.value;
+        });
+        var nvKey = form.querySelector('#nvidiaApiKey');
+        var nvModel = form.querySelector('#nvidiaModel');
+        if (nvKey && nvKey.value) fields.nvidia_api_key = nvKey.value;
+        if (nvModel && nvModel.value) fields.nvidia_model = nvModel.value;
+      }
+
+      var resultEl = document.getElementById('verify-result-' + key);
+      fetch('/ayarlar/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key: key, fields: fields }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!resultEl) return;
+          resultEl.textContent = data.message || (data.ok ? 'Geçerli.' : 'Geçersiz.');
+          resultEl.className = 'verify-result ' + (data.ok ? 'verify-result--ok' : 'verify-result--bad');
+        })
+        .catch(function (err) {
+          if (!resultEl) return;
+          resultEl.textContent = 'Hata: ' + err;
+          resultEl.className = 'verify-result verify-result--bad';
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = original;
+        });
+    }
   </script>
 </body>
 </html>`;
@@ -869,6 +914,8 @@ export interface CatalogFieldView {
   help?: string;
   configured: boolean;
   value?: string;
+  /** Gerçek bir "Doğrula" kontrolü var mı - bkz. apps/control/src/lib/verify.ts. */
+  verifiable: boolean;
 }
 
 export interface SettingsData {
@@ -900,11 +947,18 @@ function catalogFieldInput(f: CatalogFieldView): string {
       ${helpLine}`;
   }
   if (f.kind === "secret") {
+    const verifyRow = f.verifiable
+      ? `<div class="verify-row">
+          <button type="button" class="detail-link" onclick="event.preventDefault(); verifySetting('${f.key}', this)">Doğrula</button>
+          <span id="verify-result-${f.key}" class="verify-result"></span>
+        </div>`
+      : `<p class="muted">Doğrulama yok - bu kanalın gerçek entegrasyonu henüz yazılmadı.</p>`;
     return `
       <label class="settings-label" for="${name}">${escapeHtml(f.label)}</label>
       <input type="password" id="${name}" name="${name}" autocomplete="off" placeholder="${escapeHtml(f.placeholder ?? "Değiştirmek için gir, boş bırak = değişmesin")}">
       <p class="contact" style="margin:0.3rem 0 0">${statusLine}</p>
-      ${helpLine}`;
+      ${helpLine}
+      ${verifyRow}`;
   }
   return `
     <label class="settings-label" for="${name}">${escapeHtml(f.label)}</label>
@@ -985,6 +1039,10 @@ export function renderSettingsPage(
             autocomplete="off"
           >
           <p class="muted">${keyHint}</p>
+          <div class="verify-row">
+            <button type="button" class="detail-link" onclick="event.preventDefault(); verifySetting('nvidia_api_key', this)">Doğrula</button>
+            <span id="verify-result-nvidia_api_key" class="verify-result"></span>
+          </div>
           ${
             settings.nvidiaApiKeySource === "panel"
               ? `<button type="submit" name="clearNvidiaApiKey" value="1" class="detail-link">Panel anahtarını sil (Cloudflare secret'a dön)</button>`
@@ -1494,6 +1552,11 @@ const STYLES = `
     font-weight: 600;
   }
   .banner--ok { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(34,197,94,0.3); }
+
+  .verify-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; flex-wrap: wrap; }
+  .verify-result { font-size: 0.78rem; }
+  .verify-result--ok { color: var(--ok); }
+  .verify-result--bad { color: var(--bad); }
 
   @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -177,6 +177,19 @@ export default {
       return Response.redirect(url.origin + "/ayarlar?saved=1", 303);
     }
 
+    // Ayarlar sayfasındaki "Doğrula" butonu - JS'ten fetch() ile çağrılır,
+    // formda o an yazılı olan değeri (kaydetmeden) test eder (bkz.
+    // apps/control/src/lib/verify.ts, render.ts verifySetting()).
+    if (url.pathname === "/ayarlar/verify" && request.method === "POST") {
+      const body = await request.text();
+      const res = await env.CONTROL_WORKER.fetch("https://internal/settings/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return new Response(await res.text(), { headers: { "content-type": "application/json" } });
+    }
+
     const approveMatch = url.pathname.match(/^\/approve\/([^/]+)$/);
     if (approveMatch && request.method === "POST") {
       const form = await request.formData();

@@ -22,6 +22,7 @@ import {
   handleGetSettings,
   handlePostSettings,
   handleInternalSettings,
+  handleVerifySetting,
 } from "./routes/settings";
 
 function json(data: unknown, status = 200): Response {
@@ -67,6 +68,10 @@ export default {
 
     if (pathname === "/internal-settings" && method === "GET") {
       return handleInternalSettings(request, env);
+    }
+
+    if (pathname === "/settings/verify" && method === "POST") {
+      return handleVerifySetting(request, env);
     }
 
     if (pathname === "/communications" && method === "GET") {

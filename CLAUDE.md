@@ -473,6 +473,29 @@ Neden bu yapı:
       değil) - "Panelde tanımlı" sadece D1'de bir override olduğu
       anlamına gelir; olmayan alanlarda ilgili worker sessizce kendi
       secret'ına düşer.
+- [x] **Ayarlar sayfasındaki anahtarların yanına "Doğrula" butonu
+      eklendi** ("hepsini ekle, yanlarına doğrulama butonu koy"
+      denildi). Yeni `apps/control/src/lib/verify.ts` - formda O AN
+      yazılı olan değeri (kaydetmeden test edilebiliyor) gerçek
+      sağlayıcıya karşı canlı bir istekle test eder: NVIDIA
+      (`GET /v1/models`), Google Places (`places:searchText` ile 1
+      sonuçluk deneme), Google Custom Search (anahtar+cx ile deneme
+      sorgusu), Resend (`GET /domains`), WhatsApp Business
+      (`GET /{phone_number_id}`). **Bilerek yapılmayan kısım:** Yahoo,
+      LinkedIn, TikTok, Instagram, ticaret sicili, sesli arama
+      sağlayıcısı için doğrulama YOK - bu kanalların gerçek
+      entegrasyon kodu henüz yazılmadı (`scan.ts` dosyaları hâlâ
+      iskelet), test edilecek gerçek bir endpoint yok; uydurma bir
+      "doğru/yanlış" göstermek yanıltıcı olurdu. O worker'lar gerçek
+      bir kaynağa bağlanınca doğrulaması da eklenecek
+      (`lib/verify.ts`'e birkaç satır). Yeni `POST /settings/verify`
+      endpoint'i (auth yok - `/ayarlar/verify` üzerinden sadece
+      dashboard'dan, Basic Auth arkasından çağrılıyor). Panelde
+      doğrulanabilir her `secret` alanın altında bir "Doğrula" butonu
+      + sonuç metni var (`renderSettingsPage` `catalogFieldInput`,
+      JS: `verifySetting()`); doğrulaması olmayanlarda "Doğrulama
+      yok - bu kanalın gerçek entegrasyonu henüz yazılmadı" notu
+      gösteriliyor.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

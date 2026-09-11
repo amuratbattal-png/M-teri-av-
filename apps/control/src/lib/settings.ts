@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { createDb, settings as settingsTable } from "@musteri-avcisi/db";
 import type { Env } from "../env";
 import { SETTINGS_CATALOG, type SettingFieldDef } from "./settings-catalog";
+import { isVerifiable } from "./verify";
 
 /**
  * Ayarlar sayfasından düzenlenebilen değerler. D1'deki `settings`
@@ -157,6 +158,8 @@ export interface CatalogFieldView {
    * için - bu alanlar zaten gizli değil). `secret` alanlarda hep undefined.
    */
   value?: string;
+  /** Gerçek bir "Doğrula" kontrolü var mı - bkz. lib/verify.ts. */
+  verifiable: boolean;
 }
 
 /**
@@ -179,6 +182,7 @@ export async function getCatalogView(env: Env): Promise<CatalogFieldView[]> {
       help: field.help,
       configured: Boolean(raw),
       value: field.kind === "secret" ? undefined : raw,
+      verifiable: isVerifiable(field.key),
     };
   });
 }

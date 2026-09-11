@@ -8,6 +8,7 @@ import {
   updateCatalogFields,
   readSettingsMap,
 } from "../lib/settings";
+import { runVerifier } from "../lib/verify";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -76,6 +77,25 @@ export async function handlePostSettings(request: Request, env: Env): Promise<Re
   }
 
   return json({ ok: true });
+}
+
+/**
+ * Ayarlar sayfasındaki "Doğrula" butonu - formda O AN yazılı olan değeri
+ * (kaydedilmiş olması gerekmiyor) gerçek sağlayıcıya karşı test eder.
+ * Sadece gerçekten yazılmış entegrasyonlar için anlamlı bir sonuç döner
+ * (bkz. lib/verify.ts) - diğerlerinde "bu kanalın entegrasyonu henüz
+ * yazılmadı" mesajı döner, sahte bir "doğru/yanlış" uydurmaz.
+ */
+export async function handleVerifySetting(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    key?: string;
+    fields?: Record<string, string>;
+  };
+  if (!body.key) {
+    return json({ ok: false, message: "Eksik istek: key gerekli." }, 400);
+  }
+  const result = await runVerifier(body.key, body.fields ?? {});
+  return json(result);
 }
 
 /**
