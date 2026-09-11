@@ -20,6 +20,10 @@ export async function handleUpdateSettings(request: Request, env: Env): Promise<
   const patch: Partial<AppSettings> = {};
 
   if (typeof body.proposalTemplate === "string") patch.proposalTemplate = body.proposalTemplate;
+  if (typeof body.proposalTemplateWebsiteNew === "string")
+    patch.proposalTemplateWebsiteNew = body.proposalTemplateWebsiteNew;
+  if (typeof body.proposalTemplateWebsiteRedesign === "string")
+    patch.proposalTemplateWebsiteRedesign = body.proposalTemplateWebsiteRedesign;
   if (typeof body.aiSystemPrompt === "string") patch.aiSystemPrompt = body.aiSystemPrompt;
   if (typeof body.aiEnabled === "boolean") patch.aiEnabled = body.aiEnabled;
   if (typeof body.aiModel === "string") patch.aiModel = body.aiModel;

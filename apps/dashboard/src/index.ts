@@ -252,6 +252,8 @@ export default {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           proposalTemplate: String(form.get("proposalTemplate") ?? ""),
+          proposalTemplateWebsiteNew: String(form.get("proposalTemplateWebsiteNew") ?? ""),
+          proposalTemplateWebsiteRedesign: String(form.get("proposalTemplateWebsiteRedesign") ?? ""),
           aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
           aiEnabled: form.get("aiEnabled") === "true",
           aiModel: String(form.get("aiModel") ?? ""),

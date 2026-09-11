@@ -530,6 +530,19 @@ Neden bu yapı:
       `settings` tablosu) yansıtacak şekilde baştan yazıldı - önceden
       hâlâ eski otomatik kuyruk tabanlı gönderim akışını "canlı mimari"
       olarak anlatıyordu.
+- [x] **Ayarlar sayfasına ihtiyaç türü bazlı ayrı şablonlar eklendi.**
+      Sahibi "yeni web sitesi için metin düzeltmesi var ama web sitesi
+      yenileme kısmında düzelmiyor" diye bildirdi - sebebi, Ayarlar
+      sayfasında TEK bir genel şablon olması, "yeni site" ve "site
+      yenileme" için ayrı düzenlenebilir bir yer hiç olmamasıydı.
+      **Düzeltme:** `AppSettings`'e `proposalTemplateWebsiteNew` ve
+      `proposalTemplateWebsiteRedesign` eklendi (`apps/control/src/lib/settings.ts`)
+      - `templateProposal()` artık adayın ihtiyaç etiketine göre önce
+      bu ikisinden uygun olanı arıyor, boşsa genel `proposalTemplate`'e
+      düşüyor (`apps/control/src/lib/proposal.ts`). Ayarlar sayfasında
+      artık 3 ayrı şablon kutusu var: Genel, "Yeni web sitesi", "Web
+      sitesi yenileme". `settings` tablosu zaten key/value olduğu için
+      YENİ MİGRATION GEREKMİYOR - sadece kod deploy'u yeterli.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

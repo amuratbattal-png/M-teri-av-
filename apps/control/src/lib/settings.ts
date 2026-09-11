@@ -10,10 +10,22 @@ import type { Env } from "../env";
  */
 export interface AppSettings {
   /**
-   * AI (NVIDIA) kullanılamadığında/kapalıyken kullanılan şablon teklif
-   * metni. `{{isim}}` ve `{{ihtiyac}}` yer tutucularını destekler.
+   * AI (NVIDIA) kullanılamadığında/kapalıyken kullanılan GENEL/varsayılan
+   * şablon teklif metni - `proposalTemplateWebsiteNew`/
+   * `proposalTemplateWebsiteRedesign` boşsa (ya da adayın ihtiyaç türü
+   * bu ikisinden biri değilse) buna düşülür. `{{isim}}` ve `{{ihtiyac}}`
+   * yer tutucularını destekler.
    */
   proposalTemplate: string;
+  /**
+   * `website_new` (Yeni web sitesi) etiketli adaylara özel şablon - boş
+   * bırakılırsa `proposalTemplate` kullanılır. Aynı yer tutucular
+   * geçerli. Önceden TEK bir genel şablon vardı, "yeni site" ve "site
+   * yenileme" ayrı ayrı düzenlenemiyordu - bu ikisi o yüzden eklendi.
+   */
+  proposalTemplateWebsiteNew: string;
+  /** `website_redesign` (Web sitesi yenileme) etiketli adaylara özel şablon - boşsa `proposalTemplate` kullanılır. */
+  proposalTemplateWebsiteRedesign: string;
   /** NVIDIA'ya gönderilen sistem promptu - teklif metninin üslubunu belirler. */
   aiSystemPrompt: string;
   /** false ise NVIDIA_API_KEY tanımlı olsa bile hiç çağrılmaz, doğrudan şablona düşülür. */
@@ -42,6 +54,8 @@ export const DEFAULT_AI_SYSTEM_PROMPT =
 
 export const DEFAULT_SETTINGS: AppSettings = {
   proposalTemplate: DEFAULT_PROPOSAL_TEMPLATE,
+  proposalTemplateWebsiteNew: "",
+  proposalTemplateWebsiteRedesign: "",
   aiSystemPrompt: DEFAULT_AI_SYSTEM_PROMPT,
   aiEnabled: true,
   aiModel: "",
@@ -50,6 +64,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /** DB satırlarındaki key isimleri - dashboard formu da bunları kullanır. */
 const KEYS: Record<keyof AppSettings, string> = {
   proposalTemplate: "proposal_template",
+  proposalTemplateWebsiteNew: "proposal_template_website_new",
+  proposalTemplateWebsiteRedesign: "proposal_template_website_redesign",
   aiSystemPrompt: "ai_system_prompt",
   aiEnabled: "ai_enabled",
   aiModel: "ai_model",
@@ -63,6 +79,10 @@ export async function loadSettings(env: Env): Promise<AppSettings> {
 
   return {
     proposalTemplate: map.get(KEYS.proposalTemplate) ?? DEFAULT_SETTINGS.proposalTemplate,
+    proposalTemplateWebsiteNew:
+      map.get(KEYS.proposalTemplateWebsiteNew) ?? DEFAULT_SETTINGS.proposalTemplateWebsiteNew,
+    proposalTemplateWebsiteRedesign:
+      map.get(KEYS.proposalTemplateWebsiteRedesign) ?? DEFAULT_SETTINGS.proposalTemplateWebsiteRedesign,
     aiSystemPrompt: map.get(KEYS.aiSystemPrompt) ?? DEFAULT_SETTINGS.aiSystemPrompt,
     aiEnabled: map.has(KEYS.aiEnabled) ? map.get(KEYS.aiEnabled) === "true" : DEFAULT_SETTINGS.aiEnabled,
     aiModel: map.get(KEYS.aiModel) ?? DEFAULT_SETTINGS.aiModel,
@@ -76,6 +96,10 @@ export async function updateSettings(env: Env, patch: Partial<AppSettings>): Pro
 
   const entries: Array<[string, string]> = [];
   if (patch.proposalTemplate !== undefined) entries.push([KEYS.proposalTemplate, patch.proposalTemplate]);
+  if (patch.proposalTemplateWebsiteNew !== undefined)
+    entries.push([KEYS.proposalTemplateWebsiteNew, patch.proposalTemplateWebsiteNew]);
+  if (patch.proposalTemplateWebsiteRedesign !== undefined)
+    entries.push([KEYS.proposalTemplateWebsiteRedesign, patch.proposalTemplateWebsiteRedesign]);
   if (patch.aiSystemPrompt !== undefined) entries.push([KEYS.aiSystemPrompt, patch.aiSystemPrompt]);
   if (patch.aiEnabled !== undefined) entries.push([KEYS.aiEnabled, String(patch.aiEnabled)]);
   if (patch.aiModel !== undefined) entries.push([KEYS.aiModel, patch.aiModel]);

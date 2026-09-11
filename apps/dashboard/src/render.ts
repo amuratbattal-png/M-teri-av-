@@ -873,6 +873,8 @@ export function renderSentPage(
 /** apps/control'deki AppSettings ile aynı şekil (bkz. apps/control/src/lib/settings.ts) - iki uygulama ayrı worker olduğu için burada tekrar tanımlanıyor. */
 export interface SettingsData {
   proposalTemplate: string;
+  proposalTemplateWebsiteNew: string;
+  proposalTemplateWebsiteRedesign: string;
   aiSystemPrompt: string;
   aiEnabled: boolean;
   aiModel: string;
@@ -913,9 +915,21 @@ export function renderSettingsPage(
       </div>
 
       <div class="settings-card">
-        <label class="proposal-label" for="proposalTemplate">Şablon teklif metni (AI kapalıyken ya da başarısız olduğunda kullanılır)</label>
+        <label class="proposal-label" for="proposalTemplate">Genel şablon teklif metni (AI kapalıyken/başarısız olduğunda VE aşağıdaki özel şablonlardan biri boşken kullanılır)</label>
         <p class="muted">Yer tutucular: <code>{{isim}}</code> (aday/firma adı), <code>{{ihtiyac}}</code> (tespit edilen ihtiyaç(lar)).</p>
         <textarea id="proposalTemplate" name="proposalTemplate" rows="7" class="settings-textarea">${escapeHtml(settings.proposalTemplate)}</textarea>
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="proposalTemplateWebsiteNew">"Yeni web sitesi" adayları için özel şablon (boşsa genel şablon kullanılır)</label>
+        <p class="muted">Sadece <code>website_new</code> etiketli (hiç web sitesi olmayan) adaylarda kullanılır. Aynı yer tutucular geçerli.</p>
+        <textarea id="proposalTemplateWebsiteNew" name="proposalTemplateWebsiteNew" rows="7" class="settings-textarea" placeholder="Boş bırakılırsa genel şablon kullanılır...">${escapeHtml(settings.proposalTemplateWebsiteNew)}</textarea>
+      </div>
+
+      <div class="settings-card">
+        <label class="proposal-label" for="proposalTemplateWebsiteRedesign">"Web sitesi yenileme" adayları için özel şablon (boşsa genel şablon kullanılır)</label>
+        <p class="muted">Sadece <code>website_redesign</code> etiketli (eski/güncel olmayan sitesi olan) adaylarda kullanılır. Aynı yer tutucular geçerli.</p>
+        <textarea id="proposalTemplateWebsiteRedesign" name="proposalTemplateWebsiteRedesign" rows="7" class="settings-textarea" placeholder="Boş bırakılırsa genel şablon kullanılır...">${escapeHtml(settings.proposalTemplateWebsiteRedesign)}</textarea>
       </div>
 
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>

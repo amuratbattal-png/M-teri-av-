@@ -28,15 +28,31 @@ const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
  * Şablon tabanlı bir taslak - NVIDIA_API_KEY tanımlı değilse, AI
  * ayarlardan kapatılmışsa ya da API çağrısı başarısız olursa buna
  * düşülür. Sistem hiçbir zaman "boş" bir teklif göndermez, en kötü
- * ihtimalle bu şablon kullanılır. Şablon metni artık sabit kod değil,
- * ayarlar sayfasından (`AppSettings.proposalTemplate`) düzenlenebiliyor -
- * `{{isim}}` ve `{{ihtiyac}}` yer tutucularını destekler.
+ * ihtimalle bu şablon kullanılır.
+ *
+ * Adayın ihtiyaç türüne göre AYRI bir şablon seçer: `website_new`
+ * (Yeni web sitesi) için `proposalTemplateWebsiteNew`, `website_redesign`
+ * (Web sitesi yenileme) için `proposalTemplateWebsiteRedesign` - ikisi de
+ * boşsa (ya da aday bu iki etiketten birini taşımıyorsa) genel
+ * `proposalTemplate`'e düşülür. Önceden TEK bir genel şablon vardı, "yeni
+ * site" ve "site yenileme" metinleri ayrı ayrı düzenlenemiyordu.
+ * Hepsi `{{isim}}`/`{{ihtiyac}}` yer tutucularını destekler, hepsi
+ * ayarlar sayfasından düzenlenebiliyor.
  */
 function templateProposal(ctx: ProposalContext, settings: AppSettings): string {
   const services = ctx.needTags.map((tag) => NEED_TAG_LABELS_TR[tag] ?? tag).join(", ");
-  return settings.proposalTemplate
-    .replaceAll("{{isim}}", ctx.candidateName)
-    .replaceAll("{{ihtiyac}}", services);
+
+  let template = settings.proposalTemplate;
+  if (ctx.needTags.includes("website_new") && settings.proposalTemplateWebsiteNew.trim()) {
+    template = settings.proposalTemplateWebsiteNew;
+  } else if (
+    ctx.needTags.includes("website_redesign") &&
+    settings.proposalTemplateWebsiteRedesign.trim()
+  ) {
+    template = settings.proposalTemplateWebsiteRedesign;
+  }
+
+  return template.replaceAll("{{isim}}", ctx.candidateName).replaceAll("{{ihtiyac}}", services);
 }
 
 /**
