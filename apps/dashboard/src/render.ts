@@ -435,10 +435,14 @@ function candidateCard(c: Candidate, redirectTo: string): string {
 
 /**
  * TEK, sistem genelinde ortak aday detay popup'ı (native &lt;dialog&gt;).
- * Her yerde aynı içerik: bilgiler, düzenlenebilir teklif metni,
- * WhatsApp (wa.me) / e-posta (mailto:) gönderim linkleri. Sadece en
- * alttaki aksiyon bloğu duruma göre değişir - onay bekliyorsa
- * Onayla/Reddet, değilse yok (gönderim zaten yukarıdaki linklerle).
+ * Her yerde aynı içerik: bilgiler, düzenlenebilir teklif metni. İki
+ * blok duruma göre değişir:
+ * - Gönderim linkleri (WhatsApp/e-posta) SADECE onaylanmış (ya da
+ *   sent/responded/converted) adaylarda gösterilir - bkz. `canSend`.
+ *   Onay bekleyen/reddedilmiş bir adayda gösterilmez ("onay
+ *   mekanizması zorunlu" kuralı, bkz. CLAUDE.md).
+ * - En alttaki Onayla/Reddet butonları sadece `pending_approval`
+ *   durumundayken gösterilir.
  */
 function candidateDetailDialog(c: Candidate, redirectTo: string): string {
   const pills = c.needTags
@@ -449,6 +453,13 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
   const proposalText = c.proposalDraft ?? "";
   const wa = waLink(c, proposalText);
   const mail = mailtoLink(c, proposalText);
+  // "Onay mekanizması zorunlu" kuralı: gönderim linkleri/"gönderildi
+  // işaretle" SADECE onaylanmış (ya da ötesindeki: sent/responded/
+  // converted) adaylarda gösterilir. Onay bekleyen ya da reddedilmiş
+  // bir adayın popup'ında bu linkleri göstermek, sahibini onay
+  // adımından önce göndermeye teşvik eder - önceden tüm popup'lar tek
+  // bileşende birleştirilirken bu kontrol atlanmıştı (bkz. CLAUDE.md).
+  const canSend = c.status !== "pending_approval" && c.status !== "rejected";
 
   return `
     <dialog id="dlg-${c.id}" class="detail-dialog">
@@ -477,31 +488,39 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
 
         <div class="send-actions" onclick="event.stopPropagation()">
           ${
-            wa
-              ? `<a id="wa-link-${c.id}" class="btn btn--approve" href="${wa}" target="_blank" rel="noopener" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.chat} WhatsApp'ta Gönder</a>
-                 <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
-                   <input type="hidden" name="channel" value="whatsapp">
-                   <input type="hidden" name="redirect" value="${redirectTo}">
-                   <button type="submit" class="detail-link">WhatsApp'tan gönderildi olarak işaretle</button>
-                 </form>`
-              : ""
+            !canSend
+              ? `<p class="muted">${
+                  c.status === "pending_approval"
+                    ? "Gönderim linkleri, aday ONAYLANDIKTAN sonra burada görünecek."
+                    : "Bu aday reddedildi - gönderim linkleri gösterilmiyor."
+                }</p>`
+              : `${
+                  wa
+                    ? `<a id="wa-link-${c.id}" class="btn btn--approve" href="${wa}" target="_blank" rel="noopener" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.chat} WhatsApp'ta Gönder</a>
+                       <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('WhatsApp üzerinden gönderdiğini onaylıyor musun?')">
+                         <input type="hidden" name="channel" value="whatsapp">
+                         <input type="hidden" name="redirect" value="${redirectTo}">
+                         <button type="submit" class="detail-link">WhatsApp'tan gönderildi olarak işaretle</button>
+                       </form>`
+                    : ""
+                }
+                ${
+                  mail
+                    ? `<a id="mail-link-${c.id}" class="btn btn--approve" href="${mail}" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.send} E-posta ile Gönder</a>
+                       <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
+                         <input type="hidden" name="channel" value="email">
+                         <input type="hidden" name="redirect" value="${redirectTo}">
+                         <button type="submit" class="detail-link">E-posta ile gönderildi olarak işaretle</button>
+                       </form>`
+                    : ""
+                }
+                ${
+                  !wa && !mail
+                    ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
+                    : ""
+                }
+                ${wa || mail ? `<p class="muted send-hint">Gönder'e bastığında kutudaki GÜNCEL metin kullanılır ve otomatik kaydedilir.</p>` : ""}`
           }
-          ${
-            mail
-              ? `<a id="mail-link-${c.id}" class="btn btn--approve" href="${mail}" onclick="return prepareSendLink(event, '${c.id}')">${ICONS.send} E-posta ile Gönder</a>
-                 <form method="post" action="/candidates/${c.id}/mark-sent" onsubmit="return confirm('E-posta gönderdiğini onaylıyor musun?')">
-                   <input type="hidden" name="channel" value="email">
-                   <input type="hidden" name="redirect" value="${redirectTo}">
-                   <button type="submit" class="detail-link">E-posta ile gönderildi olarak işaretle</button>
-                 </form>`
-              : ""
-          }
-          ${
-            !wa && !mail
-              ? `<p class="muted">İletişim bilgisi yok - WhatsApp/e-posta linki oluşturulamadı.</p>`
-              : ""
-          }
-          ${wa || mail ? `<p class="muted send-hint">Gönder'e bastığında kutudaki GÜNCEL metin kullanılır ve otomatik kaydedilir.</p>` : ""}
         </div>
 
         ${

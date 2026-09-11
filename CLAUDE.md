@@ -499,6 +499,37 @@ Neden bu yapı:
       MUTLAKA `apps/control` redeploy'undan ÖNCE canlı D1'e uygulanmalı
       - adımlar `docs/deployment.md`'nin "Mevcut (canlı) kuruluma yeni
       migration uygulama" bölümünde.
+      **Güncelleme:** migration 2026-09-11'de canlı D1'e uygulandı
+      (`wrangler` 3.x'te D1 remote execute `Authentication error [code:
+      10000]` verdi - `npx wrangler@4` ile çözüldü, bilinen bir 3.x D1
+      import hatası; projenin kendi wrangler sürümü hâlâ `^3.90.0`,
+      sadece bu tek komut için `wrangler@4` kullanıldı). `apps/control`
+      + `CONTROL_SHARED_SECRET` de aynı gün deploy edildi ve doğrulandı.
+- [x] **Onay mekanizmasında gerçek bir boşluk bulundu ve kapatıldı:
+      onay bekleyen/reddedilmiş adaylarda gönderim linkleri
+      görünüyordu.** Tüm aday popup'ları tek bileşende birleştirilirken
+      (`candidateDetailDialog`) WhatsApp/e-posta gönderim linkleri ve
+      "...olarak işaretle" butonları `c.status`'a hiç bakmadan
+      gösteriliyordu - yani Onaylar sayfasındaki (henüz onaylanmamış)
+      ya da reddedilmiş bir adayın popup'ında da bu linkler görünüyor,
+      sahibi hiç onaylamadan/onay adımını atlayarak gönderebiliyordu.
+      Bu, "onay mekanizması zorunlu" kuralının fiilen delinmesiydi.
+      **Düzeltme, iki katmanda:**
+      1. `apps/dashboard/src/render.ts`: yeni `canSend` kontrolü
+         (`c.status !== "pending_approval" && c.status !== "rejected"`)
+         - gönderim linkleri artık SADECE onaylanmış (veya
+         sent/responded/converted) adaylarda gösteriliyor; onay
+         bekleyen/reddedilmiş adayda bunun yerine açıklayıcı bir not
+         var.
+      2. `apps/control/src/routes/approvals.ts` `handleMarkSent`: arayüz
+         atlanıp doğrudan API'ye istek atılsa bile, aday
+         `pending_approval`/`rejected` durumundaysa artık 409 ile
+         reddediyor - server tarafında ikinci savunma katmanı.
+      `docs/architecture.md` da bu iki katmanı ve GÜNCEL veri akışını
+      (manuel wa.me/mailto gönderimi, `CONTROL_SHARED_SECRET`,
+      `settings` tablosu) yansıtacak şekilde baştan yazıldı - önceden
+      hâlâ eski otomatik kuyruk tabanlı gönderim akışını "canlı mimari"
+      olarak anlatıyordu.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

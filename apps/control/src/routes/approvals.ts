@@ -192,6 +192,18 @@ export async function handleMarkSent(
   const candidate = rows[0];
   if (!candidate) return json({ error: "candidate not found" }, 404);
 
+  // "Onay mekanizması zorunlu" kuralı: bir aday ONAYLANMADAN (ya da
+  // reddedildiyse) "gönderildi" olarak işaretlenemez - dashboard'daki
+  // gönderim linkleri artık bu durumlar için hiç gösterilmiyor (bkz.
+  // render.ts candidateDetailDialog), ama biri doğrudan bu uç noktaya
+  // istek atarsa diye ikinci bir savunma katmanı.
+  if (candidate.status === "pending_approval" || candidate.status === "rejected") {
+    return json(
+      { error: `candidate not approved yet (status=${candidate.status}) - onaylanmadan gönderildi işaretlenemez` },
+      409,
+    );
+  }
+
   const now = new Date().toISOString();
   await db
     .update(candidates)
