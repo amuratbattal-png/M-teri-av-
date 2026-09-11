@@ -863,63 +863,108 @@ export interface SettingsData {
   activeSourceChannels: string[];
   voiceCallEnabled: boolean;
   nvidiaModel: string;
-  nvidiaConfigured: boolean;
+  nvidiaApiKeyConfigured: boolean;
+  nvidiaApiKeySource: "panel" | "secret" | "none";
   alertEmail: string | null;
+  proposalTemplate: string;
+  aiSystemPrompt: string;
 }
 
+/**
+ * Ayarlar sayfası artık düzenlenebilir (bkz. apps/control/src/routes/settings.ts
+ * POST /settings) - NVIDIA API anahtarı, model adı, uyarı e-postası,
+ * teklif şablonu ve AI'a verilen sistem talimatı buradan değiştirilebilir.
+ *
+ * GÜVENLİK NOTU (formda da gösteriliyor): NVIDIA API anahtarını buradan
+ * kaydetmek onu D1'de düz metin olarak saklar - `wrangler secret put`
+ * kadar korumalı değil. Bilinçli bir tercih (panelden değiştirebilme
+ * kolaylığı için).
+ */
 export function renderSettingsPage(
   counts: Record<string, number>,
   settings: SettingsData,
   dashboardUsername: string,
+  saved?: boolean,
 ): string {
   const activeList = settings.activeSourceChannels
     .map((slug) => `<span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[slug] ?? slug)}</span>`)
     .join(" ");
 
+  const keyHint = settings.nvidiaApiKeyConfigured
+    ? settings.nvidiaApiKeySource === "panel"
+      ? "Şu an panelden kaydedilmiş bir anahtar kullanılıyor."
+      : "Şu an Cloudflare secret'ı (wrangler secret put) kullanılıyor."
+    : "Tanımlı değil - AI kullanılamıyor, şablon metne düşülüyor.";
+
   const content = `
+    ${saved ? `<div class="banner banner--ok">Ayarlar kaydedildi.</div>` : ""}
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Ayarlar</h2>
-    <p class="muted" style="margin:-0.5rem 0 1.25rem;max-width:60ch">
-      Bu sayfa salt okunur - değerleri değiştirmek için Cloudflare'de
-      <code>wrangler secret put</code> / <code>wrangler.toml</code>
-      kullanılıyor (bkz. proje deposundaki CLAUDE.md).
-    </p>
-    <div class="report-grid">
-      <div class="report-card">
-        <h3 class="report-card-title">Aktif tarama kanalları</h3>
-        <div class="pills">${activeList || '<span class="muted">Hiçbiri aktif değil.</span>'}</div>
-        <p class="contact" style="margin-top:0.75rem">
-          Sesli arama modülü: ${settings.voiceCallEnabled ? "aktif" : "pasif (feature-flag ile kapalı)"}
-        </p>
-      </div>
-      <div class="report-card">
-        <h3 class="report-card-title">Teklif metni (NVIDIA API)</h3>
-        <p class="contact">Model: <strong>${escapeHtml(settings.nvidiaModel)}</strong></p>
-        <p class="contact">
-          Anahtar: ${
-            settings.nvidiaConfigured
-              ? '<span class="status status--ok">Tanımlı</span>'
-              : '<span class="status status--warn">Tanımlı değil - şablon metne düşülüyor</span>'
+
+    <form method="post" action="/ayarlar" class="settings-form">
+      <div class="report-grid">
+        <div class="report-card">
+          <h3 class="report-card-title">Aktif tarama kanalları</h3>
+          <div class="pills">${activeList || '<span class="muted">Hiçbiri aktif değil.</span>'}</div>
+          <p class="contact" style="margin-top:0.75rem">
+            Sesli arama modülü: ${settings.voiceCallEnabled ? "aktif" : "pasif (feature-flag ile kapalı)"}
+          </p>
+          <p class="muted">Kanal listesi kodda tanımlı, buradan değiştirilemiyor.</p>
+        </div>
+
+        <div class="report-card">
+          <h3 class="report-card-title">NVIDIA API (teklif kişiselleştirme)</h3>
+          <label class="settings-label" for="nvidiaModel">Model</label>
+          <input type="text" id="nvidiaModel" name="nvidiaModel" value="${escapeHtml(settings.nvidiaModel)}">
+          <label class="settings-label" for="nvidiaApiKey">API anahtarı</label>
+          <input
+            type="password"
+            id="nvidiaApiKey"
+            name="nvidiaApiKey"
+            placeholder="Değiştirmek için nvapi-... gir, boş bırak = değişmesin"
+            autocomplete="off"
+          >
+          <p class="muted">${keyHint}</p>
+          ${
+            settings.nvidiaApiKeySource === "panel"
+              ? `<button type="submit" name="clearNvidiaApiKey" value="1" class="detail-link">Panel anahtarını sil (Cloudflare secret'a dön)</button>`
+              : ""
           }
-        </p>
+        </div>
+
+        <div class="report-card">
+          <h3 class="report-card-title">Sistem uyarı e-postası</h3>
+          <label class="settings-label" for="alertEmail">Adres</label>
+          <input type="email" id="alertEmail" name="alertEmail" value="${escapeHtml(settings.alertEmail ?? "")}" placeholder="ornek@ajansim.net">
+        </div>
+
+        <div class="report-card">
+          <h3 class="report-card-title">Panel erişimi</h3>
+          <p class="contact">Kullanıcı adı: <strong>${escapeHtml(dashboardUsername)}</strong></p>
+          <p class="muted">Basic Auth ile korunuyor - üretimde Cloudflare Access önerilir. Şifre burada değiştirilemiyor.</p>
+        </div>
+
+        <div class="report-card" style="grid-column: 1 / -1">
+          <h3 class="report-card-title">Teklif şablonu (AI kullanılamadığında)</h3>
+          <p class="muted">Kullanılabilir alanlar: <code>{{isim}}</code>, <code>{{ihtiyac}}</code>, <code>{{sektor}}</code>, <code>{{sehir}}</code></p>
+          <textarea name="proposalTemplate" rows="6">${escapeHtml(settings.proposalTemplate)}</textarea>
+        </div>
+
+        <div class="report-card" style="grid-column: 1 / -1">
+          <h3 class="report-card-title">AI'a verilen yazım talimatı (sistem promptu)</h3>
+          <textarea name="aiSystemPrompt" rows="6">${escapeHtml(settings.aiSystemPrompt)}</textarea>
+        </div>
       </div>
-      <div class="report-card">
-        <h3 class="report-card-title">Sistem uyarı e-postası</h3>
-        <p class="contact">${settings.alertEmail ? escapeHtml(settings.alertEmail) : '<span class="muted">Tanımlı değil</span>'}</p>
-      </div>
-      <div class="report-card">
-        <h3 class="report-card-title">Panel erişimi</h3>
-        <p class="contact">Kullanıcı adı: <strong>${escapeHtml(dashboardUsername)}</strong></p>
-        <p class="muted">Basic Auth ile korunuyor - üretimde Cloudflare Access önerilir.</p>
-      </div>
-    </div>
+
+      <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
+    </form>
   `;
 
   return shell({
     active: "ayarlar",
     pendingCount: counts.pending_approval ?? 0,
     title: "Ayarlar",
-    subtitle: "Sistemin şu anki yapılandırması (salt okunur).",
+    subtitle: "Sistemin şu anki yapılandırması - burada yaptığın değişiklikler hemen etkili olur.",
     content,
   });
 }
@@ -1349,6 +1394,34 @@ const STYLES = `
   .bar-track { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
   .bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
   .bar-count { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  .settings-form .report-card-title { margin-bottom: 0.7rem; }
+  .settings-label { display: block; font-size: 0.78rem; color: var(--text-muted); margin: 0.7rem 0 0.3rem; }
+  .settings-label:first-of-type { margin-top: 0.4rem; }
+  .settings-form input[type="text"],
+  .settings-form input[type="email"],
+  .settings-form input[type="password"],
+  .settings-form textarea {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.65rem 0.85rem;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.85rem;
+  }
+  .settings-form textarea { margin-top: 0.5rem; line-height: 1.5; resize: vertical; }
+  .settings-form code { background: var(--surface-2); border-radius: 5px; padding: 0.05rem 0.35rem; font-size: 0.8em; }
+  .settings-form > .btn { margin-top: 1.25rem; }
+  .banner {
+    border-radius: var(--radius);
+    padding: 0.75rem 1.1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .banner--ok { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(34,197,94,0.3); }
 
   @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

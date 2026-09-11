@@ -7,10 +7,14 @@ export interface ProposalContext {
   cityLabel?: string;
 }
 
-export interface ProposalEnv {
-  NVIDIA_API_KEY?: string;
-  /** build.nvidia.com'daki model kimliği - tanımlı değilse varsayılana düşer. */
-  NVIDIA_MODEL?: string;
+/** draftProposal'ın çalışması için gereken efektif ayarlar - bkz. lib/settings.ts getEffectiveSettings. */
+export interface ProposalSettings {
+  nvidiaApiKey?: string;
+  nvidiaModel: string;
+  /** Placeholder'lı taslak metin ({{isim}}, {{ihtiyac}}, {{sektor}}, {{sehir}}) - AI kullanılamazsa buna düşülür. */
+  proposalTemplate: string;
+  /** NVIDIA modeline verilen sistem talimatı - Ayarlar sayfasından değiştirilebilir. */
+  aiSystemPrompt: string;
 }
 
 export interface ProposalResult {
@@ -21,30 +25,27 @@ export interface ProposalResult {
 }
 
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
 
 /**
- * Çok basit, şablon tabanlı bir taslak - NVIDIA_API_KEY tanımlı
+ * Ayarlar sayfasındaki placeholder'lı şablonu ({{isim}}, {{ihtiyac}},
+ * {{sektor}}, {{sehir}}) adaya göre doldurur - NVIDIA_API_KEY tanımlı
  * değilse (ya da API çağrısı başarısız olursa) buna düşülür. Sistem
  * hiçbir zaman "boş" bir teklif göndermez, en kötü ihtimalle bu şablon
  * kullanılır.
  */
-function templateProposal(ctx: ProposalContext): string {
+function renderTemplate(template: string, ctx: ProposalContext): string {
   const services = ctx.needTags.map((tag) => NEED_TAG_LABELS_TR[tag] ?? tag).join(", ");
-  return [
-    `Merhaba ${ctx.candidateName},`,
-    "",
-    `${services} konusunda ihtiyacınız olabileceğini fark ettik. ` +
-      "Sizin için özel bir teklif hazırlamak isteriz.",
-    "",
-    "Uygun olduğunuzda kısaca görüşebilir miyiz?",
-  ].join("\n");
+  return template
+    .replaceAll("{{isim}}", ctx.candidateName)
+    .replaceAll("{{ihtiyac}}", services)
+    .replaceAll("{{sektor}}", ctx.sectorLabel ?? "")
+    .replaceAll("{{sehir}}", ctx.cityLabel ?? "");
 }
 
 /**
  * NVIDIA API (integrate.api.nvidia.com, OpenAI uyumlu chat completions)
  * ile adaya özel, doğal bir teklif metni ürettirir. Anahtar tanımlı
- * değilse ya da çağrı başarısız olursa şablon metne (templateProposal)
+ * değilse ya da çağrı başarısız olursa şablon metne (renderTemplate)
  * düşer - hiçbir aday LLM hatası yüzünden teklifsiz kalmaz. `error`
  * alanı, düşüş sebebini (ör. 401/403, yanlış anahtar türü) taşır -
  * dashboard'daki "AI ile Yeniden Yaz" bunu doğrudan gösteriyor.
@@ -54,9 +55,12 @@ function templateProposal(ctx: ProposalContext): string {
  * Sahibi her zaman bu metni Onaylar/Onaylananlar popup'ında okuyup
  * düzenleyebiliyor, gönderim hâlâ tamamen manuel (bkz. CLAUDE.md).
  */
-export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Promise<ProposalResult> {
-  const fallback = templateProposal(ctx);
-  if (!env.NVIDIA_API_KEY) {
+export async function draftProposal(
+  ctx: ProposalContext,
+  settings: ProposalSettings,
+): Promise<ProposalResult> {
+  const fallback = renderTemplate(settings.proposalTemplate, ctx);
+  if (!settings.nvidiaApiKey) {
     return { text: fallback, usedAI: false, error: "NVIDIA_API_KEY tanımlı değil" };
   }
 
@@ -74,24 +78,13 @@ export async function draftProposal(ctx: ProposalContext, env: ProposalEnv): Pro
     const res = await fetch(NVIDIA_CHAT_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.NVIDIA_API_KEY}`,
+        Authorization: `Bearer ${settings.nvidiaApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: env.NVIDIA_MODEL || DEFAULT_MODEL,
+        model: settings.nvidiaModel,
         messages: [
-          {
-            role: "system",
-            content:
-              "Sen bir grafik tasarım/web tasarım ajansı için soğuk satış mesajı yazan " +
-              "bir asistansın. Türkçe, doğal, samimi ama profesyonel bir dille, kısa " +
-              "(en fazla 5-6 cümle) bir ilk temas mesajı yaz. Şablon/klişe ifadelerden " +
-              "kaçın ('değerli müşterimiz', 'firmanız' gibi genel kalıplar yerine " +
-              "işletmenin adını ve sektörünü/şehrini gerçekten kullan). Fiyat/rakam " +
-              "verme, abartılı satış dili kullanma. Sadece mesaj metnini yaz, başlık, " +
-              "açıklama ya da tırnak işareti ekleme. WhatsApp veya e-posta ile " +
-              "gönderilecek, ikisine de uyacak sade bir format kullan (markdown yok).",
-          },
+          { role: "system", content: settings.aiSystemPrompt },
           {
             role: "user",
             content: `Aşağıdaki bilgilere göre bir ilk temas mesajı yaz:\n\n${contextLines}`,

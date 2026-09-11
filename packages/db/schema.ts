@@ -50,6 +50,24 @@ export const communicationLog = sqliteTable("communication_log", {
 });
 
 /**
+ * Ayarlar sayfasından düzenlenebilen değerler (NVIDIA API anahtarı, model
+ * adı, uyarı e-postası, teklif şablonu, AI sistem talimatı) - basit
+ * key/value tablosu. Bir satırın olmaması "varsayılana dön" demek
+ * (bkz. apps/control/src/lib/settings.ts `getEffectiveSettings`).
+ *
+ * GÜVENLİK NOTU: NVIDIA_API_KEY buraya yazıldığında Cloudflare Secret
+ * korumasından (şifreli, sadece runtime'da erişilebilir) çıkıp düz D1
+ * satırına döner - `wrangler secret put` kadar güvenli değil. Bilinçli bir
+ * ödünleşim: sahibi anahtarı panelden değiştirebilsin diye. D1'deki bir
+ * satır varsa o üstün gelir, yoksa env secret'a (wrangler secret put)
+ * düşülür.
+ */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+});
+
+/**
  * Tarama ilerleme takibi: alfabetik sektör taraması nerede kaldı,
  * paralel iş kolu (yeni şirket / iş arayan) ayrı satırda ilerler.
  */

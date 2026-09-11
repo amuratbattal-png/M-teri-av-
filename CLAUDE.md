@@ -400,9 +400,53 @@ Neden bu yapı:
       değeri döndürmüyor). Dashboard'a bu verileri basit yatay çubuk
       grafiklerle (`renderReportPage`) ve salt-okunur bilgi kartlarıyla
       (`renderSettingsPage`) gösteren iki yeni sayfa + sidebar'a iki
-      yeni nav öğesi eklendi. Ayarlar sayfası düzenleme yapmıyor -
-      değerler hâlâ `wrangler secret put` / `wrangler.toml` üzerinden
-      değiştiriliyor.
+      yeni nav öğesi eklendi.
+- [x] **Ayarlar sayfası düzenlenebilir hale getirildi** (bir sonraki
+      istekte "buradan düzenleyebilmeliyim" denildi). Yeni D1 tablosu
+      `settings` (key/value, migration:
+      `packages/db/migrations/0002_settings.sql` - **deploy'dan önce
+      uygulanmalı**, bkz. `docs/deployment.md`) ve
+      `apps/control/src/lib/settings.ts` (`getEffectiveSettings`/
+      `updateSettings`) eklendi. Panelden artık şunlar değiştirilebiliyor:
+      NVIDIA API anahtarı, NVIDIA model adı, sistem uyarı e-postası,
+      teklif şablonu (AI kullanılamazsa düşülen metin -
+      `{{isim}}`/`{{ihtiyac}}`/`{{sektor}}`/`{{sehir}}` placeholder'ları
+      destekliyor) ve AI'a verilen sistem talimatı (system prompt).
+      `POST /candidates/:id/*` akışlarındaki `draftProposal()` çağrıları
+      artık `env` yerine `getEffectiveSettings(env)`'in döndürdüğü
+      efektif ayarları kullanıyor (D1'de bir satır varsa o, yoksa
+      Cloudflare secret/var, o da yoksa sabit varsayılan).
+      **Güvenlik ödünleşimi (bilinçli, kullanıcıya açıklandı):** NVIDIA
+      anahtarını panelden kaydetmek onu Cloudflare Secret korumasından
+      çıkarıp D1'de düz metin olarak saklıyor - `wrangler secret put`
+      kadar korumalı değil. Panelde "Panel anahtarını sil" butonu var,
+      basılırsa D1'deki satır silinip Cloudflare secret'a geri dönülüyor.
+      NVIDIA anahtarı alanı API GET yanıtında hiçbir zaman gerçek değeri
+      döndürmüyor, sadece tanımlı olup olmadığını ve kaynağını
+      (panel/secret) gösteriyor.
+- [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
+      henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
+      aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
+      etiketleme ("sıcak lead" vb., need tag'lerden bağımsız); toplu
+      red + toplu not; `yahoo-search-scanner`'ı gerçek API'ye bağlamak
+      (düşük efor, sahibi de belirtti); tarama ilerleme göstergesi
+      (2.349 sektör×şehir kombinasyonunun neresinde olduğu,
+      dashboard'da); "yakında bitecek domain" taraması (yeni kanal
+      fikri); günlük/haftalık özet e-postası (düşük efor, mevcut
+      EMAIL_WORKER/ALERT_EMAIL altyapısı üzerine); Slack/Discord anlık
+      bildirim; PDF/görsel teklif şablonu; çoklu kullanıcı girişi;
+      harita görünümü (Rapor sayfasındaki şehir kırılımının görsel
+      hali); basit müşteri portalı (converted adaylar için durum
+      sayfası); referans/vaka galerisi linki; Calendly benzeri randevu
+      linki entegrasyonu; PWA (ana ekrana eklenebilir dashboard); KVKK/
+      veri saklama politikası (otomatik silme + "bir daha iletişime
+      geçme" kara listesi); mobilde tek dokunuşlu hızlı aksiyon
+      etiketleri; sosyal dinleme - forum/yorum sitelerinde birebir
+      ihtiyaç cümlesi taraması (yeni kanal fikri); Google yorumlarından
+      kanıta dayalı teklif referansı ("yorumlarınızda ... belirtilmiş");
+      sesli arama modülünü gerçek bir AI ön-eleme botuna çevirmek (en
+      büyük teknik sıçrama). Bir sonraki oturumda sahibiyle birlikte
+      önceliklendirilmeli - hepsini aynı anda yapmaya çalışmak yerine.
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

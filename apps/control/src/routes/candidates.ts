@@ -8,6 +8,7 @@ import {
 } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
+import { getEffectiveSettings } from "../lib/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -42,6 +43,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
 
   const db = createDb(env.DB);
   const created: string[] = [];
+  const proposalSettings = await getEffectiveSettings(env);
 
   for (const result of body.results) {
     const existing = await db
@@ -69,7 +71,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         sectorLabel: sectorLabel(result.sectorSlug),
         cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
       },
-      env,
+      proposalSettings,
     );
     if (!proposal.usedAI) {
       console.warn(`AI teklif metni üretilemedi (${result.name}): ${proposal.error}`);

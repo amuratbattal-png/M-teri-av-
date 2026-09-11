@@ -140,10 +140,31 @@ export default {
     }
 
     if (url.pathname === "/ayarlar" && request.method === "GET") {
+      const saved = url.searchParams.get("saved") === "1";
       const [counts, settings] = await Promise.all([fetchStats(env), fetchSettings(env)]);
-      return new Response(renderSettingsPage(counts, settings, env.DASHBOARD_USERNAME), {
+      return new Response(renderSettingsPage(counts, settings, env.DASHBOARD_USERNAME, saved), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
+    }
+
+    // Ayarlar formu - NVIDIA anahtarı/model, uyarı e-postası, teklif
+    // şablonu ve AI sistem talimatı buradan güncellenir (bkz.
+    // apps/control/src/routes/settings.ts handlePostSettings).
+    if (url.pathname === "/ayarlar" && request.method === "POST") {
+      const form = await request.formData();
+      await env.CONTROL_WORKER.fetch("https://internal/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          nvidiaApiKey: String(form.get("nvidiaApiKey") ?? ""),
+          nvidiaModel: String(form.get("nvidiaModel") ?? ""),
+          alertEmail: String(form.get("alertEmail") ?? ""),
+          proposalTemplate: String(form.get("proposalTemplate") ?? ""),
+          aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
+          clearNvidiaApiKey: form.get("clearNvidiaApiKey") === "1",
+        }),
+      });
+      return Response.redirect(url.origin + "/ayarlar?saved=1", 303);
     }
 
     const approveMatch = url.pathname.match(/^\/approve\/([^/]+)$/);
