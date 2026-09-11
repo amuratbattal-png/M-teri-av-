@@ -130,6 +130,19 @@ cd ../dashboard          && pnpm exec wrangler secret put CONTROL_SHARED_SECRET
 Sırayı takip et - control ve dashboard, diğer worker'lara "service
 binding" ile bağlı, o yüzden önce onlar deploy edilmeli.
 
+**Önemli - her zaman `cd <klasör> && pnpm exec wrangler deploy` kullan,
+`pnpm --filter <paket-adı> deploy` DEĞİL.** `pnpm --filter X deploy`
+(başında `run` olmadan) pnpm'in KENDİ ayrılmış `deploy` komutunu
+çalıştırır (bkz. pnpm.io/cli/deploy - monorepo'dan "deployable"
+bir alt paket hazırlamak için, farklı bir amaç) - `package.json`'daki
+`"deploy": "wrangler deploy"` script'ini ÇAĞIRMAZ. Yanlışlıkla
+kullanılırsa `ERR_PNPM_NOTHING_TO_DEPLOY` / "No project was selected
+for deployment" hatası verir, wrangler hiç çalışmaz, worker deploy
+EDİLMEZ (kod eskisi gibi canlıda kalır). Script'i pnpm üzerinden
+çalıştırmak istersen `pnpm --filter <paket-adı> run deploy` (araya
+`run` ekleyerek) de çalışır, ama bu depoda kurulu alışkanlık
+`cd <klasör> && pnpm exec wrangler deploy`.
+
 ```bash
 # 6a. Gönderim kanalları önce (control bunlara bağlanıyor)
 cd ../../workers/channels/whatsapp   && pnpm exec wrangler deploy
