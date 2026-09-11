@@ -152,6 +152,15 @@ export default {
     // apps/control/src/routes/settings.ts handlePostSettings).
     if (url.pathname === "/ayarlar" && request.method === "POST") {
       const form = await request.formData();
+      // Jenerik katalog alanları "field__<key>" adıyla geliyor (bkz.
+      // render.ts catalogFieldInput) - control'e düz bir { fields } objesi
+      // olarak toplanıp gönderiliyor.
+      const fields: Record<string, string> = {};
+      for (const [name, value] of form.entries()) {
+        if (name.startsWith("field__") && typeof value === "string") {
+          fields[name.slice("field__".length)] = value;
+        }
+      }
       await env.CONTROL_WORKER.fetch("https://internal/settings", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -162,6 +171,7 @@ export default {
           proposalTemplate: String(form.get("proposalTemplate") ?? ""),
           aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
           clearNvidiaApiKey: form.get("clearNvidiaApiKey") === "1",
+          fields,
         }),
       });
       return Response.redirect(url.origin + "/ayarlar?saved=1", 303);

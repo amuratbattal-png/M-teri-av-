@@ -18,7 +18,11 @@ import {
 } from "./routes/approvals";
 import { handleListCommunications } from "./routes/communications";
 import { handleAlert } from "./routes/alerts";
-import { handleGetSettings, handlePostSettings } from "./routes/settings";
+import {
+  handleGetSettings,
+  handlePostSettings,
+  handleInternalSettings,
+} from "./routes/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -59,6 +63,10 @@ export default {
 
     if (pathname === "/settings" && method === "POST") {
       return handlePostSettings(request, env);
+    }
+
+    if (pathname === "/internal-settings" && method === "GET") {
+      return handleInternalSettings(request, env);
     }
 
     if (pathname === "/communications" && method === "GET") {

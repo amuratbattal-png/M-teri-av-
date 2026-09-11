@@ -424,6 +424,55 @@ Neden bu yapı:
       NVIDIA anahtarı alanı API GET yanıtında hiçbir zaman gerçek değeri
       döndürmüyor, sadece tanımlı olup olmadığını ve kaynağını
       (panel/secret) gösteriyor.
+- [x] **Ayarlar sayfası sistemdeki TÜM API anahtarlarını kapsayacak
+      şekilde genişletildi** ("sistemde olan ve düşünülen tüm apileri
+      ekle" denildi). Yeni jenerik katalog:
+      `apps/control/src/lib/settings-catalog.ts` (`SETTINGS_CATALOG`)
+      - her tarama/gönderim worker'ının her API anahtarı/URL listesi
+      için bir kayıt (Google Places, Google Custom Search + Engine ID,
+      Yahoo, LinkedIn oturum çerezi, TikTok, Instagram, ihale sitesi
+      URL'leri, freelancer galeri URL'leri + arama anahtarı, ticaret
+      sicili API'si, Resend e-posta anahtarı + gönderen adres, WhatsApp
+      Business token + telefon ID, sesli arama sağlayıcı anahtarı,
+      WordPress siteleri JSON'ı - pasif kanallar dahil hepsi). **Yeni
+      bir özellik yeni bir anahtar gerektirdiğinde artık buraya birkaç
+      satır eklemek yeterli** - ayrı bir form/route yazmaya gerek yok,
+      "düşünülen" (henüz yapılmamış) API'ler de bu şekilde eklenecek.
+      `apps/control/src/lib/settings.ts`'e `getCatalogView`/
+      `updateCatalogFields` eklendi; `routes/settings.ts`'e katalog
+      GET/POST desteği ve yeni `GET /internal-settings` (worker'ların
+      kendi override'larını okuması için, `SCAN_SHARED_SECRET` ile
+      korunuyor). `packages/shared/src/settings-client.ts`
+      (`fetchSettingsOverrides`) worker'lar için ortak istemci -
+      control'e erişilemezse SESSİZCE boş döner, worker kendi env
+      fallback'ine düşer, hiçbir tarama bu yüzden durmaz.
+      **Worker tarafı gerçekten bağlandı** (sadece panelde göstermekle
+      kalmadı): `google-search-scanner`, `company-formation-tracker`,
+      `yahoo-search-scanner`, `linkedin-scanner`, `tiktok-scanner`,
+      `instagram-scanner`, `tender-site-scanner`,
+      `freelancer-gallery-scanner` artık her tarama döngüsünün
+      başında `withSettingOverrides()` ile control'den override okuyup
+      kendi env'ini onunla ezip taramaya öyle başlıyor.
+      `workers/channels/email`'in `CONTROL_WORKER` binding'i olmadığı
+      için (control -> worker yönünde çağrılıyor), o worker'a override
+      control'ün `/alerts` çağrısının GÖVDESİNDE taşınıyor
+      (`apiKeyOverride`/`fromAddressOverride`) - aynı desen
+      `channels/whatsapp` ve `channels/voice-call`'a da eklendi
+      (şu an hiçbir canlı çağrı yolu yok, ama hazır - eski `queue()`
+      handler'ı bilerek DOKUNULMADI, zaten hiç tetiklenmiyor).
+      Dashboard'daki Ayarlar sayfası artık bu katalogdaki her alanı
+      `group`a göre gruplu kartlar halinde otomatik render ediyor
+      (`renderSettingsPage` `catalogGroups`/`catalogFieldInput`) - yeni
+      bir katalog kaydı otomatik olarak formda belirir, dashboard
+      kodunda ayrıca bir şey değiştirmeye gerek yok. Form alanları
+      `field__<key>` adıyla gidiyor, dashboard `index.ts` bunları
+      `fields` objesine toplayıp control'e tek istekte gönderiyor.
+      **Önemli sınır (panelde de belirtiliyor):** control, bu
+      anahtarların hangisinin ilgili worker'ın KENDİ Cloudflare
+      secret'ında tanımlı olduğunu bilemez (o worker'ın env'i, control'ün
+      değil) - "Panelde tanımlı" sadece D1'de bir override olduğu
+      anlamına gelir; olmayan alanlarda ilgili worker sessizce kendi
+      secret'ına düşer.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

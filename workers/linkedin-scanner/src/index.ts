@@ -1,3 +1,4 @@
+import { fetchSettingsOverrides } from "@musteri-avcisi/shared";
 import { scanNextKeyword } from "./scan";
 
 export interface Env {
@@ -9,7 +10,17 @@ export interface Env {
 
 const CURSOR_KEY = "keyword-cursor-index";
 
-async function runScan(env: Env): Promise<void> {
+/** Panelden (Ayarlar) girilmiş bir değer varsa worker'ın kendi env'ini onunla ezer. */
+async function withSettingOverrides(env: Env): Promise<Env> {
+  const overrides = await fetchSettingsOverrides(env.CONTROL_WORKER, env.SCAN_SHARED_SECRET);
+  return {
+    ...env,
+    LINKEDIN_SESSION_COOKIE: overrides.linkedin_session_cookie || env.LINKEDIN_SESSION_COOKIE,
+  };
+}
+
+async function runScan(rawEnv: Env): Promise<void> {
+  const env = await withSettingOverrides(rawEnv);
   const cursorRaw = await env.SCAN_STATE.get(CURSOR_KEY);
   const cursorIndex = cursorRaw ? Number.parseInt(cursorRaw, 10) : 0;
 

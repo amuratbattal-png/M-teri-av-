@@ -859,6 +859,18 @@ export function renderReportPage(counts: Record<string, number>, report: ReportD
 
 // --- Ayarlar sayfası -----------------------------------------------------
 
+/** apps/control/src/lib/settings-catalog.ts SETTINGS_CATALOG ile birebir - sistemdeki her API anahtarı/değer. */
+export interface CatalogFieldView {
+  key: string;
+  label: string;
+  group: string;
+  kind: "secret" | "text" | "longtext";
+  placeholder?: string;
+  help?: string;
+  configured: boolean;
+  value?: string;
+}
+
 export interface SettingsData {
   activeSourceChannels: string[];
   voiceCallEnabled: boolean;
@@ -868,6 +880,54 @@ export interface SettingsData {
   alertEmail: string | null;
   proposalTemplate: string;
   aiSystemPrompt: string;
+  catalog: CatalogFieldView[];
+}
+
+/** Jenerik katalog alanı için tek input/textarea - form alanı adı `field__<key>` (bkz. dashboard index.ts POST /ayarlar). */
+function catalogFieldInput(f: CatalogFieldView): string {
+  const name = `field__${f.key}`;
+  const statusLine = f.kind === "secret"
+    ? f.configured
+      ? '<span class="status status--ok">Panelde tanımlı</span>'
+      : '<span class="muted">Panelde tanımlı değil - ilgili worker kendi Cloudflare secret\'ına düşer.</span>'
+    : "";
+  const helpLine = f.help ? `<p class="muted">${escapeHtml(f.help)}</p>` : "";
+
+  if (f.kind === "longtext") {
+    return `
+      <label class="settings-label" for="${name}">${escapeHtml(f.label)}</label>
+      <textarea id="${name}" name="${name}" rows="4" placeholder="${escapeHtml(f.placeholder ?? "")}">${escapeHtml(f.value ?? "")}</textarea>
+      ${helpLine}`;
+  }
+  if (f.kind === "secret") {
+    return `
+      <label class="settings-label" for="${name}">${escapeHtml(f.label)}</label>
+      <input type="password" id="${name}" name="${name}" autocomplete="off" placeholder="${escapeHtml(f.placeholder ?? "Değiştirmek için gir, boş bırak = değişmesin")}">
+      <p class="contact" style="margin:0.3rem 0 0">${statusLine}</p>
+      ${helpLine}`;
+  }
+  return `
+    <label class="settings-label" for="${name}">${escapeHtml(f.label)}</label>
+    <input type="text" id="${name}" name="${name}" value="${escapeHtml(f.value ?? "")}" placeholder="${escapeHtml(f.placeholder ?? "")}">
+    ${helpLine}`;
+}
+
+/** Katalog alanlarını `group`a göre kartlara ayırır - bkz. settings-catalog.ts sıralaması korunur. */
+function catalogGroups(catalog: CatalogFieldView[]): string {
+  const groups = new Map<string, CatalogFieldView[]>();
+  for (const f of catalog) {
+    if (!groups.has(f.group)) groups.set(f.group, []);
+    groups.get(f.group)!.push(f);
+  }
+  return [...groups.entries()]
+    .map(
+      ([group, fields]) => `
+      <div class="report-card">
+        <h3 class="report-card-title">${escapeHtml(group)}</h3>
+        ${fields.map(catalogFieldInput).join("")}
+      </div>`,
+    )
+    .join("");
 }
 
 /**
@@ -954,6 +1014,18 @@ export function renderSettingsPage(
           <h3 class="report-card-title">AI'a verilen yazım talimatı (sistem promptu)</h3>
           <textarea name="aiSystemPrompt" rows="6">${escapeHtml(settings.aiSystemPrompt)}</textarea>
         </div>
+      </div>
+
+      <h2 class="section-title" style="margin-top:1.5rem">Sistemdeki diğer tüm API anahtarları</h2>
+      <p class="muted" style="margin:-0.5rem 0 1rem;max-width:70ch">
+        Aktif olmayan kanallar (LinkedIn, TikTok, Instagram, ihale/freelancer,
+        WordPress, sesli arama vb.) için de önceden anahtar girebilirsin -
+        o kanal aktifleştirildiğinde hazır bekler. "Panelde tanımlı değil"
+        yazan alanlarda ilgili worker kendi Cloudflare secret'ına düşer -
+        buradan görülemez.
+      </p>
+      <div class="report-grid">
+        ${catalogGroups(settings.catalog)}
       </div>
 
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>

@@ -1,3 +1,4 @@
+import { fetchSettingsOverrides } from "@musteri-avcisi/shared";
 import { scanFreelancerGalleries } from "./scan";
 
 export interface Env {
@@ -7,7 +8,18 @@ export interface Env {
   SEARCH_API_KEY?: string;
 }
 
-async function runScan(env: Env): Promise<void> {
+/** Panelden (Ayarlar) girilmiş bir değer varsa worker'ın kendi env'ini onunla ezer. */
+async function withSettingOverrides(env: Env): Promise<Env> {
+  const overrides = await fetchSettingsOverrides(env.CONTROL_WORKER, env.SCAN_SHARED_SECRET);
+  return {
+    ...env,
+    GALLERY_SOURCE_URLS: overrides.freelancer_gallery_source_urls || env.GALLERY_SOURCE_URLS,
+    SEARCH_API_KEY: overrides.freelancer_gallery_search_api_key || env.SEARCH_API_KEY,
+  };
+}
+
+async function runScan(rawEnv: Env): Promise<void> {
+  const env = await withSettingOverrides(rawEnv);
   const results = await scanFreelancerGalleries(env);
   if (results.length === 0) return;
 

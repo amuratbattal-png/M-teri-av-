@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { createDb, settings as settingsTable } from "@musteri-avcisi/db";
 import type { Env } from "../env";
+import { SETTINGS_CATALOG, type SettingFieldDef } from "./settings-catalog";
 
 /**
  * Ayarlar sayfasından düzenlenebilen değerler. D1'deki `settings`
@@ -55,7 +56,13 @@ export interface EffectiveSettings {
   aiSystemPrompt: string;
 }
 
-async function readSettingsMap(env: Env): Promise<Record<string, string>> {
+/**
+ * Ham D1 settings map'i - `/internal-settings` (worker'ların panel
+ * override'larını okuması için, bkz. packages/shared/src/settings-client.ts)
+ * ve Ayarlar sayfasının jenerik katalog bölümü (bkz. settings-catalog.ts)
+ * bunu kullanır.
+ */
+export async function readSettingsMap(env: Env): Promise<Record<string, string>> {
   const db = createDb(env.DB);
   const rows = await db.select().from(settingsTable);
   const map: Record<string, string> = {};
@@ -132,4 +139,69 @@ export async function updateSettings(env: Env, patch: SettingsPatch): Promise<vo
 /** Panelden kaydedilmiş NVIDIA anahtarını siler, Cloudflare secret'a döner. */
 export async function clearNvidiaApiKey(env: Env): Promise<void> {
   await deleteSetting(env, KEYS.nvidiaApiKey);
+}
+
+// --- Jenerik katalog (bkz. settings-catalog.ts) ----------------------------
+
+export interface CatalogFieldView {
+  key: string;
+  label: string;
+  group: string;
+  kind: SettingFieldDef["kind"];
+  placeholder?: string;
+  help?: string;
+  /** Panelde tanımlı mı. `secret` alanlarda gerçek değer hiçbir zaman dönmez. */
+  configured: boolean;
+  /**
+   * `text`/`longtext` alanlarda mevcut değer (düzenleme formunu doldurmak
+   * için - bu alanlar zaten gizli değil). `secret` alanlarda hep undefined.
+   */
+  value?: string;
+}
+
+/**
+ * Katalogdaki her alanın şu anki durumunu döndürür - control, bu
+ * anahtarların hangi worker'ın kendi env'inde tanımlı olduğunu BİLEMEZ
+ * (o worker'ın secret'ı, control'ün değil), o yüzden `configured` sadece
+ * "panelde (D1'de) bir değer var mı" anlamına gelir. Panelde yoksa ilgili
+ * worker kendi Cloudflare secret'ına düşer - bu, UI'da ayrıca belirtiliyor.
+ */
+export async function getCatalogView(env: Env): Promise<CatalogFieldView[]> {
+  const map = await readSettingsMap(env);
+  return SETTINGS_CATALOG.map((field) => {
+    const raw = map[field.key];
+    return {
+      key: field.key,
+      label: field.label,
+      group: field.group,
+      kind: field.kind,
+      placeholder: field.placeholder,
+      help: field.help,
+      configured: Boolean(raw),
+      value: field.kind === "secret" ? undefined : raw,
+    };
+  });
+}
+
+/**
+ * Ayarlar formundaki jenerik katalog alanları için toplu güncelleme.
+ * `secret` alanlar boşsa dokunulmaz (yanlışlıkla silinmesin diye); diğer
+ * alanlar boşsa satır silinir (worker kendi env fallback'ine döner).
+ */
+export async function updateCatalogFields(env: Env, fields: Record<string, string>): Promise<void> {
+  const byKey = new Map(SETTINGS_CATALOG.map((f) => [f.key, f]));
+  for (const [key, rawValue] of Object.entries(fields)) {
+    const def = byKey.get(key);
+    if (!def) continue; // katalogda olmayan bilinmeyen bir alan - sessizce yok say
+    const value = rawValue.trim();
+    if (def.kind === "secret") {
+      if (value) await upsertSetting(env, key, value);
+      continue;
+    }
+    if (value) {
+      await upsertSetting(env, key, value);
+    } else {
+      await deleteSetting(env, key);
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { readSettingsMap } from "../lib/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -40,6 +41,11 @@ export async function handleAlert(request: Request, env: Env): Promise<Response>
   }
 
   try {
+    // Panelden (Ayarlar) email_api_key/email_from_address ayarlanmışsa
+    // bunları email worker'ına isteğin içinde taşıyoruz - o worker'ın
+    // CONTROL_WORKER binding'i yok, override'ı başka türlü öğrenemez
+    // (bkz. workers/channels/email/src/index.ts).
+    const settingsMap = await readSettingsMap(env);
     const res = await env.EMAIL_WORKER.fetch("https://internal/send", {
       method: "POST",
       headers: {
@@ -50,6 +56,8 @@ export async function handleAlert(request: Request, env: Env): Promise<Response>
         to: env.ALERT_EMAIL,
         subject: `[Müşteri Avcısı] Sistem uyarısı - ${body.source ?? "sistem"}`,
         content: body.message,
+        apiKeyOverride: settingsMap.email_api_key || null,
+        fromAddressOverride: settingsMap.email_from_address || null,
       }),
     });
     return json({ ok: true, delivered: res.ok });

@@ -1,3 +1,4 @@
+import { fetchSettingsOverrides } from "@musteri-avcisi/shared";
 import { scanTenders } from "./scan";
 
 export interface Env {
@@ -6,7 +7,17 @@ export interface Env {
   TENDER_SITE_URLS?: string;
 }
 
-async function runScan(env: Env): Promise<void> {
+/** Panelden (Ayarlar) girilmiş bir değer varsa worker'ın kendi env'ini onunla ezer. */
+async function withSettingOverrides(env: Env): Promise<Env> {
+  const overrides = await fetchSettingsOverrides(env.CONTROL_WORKER, env.SCAN_SHARED_SECRET);
+  return {
+    ...env,
+    TENDER_SITE_URLS: overrides.tender_site_urls || env.TENDER_SITE_URLS,
+  };
+}
+
+async function runScan(rawEnv: Env): Promise<void> {
+  const env = await withSettingOverrides(rawEnv);
   const results = await scanTenders(env);
   if (results.length === 0) return;
 

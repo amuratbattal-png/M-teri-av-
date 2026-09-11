@@ -10,6 +10,16 @@ interface SendRequest {
   content: string | null;
   /** Tanımlı değilse teklif e-postaları için varsayılan başlık kullanılır. */
   subject?: string | null;
+  /**
+   * control'ün Ayarlar sayfasından (D1 `settings`, `email_api_key`/
+   * `email_from_address`) okuyup gönderdiği override - bu worker'ın
+   * CONTROL_WORKER binding'i olmadığı için (control -> bu worker yönünde
+   * çağrılıyor), override'ı isteğin kendisiyle taşıyoruz. Tanımlı değilse
+   * worker'ın kendi Cloudflare secret'ı (EMAIL_API_KEY/EMAIL_FROM_ADDRESS)
+   * kullanılır.
+   */
+  apiKeyOverride?: string | null;
+  fromAddressOverride?: string | null;
 }
 
 export default {
@@ -31,7 +41,10 @@ export default {
       return new Response(JSON.stringify({ error: "no email contact" }), { status: 400 });
     }
 
-    if (!env.EMAIL_API_KEY) {
+    const apiKey = body.apiKeyOverride || env.EMAIL_API_KEY;
+    const fromAddress = body.fromAddressOverride || env.EMAIL_FROM_ADDRESS;
+
+    if (!apiKey) {
       console.warn("EMAIL_API_KEY tanımlı değil - gönderim atlandı.");
       return new Response(JSON.stringify({ ok: false, reason: "not_configured" }), {
         status: 501,
@@ -43,11 +56,11 @@ export default {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.EMAIL_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        from: env.EMAIL_FROM_ADDRESS,
+        from: fromAddress,
         to: body.to,
         subject: body.subject || "Sizin için hazırladığımız teklif",
         text: body.content ?? "",

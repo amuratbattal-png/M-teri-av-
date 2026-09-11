@@ -1,3 +1,4 @@
+import { fetchSettingsOverrides } from "@musteri-avcisi/shared";
 import { scanNewCompanies } from "./scan";
 
 export interface Env {
@@ -6,7 +7,17 @@ export interface Env {
   TRADE_REGISTRY_API_KEY?: string;
 }
 
-async function runScan(env: Env): Promise<void> {
+/** Panelden (Ayarlar) girilmiş bir anahtar varsa worker'ın kendi env'ini onunla ezer. */
+async function withSettingOverrides(env: Env): Promise<Env> {
+  const overrides = await fetchSettingsOverrides(env.CONTROL_WORKER, env.SCAN_SHARED_SECRET);
+  return {
+    ...env,
+    TRADE_REGISTRY_API_KEY: overrides.trade_registry_api_key || env.TRADE_REGISTRY_API_KEY,
+  };
+}
+
+async function runScan(rawEnv: Env): Promise<void> {
+  const env = await withSettingOverrides(rawEnv);
   const results = await scanNewCompanies(env);
   if (results.length === 0) return;
 

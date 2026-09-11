@@ -1,3 +1,4 @@
+import { fetchSettingsOverrides } from "@musteri-avcisi/shared";
 import { scanNextSector, type ScanDebugInfo } from "./scan";
 
 export interface Env {
@@ -72,7 +73,24 @@ async function trackFailuresAndAlert(env: Env, apiError: string | undefined): Pr
   await env.SCAN_STATE.put(ALERT_SENT_KEY, "0");
 }
 
-async function runScan(env: Env): Promise<ScanDiagnostics> {
+/**
+ * Panelden (Ayarlar sayfası) girilmiş anahtarlar varsa worker'ın kendi
+ * env'ini onlarla ezer - yoksa (control'e erişilemedi ya da panelde
+ * hiç tanımlı değil) worker'ın kendi Cloudflare secret'ı aynen kalır.
+ * Bkz. apps/control/src/lib/settings-catalog.ts.
+ */
+async function withSettingOverrides(env: Env): Promise<Env> {
+  const overrides = await fetchSettingsOverrides(env.CONTROL_WORKER, env.SCAN_SHARED_SECRET);
+  return {
+    ...env,
+    SEARCH_API_KEY: overrides.google_places_api_key || env.SEARCH_API_KEY,
+    GOOGLE_SEARCH_API_KEY: overrides.google_search_api_key || env.GOOGLE_SEARCH_API_KEY,
+    GOOGLE_SEARCH_ENGINE_ID: overrides.google_search_engine_id || env.GOOGLE_SEARCH_ENGINE_ID,
+  };
+}
+
+async function runScan(rawEnv: Env): Promise<ScanDiagnostics> {
+  const env = await withSettingOverrides(rawEnv);
   const cursorRaw = await env.SCAN_STATE.get(CURSOR_KEY);
   const cursorIndex = cursorRaw ? Number.parseInt(cursorRaw, 10) : 0;
 

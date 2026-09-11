@@ -8,6 +8,8 @@ export interface Env {
 interface SendRequest {
   to: string | null;
   content: string | null;
+  /** control'ün Ayarlar sayfasından okuduğu override - bkz. workers/channels/email için aynı desen. */
+  apiKeyOverride?: string | null;
 }
 
 /**
@@ -40,7 +42,8 @@ export default {
       return new Response(JSON.stringify({ error: "no phone contact" }), { status: 400 });
     }
 
-    if (!env.VOICE_PROVIDER_API_KEY) {
+    const apiKey = body.apiKeyOverride || env.VOICE_PROVIDER_API_KEY;
+    if (!apiKey) {
       console.warn("VOICE_PROVIDER_API_KEY tanımlı değil - arama atlandı.");
       return new Response(JSON.stringify({ ok: false, reason: "not_configured" }), {
         status: 501,

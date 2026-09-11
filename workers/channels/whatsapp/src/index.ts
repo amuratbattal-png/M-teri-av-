@@ -8,6 +8,9 @@ export interface Env {
 interface SendRequest {
   to: string | null;
   content: string | null;
+  /** control'ün Ayarlar sayfasından okuduğu override - bkz. workers/channels/email için aynı desen. */
+  tokenOverride?: string | null;
+  phoneNumberIdOverride?: string | null;
 }
 
 /**
@@ -37,7 +40,10 @@ export default {
       return new Response(JSON.stringify({ error: "no whatsapp contact" }), { status: 400 });
     }
 
-    if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
+    const token = body.tokenOverride || env.WHATSAPP_TOKEN;
+    const phoneNumberId = body.phoneNumberIdOverride || env.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (!token || !phoneNumberId) {
       console.warn("WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID tanımlı değil - gönderim atlandı.");
       return new Response(JSON.stringify({ ok: false, reason: "not_configured" }), {
         status: 501,
@@ -47,11 +53,11 @@ export default {
     // TODO: gerçek WhatsApp Business Cloud API çağrısı.
     // https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages
     const res = await fetch(
-      `https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
