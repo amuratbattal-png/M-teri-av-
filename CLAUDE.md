@@ -729,6 +729,31 @@ Neden bu yapı:
       `apps/control` deploy edilirse aday oluşturma ("no such column")
       hata verir. Migration MUTLAKA redeploy'dan ÖNCE canlı D1'e
       uygulanmalı.
+      **Canlıya alma sırasında bulunup düzeltilen 2 ayrı sorun (kod
+      hatası değil, deploy hatası):**
+      1. `apps/dashboard/src/index.ts`'teki `UNAUTHORIZED` sabiti
+         modül üst seviyesinde (`new Response(...)` ile) tanımlıydı -
+         Cloudflare Workers artık I/O nesnelerinin (Response/Request/
+         fetch) SADECE bir handler içinde oluşturulmasına izin
+         veriyor (global scope bir kere, cold start'ta çalışıyor;
+         orada üretilen bir Response nesnesi farklı isteklerin I/O
+         bağlamı arasında güvensiz paylaşılmış olurdu). Bu, dashboard
+         deploy'unu `[code: 10021] Disallowed operation called within
+         global scope` hatasıyla TAMAMEN engelliyordu - kod
+         derleniyordu (`tsc` hatasız), sadece deploy anında patlıyordu.
+         **Düzeltme:** sabit, her çağrıldığında taze bir `Response`
+         üreten `unauthorized()` fonksiyonuna çevrildi. Deploy
+         doğrulandı (canlı, 2026-09-11).
+      2. **`docs/deployment.md`'ye not düşüldü:** `pnpm --filter <paket>
+         deploy` (başında `run` OLMADAN) pnpm'in kendi ayrılmış
+         `deploy` komutunu çalıştırıyor (monorepo'dan deploy edilebilir
+         bir alt paket hazırlamak için, apps/dashboard/control gibi
+         Cloudflare Workers'ı deploy etmekle HİÇBİR ilgisi yok),
+         `package.json`'daki `"deploy": "wrangler deploy"` script'ini
+         ÇAĞIRMIYOR - `ERR_PNPM_NOTHING_TO_DEPLOY` hatası veriyor ve
+         worker'ı deploy ETMİYOR. Doğru kullanım hep `cd <klasör> &&
+         pnpm exec wrangler deploy` (ya da `pnpm --filter <paket> run
+         deploy`, `run` İLE).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`
