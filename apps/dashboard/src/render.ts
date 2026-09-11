@@ -26,6 +26,60 @@ function matchesQuery(name: string, query?: string): boolean {
   return name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"));
 }
 
+/**
+ * Sektör/şehir/ihtiyaç/isim filtrelerinin ortak mantığı - sayfa
+ * render'larındaki `.filter(...)` ile AYNI kural. CSV dışa aktarma
+ * (`apps/dashboard/src/index.ts` `/adaylar/export.csv`) da bunu
+ * kullanıyor, filtre mantığı iki yerde ayrı ayrı bakım gerektirmesin
+ * diye.
+ */
+export function matchesCandidateFilters(
+  c: Candidate,
+  opts: { sector?: string; city?: string; need?: string; query?: string },
+): boolean {
+  return (
+    matchesQuery(c.name, opts.query) &&
+    (!opts.sector || c.sectorSlug === opts.sector) &&
+    (!opts.city || candidateCitySlug(c) === opts.city) &&
+    (!opts.need || c.needTags.includes(opts.need as NeedTag))
+  );
+}
+
+/** CSV dışa aktarma (apps/dashboard/src/index.ts /adaylar/export.csv) için sütun başlıkları ve satır dönüştürücü - etiket eşlemeleri (sektör/kaynak/durum/ihtiyaç) zaten bu dosyada tanımlı olduğundan burada tutuluyor. */
+export const CANDIDATE_CSV_HEADERS = [
+  "Ad",
+  "Sektör",
+  "Şehir",
+  "Kaynak",
+  "Durum",
+  "İhtiyaçlar",
+  "Web Sitesi",
+  "Telefon",
+  "WhatsApp",
+  "E-posta",
+  "Keşfedilme Tarihi",
+  "Not",
+  "Takip Tarihi",
+];
+
+export function candidateCsvRow(c: Candidate): string[] {
+  return [
+    c.name,
+    sectorLabel(c.sectorSlug),
+    candidateCityLabel(c) ?? "",
+    SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel,
+    STATUS_LABELS_TR[c.status] ?? c.status,
+    c.needTags.map((t) => NEED_TAG_LABELS_TR[t] ?? t).join("; "),
+    c.websiteUrl ?? "",
+    c.contactPhone ?? "",
+    c.contactWhatsapp ?? "",
+    c.contactEmail ?? "",
+    c.discoveredAt,
+    c.evaluationNotes ?? "",
+    c.followUpDate ?? "",
+  ];
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -124,6 +178,8 @@ const ICONS = {
   search: `<svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="1.7"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   xcircle: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5v2.1M12 18.4v2.1M20.5 12h-2.1M5.6 12H3.5M17.7 6.3l-1.5 1.5M7.8 16.2l-1.5 1.5M17.7 17.7l-1.5-1.5M7.8 7.8L6.3 6.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  report: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19.5h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 const TILE_ICON: Record<string, string> = {
@@ -138,11 +194,12 @@ const TILE_ICON: Record<string, string> = {
 
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
-type NavKey = "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar" | "ayarlar";
+type NavKey = "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar" | "takip" | "rapor" | "ayarlar";
 
 function shell(opts: {
   active: NavKey;
   pendingCount: number;
+  followUpsDue?: number;
   title: string;
   subtitle: string;
   content: string;
@@ -180,6 +237,8 @@ function shell(opts: {
         ${navItem("/onaylananlar", ICONS.check, "Onaylananlar", "onaylananlar")}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/takip", ICONS.clock, "Takip", "takip", opts.followUpsDue)}
+        ${navItem("/rapor", ICONS.report, "Rapor", "rapor")}
         ${navItem("/ayarlar", ICONS.settings, "Ayarlar", "ayarlar")}
       </nav>
       <div class="sidebar-footer">
@@ -543,7 +602,12 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
           <input type="hidden" name="redirect" value="${redirectTo}">
           <div class="proposal-label">Not (ör. "ilgilenmiyor", "ay sonu tekrar ara")</div>
           <textarea name="evaluationNotes" rows="3" placeholder="Serbest not...">${escapeHtml(c.evaluationNotes ?? "")}</textarea>
-          <button type="submit" class="btn--filter">Notu Kaydet</button>
+          <div class="proposal-label">Tekrar arama/takip tarihi (opsiyonel)</div>
+          <input type="date" name="followUpDate" value="${escapeHtml(c.followUpDate ?? "")}" class="date-input">
+          <div class="proposal-edit-row">
+            <button type="submit" class="btn--filter">Notu Kaydet</button>
+            ${c.followUpDate ? `<a class="detail-link" href="/takip">Takip listesinde gör →</a>` : ""}
+          </div>
         </form>
       </div>
     </dialog>`;
@@ -617,6 +681,7 @@ export function renderApprovalsPage(
   return shell({
     active: "onaylar",
     pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
     title: "Genel Bakış",
     subtitle: "Hiçbir teklif senin onayın olmadan gönderilmez.",
     content,
@@ -713,9 +778,21 @@ export function renderAllCandidatesPage(
     "Bu filtreyle hiç aday bulunamadı.",
   );
 
+  const exportQs = new URLSearchParams(
+    Object.entries({
+      sector: selectedSector,
+      city: selectedCity,
+      need: selectedNeed,
+      q: selectedQuery,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  ).toString();
+
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
-    <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
+    <div class="section-title-row">
+      <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
+      <a class="btn--filter" href="/adaylar/export.csv${exportQs ? `?${exportQs}` : ""}">${ICONS.download} Bu listeyi CSV indir</a>
+    </div>
     ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedNeed, selectedQuery })}
     ${bulkActionBar("/adaylar")}
     ${list}
@@ -724,6 +801,7 @@ export function renderAllCandidatesPage(
   return shell({
     active: "adaylar",
     pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
     title: "Tüm Adaylar",
     subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları (onaylananlar hariç).",
     content,
@@ -767,6 +845,7 @@ export function renderApprovedPage(
   return shell({
     active: "onaylananlar",
     pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
     title: "Onaylananlar",
     subtitle: "Onaylanıp gönderim kuyruğuna alınan adaylar - gönderim durumu için Gönderilenler sayfasına bak.",
     content,
@@ -862,8 +941,181 @@ export function renderSentPage(
   return shell({
     active: "gonderilenler",
     pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
     title: "Gönderilenler",
     subtitle: "E-posta ve WhatsApp üzerinden gönderilen tekliflerin iletim durumu.",
+    content,
+  });
+}
+
+// --- Takip sayfası -----------------------------------------------------------
+
+function fmtDateOnly(dateStr: string): string {
+  try {
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function followUpTone(followUpDate: string, todayStr: string): "bad" | "warn" | "neutral" {
+  if (followUpDate < todayStr) return "bad";
+  if (followUpDate === todayStr) return "warn";
+  return "neutral";
+}
+
+function followUpLabel(followUpDate: string, todayStr: string): string {
+  if (followUpDate < todayStr) return "Gecikti";
+  if (followUpDate === todayStr) return "Bugün";
+  return "Yaklaşıyor";
+}
+
+function followUpCard(c: Candidate, todayStr: string): string {
+  const followUpDate = c.followUpDate as string; // çağıran taraf zaten filtreliyor
+  const tone = followUpTone(followUpDate, todayStr);
+  const cityLabel = candidateCityLabel(c);
+
+  return `
+    <article class="card" onclick="document.getElementById('dlg-${c.id}').showModal()">
+      <h3 class="card-title card-title--clamp">${escapeHtml(c.name)}</h3>
+      <div class="card-meta">
+        <span class="badge">${escapeHtml(sectorLabel(c.sectorSlug))}</span>
+        ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
+        <span class="status status--${tone}">${followUpLabel(followUpDate, todayStr)} · ${fmtDateOnly(followUpDate)}</span>
+      </div>
+      ${c.evaluationNotes ? `<p class="contact">${escapeHtml(c.evaluationNotes)}</p>` : ""}
+      <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
+    </article>`;
+}
+
+/**
+ * Sahibinin adaylara bıraktığı "ay sonu tekrar ara" gibi notlara eklediği
+ * takip tarihlerinin listesi - geciken/bugünkü en üstte. `all` control'den
+ * gelen TÜM adaylar; burada sadece `followUpDate` set edilmiş olanlar
+ * gösterilir (status'a bakılmaksızın - reddedilmiş bir adaya bile "3 ay
+ * sonra tekrar dene" notu bırakılmış olabilir).
+ */
+export function renderFollowUpsPage(counts: Record<string, number>, all: Candidate[]): string {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const withFollowUp = all.filter((c) => c.followUpDate);
+  const sorted = [...withFollowUp].sort((a, b) => (a.followUpDate! < b.followUpDate! ? -1 : 1));
+
+  const list = sorted.length
+    ? `<div class="cards">${sorted.map((c) => followUpCard(c, todayStr)).join("\n")}</div>${sorted
+        .map((c) => candidateDetailDialog(c, "/takip"))
+        .join("\n")}`
+    : `<div class="empty-state"><span class="emoji">📅</span>Takip tarihi eklenmiş aday yok.<br>Bir adayın popup'ındaki not alanına "tekrar arama tarihi" ekleyerek buraya düşmesini sağlayabilirsin.</div>`;
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Takip (${sorted.length})</h2>
+    ${list}
+  `;
+
+  return shell({
+    active: "takip",
+    pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
+    title: "Takip",
+    subtitle: "Kendine bıraktığın \"tekrar ara\" notları - geciken/bugünkü en üstte.",
+    content,
+  });
+}
+
+// --- Rapor sayfası -------------------------------------------------------------
+
+export interface ReportData {
+  byStatus: Array<{ status: string; count: number }>;
+  bySector: Array<{ sectorSlug: string; count: number }>;
+  byCity: Array<{ citySlug: string | null; cityLabel: string | null; count: number }>;
+}
+
+function barList(rows: Array<{ label: string; count: number }>, max: number): string {
+  if (!rows.length) return `<p class="muted">Henüz veri yok.</p>`;
+  return rows
+    .map((r) => {
+      const pct = max > 0 ? Math.round((r.count / max) * 100) : 0;
+      return `
+        <div class="bar-row">
+          <span class="bar-label">${escapeHtml(r.label)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span class="bar-count">${r.count}</span>
+        </div>`;
+    })
+    .join("");
+}
+
+function funnelStage(label: string, count: number, total: number, tone: string): string {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return `
+    <div class="funnel-stage">
+      <div class="funnel-top"><span class="funnel-label">${escapeHtml(label)}</span><span class="funnel-pct">%${pct}</span></div>
+      <div class="bar-track bar-track--lg"><div class="bar-fill bar-fill--${tone}" style="width:${pct}%"></div></div>
+      <div class="funnel-count">${count} aday</div>
+    </div>`;
+}
+
+/**
+ * Sektör/şehir dağılımı + onay->gönderim->yanıt->dönüşüm hunisi.
+ * Toplam = candidates tablosundaki TÜM durumların toplamı (sistem şu an
+ * hiçbir adayı "discovered"/"evaluated" gibi ara durumlarda bırakmıyor,
+ * tarama sonuçları doğrudan pending_approval olarak kaydediliyor - bkz.
+ * apps/control/src/routes/candidates.ts handleScanResults).
+ */
+export function renderReportPage(counts: Record<string, number>, report: ReportData): string {
+  const total = report.byStatus.reduce((sum, r) => sum + r.count, 0);
+  const statusCount = (statuses: string[]) =>
+    report.byStatus.filter((r) => statuses.includes(r.status)).reduce((sum, r) => sum + r.count, 0);
+
+  const approvedPlus = statusCount(["approved", "sent", "responded", "converted"]);
+  const sentPlus = statusCount(["sent", "responded", "converted"]);
+  const respondedPlus = statusCount(["responded", "converted"]);
+  const converted = statusCount(["converted"]);
+  const rejected = statusCount(["rejected"]);
+
+  const maxSector = Math.max(0, ...report.bySector.map((r) => r.count));
+  const maxCity = Math.max(0, ...report.byCity.map((r) => r.count));
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Dönüşüm hunisi</h2>
+    <div class="funnel">
+      ${funnelStage("Toplam bulunan", total, total, "neutral")}
+      ${funnelStage("Onaylanan", approvedPlus, total, "ok")}
+      ${funnelStage("Gönderilen", sentPlus, total, "accent")}
+      ${funnelStage("Yanıtlayan", respondedPlus, total, "violet")}
+      ${funnelStage("Müşteriye dönüşen", converted, total, "warn")}
+    </div>
+    <p class="muted funnel-note">Reddedilen: ${rejected} (${total > 0 ? Math.round((rejected / total) * 100) : 0}%) - huniye dahil değil.</p>
+
+    <div class="report-grid">
+      <div class="settings-card">
+        <h3 class="card-title">Sektöre göre dağılım</h3>
+        <div class="bar-list">${barList(
+          report.bySector.map((r) => ({ label: sectorLabel(r.sectorSlug), count: r.count })),
+          maxSector,
+        )}</div>
+      </div>
+      <div class="settings-card">
+        <h3 class="card-title">Şehre göre dağılım (ilk 20)</h3>
+        <div class="bar-list">${barList(
+          report.byCity.map((r) => ({ label: r.cityLabel ?? r.citySlug ?? "Bilinmiyor", count: r.count })),
+          maxCity,
+        )}</div>
+      </div>
+    </div>
+  `;
+
+  return shell({
+    active: "rapor",
+    pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
+    title: "Rapor",
+    subtitle: "Sektör/şehir dağılımı ve onay → gönderim → yanıt → dönüşüm hunisi.",
     content,
   });
 }
@@ -939,6 +1191,7 @@ export function renderSettingsPage(
   return shell({
     active: "ayarlar",
     pendingCount: counts.pending_approval ?? 0,
+    followUpsDue: counts.follow_up_due ?? 0,
     title: "Ayarlar",
     subtitle: "Otomatik teklif metinleri ve yapay zeka davranışı için sistem ayarları.",
     content,
@@ -1098,6 +1351,12 @@ const STYLES = `
   .tile--neutral .tile-icon { background: var(--violet-soft); color: var(--violet); }
 
   .section-title { font-size: 1.05rem; margin: 0 0 1rem; font-weight: 700; letter-spacing: -0.01em; }
+  .section-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.6rem; margin: 0 0 1rem;
+  }
+  .section-title-row .section-title { margin: 0; }
+  .section-title-row .btn--filter { display: inline-flex; align-items: center; gap: 0.4rem; text-decoration: none; }
 
   .filter-bar {
     display: flex;
@@ -1369,7 +1628,38 @@ const STYLES = `
   .settings-textarea { resize: vertical; }
   .toggle { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
   .toggle input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent); }
+
+  /* Rapor sayfası: huni + çubuk grafikler */
+  .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1.75rem; }
+  .report-grid .card-title { margin-bottom: 0.9rem; }
+  .bar-list { display: flex; flex-direction: column; gap: 0.55rem; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 0.6rem; font-size: 0.82rem; }
+  .bar-label { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .bar-track--lg { height: 12px; }
+  .bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .bar-fill--ok { background: var(--ok); }
+  .bar-fill--accent { background: var(--accent); }
+  .bar-fill--violet { background: var(--violet); }
+  .bar-fill--warn { background: var(--warn); }
+  .bar-fill--neutral { background: var(--text-muted); }
+  .bar-count { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+
+  .funnel { display: flex; flex-direction: column; gap: 0.9rem; max-width: 560px; margin-bottom: 0.6rem; }
+  .funnel-stage { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1.1rem; box-shadow: var(--shadow-sm); }
+  .funnel-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+  .funnel-label { font-weight: 700; font-size: 0.9rem; }
+  .funnel-pct { font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .funnel-count { margin-top: 0.4rem; font-size: 0.76rem; color: var(--text-muted); }
+  .funnel-note { margin: 0 0 0.5rem; font-size: 0.8rem; }
   .send-hint { font-size: 0.76rem; width: 100%; margin: 0.3rem 0 0; }
+
+  .date-input {
+    margin-top: 0.5rem; max-width: 200px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.55rem 0.7rem; color: var(--text); font-family: inherit; font-size: 0.83rem;
+  }
+  .date-input::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
   @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

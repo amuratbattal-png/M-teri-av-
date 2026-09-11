@@ -100,20 +100,33 @@ export async function handleBulkApprove(request: Request, env: Env): Promise<Res
  * Serbest metin not (mini-CRM alanı) - "İlgilenmiyor", "Ay sonu tekrar
  * ara" gibi takip notları için. Şemada zaten vardı (evaluation_notes)
  * ama hiçbir endpoint/arayüz kullanmıyordu, bu onu devreye alıyor.
+ *
+ * `followUpDate` (opsiyonel, "YYYY-MM-DD") aynı formla birlikte
+ * kaydedilir - dashboard'daki Takip sayfası (`/takip`) bunu okuyup
+ * "bugün/geçmiş" arananları listeler. Boş string gönderilirse tarih
+ * temizlenir (null'a çekilir).
  */
 export async function handleUpdateNotes(
   request: Request,
   env: Env,
   candidateId: string,
 ): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as { evaluationNotes?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    evaluationNotes?: string;
+    followUpDate?: string;
+  };
   if (typeof body.evaluationNotes !== "string") {
     return json({ error: "invalid body: expected { evaluationNotes: string }" }, 400);
   }
   const db = createDb(env.DB);
   await db
     .update(candidates)
-    .set({ evaluationNotes: body.evaluationNotes })
+    .set({
+      evaluationNotes: body.evaluationNotes,
+      ...(body.followUpDate !== undefined
+        ? { followUpDate: body.followUpDate.trim() === "" ? null : body.followUpDate.trim() }
+        : {}),
+    })
     .where(eq(candidates.id, candidateId));
   return json({ ok: true, candidateId });
 }

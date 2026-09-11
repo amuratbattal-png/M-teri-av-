@@ -210,8 +210,9 @@ kurulmuş demektir; "Unauthorized" ya da boş/hata sayfası alırsan adım
 ## Mevcut (canlı) kuruluma yeni migration uygulama
 
 `packages/db/migrations/` altına `0001_init.sql`'den SONRA eklenen her
-dosya (ör. `0002_website_and_settings.sql`) canlı D1'e **elle**
-uygulanmalı - `wrangler deploy` şemayı OTOMATİK GÜNCELLEMEZ.
+dosya (ör. `0002_website_and_settings.sql`, `0003_followup.sql`) canlı
+D1'e **elle** uygulanmalı - `wrangler deploy` şemayı OTOMATİK
+GÜNCELLEMEZ.
 
 **SIRASI ÖNEMLİ:** yeni sütun/tablo kullanan kodu (`apps/control`)
 migration'dan ÖNCE deploy edersen, o sütun/tabloya yazan/okuyan HER
@@ -222,7 +223,19 @@ anlamına gelir. Sıra:
 ```bash
 cd apps/control
 pnpm exec wrangler d1 execute musteri-avcisi-db --remote \
-  --file=../../packages/db/migrations/0002_website_and_settings.sql
+  --file=../../packages/db/migrations/<EN_SON_EKLENEN_DOSYA>.sql
+```
+
+**Bilinen sorun:** projenin kendi `wrangler` sürümü (`^3.90.0`) bazen bu
+komutta `Authentication error [code: 10000]` veriyor - `whoami` ve
+izinler doğru olsa bile. Bu, wrangler 3.x'in D1 remote import
+akışındaki bilinen bir sorun; çözümü projeye dokunmadan, sadece bu tek
+komut için `npx wrangler@4` kullanmak (ilk çalıştırmada indirilmesine
+izin ver):
+
+```bash
+npx wrangler@4 d1 execute musteri-avcisi-db --remote \
+  --file=../../packages/db/migrations/<EN_SON_EKLENEN_DOSYA>.sql
 ```
 
 Migration başarıyla uygulandıktan SONRA `apps/control`'ü (ve varsa

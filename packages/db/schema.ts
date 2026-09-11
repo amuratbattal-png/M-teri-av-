@@ -33,6 +33,8 @@ export const candidates = sqliteTable("candidates", {
   discoveredAt: text("discovered_at").notNull(),
   status: text("status").notNull().default("discovered"),
   evaluationNotes: text("evaluation_notes"),
+  /** "YYYY-MM-DD" - sahibinin "ay sonu tekrar ara" gibi notlara eklediği takip tarihi. Dashboard'daki Takip sayfası bunu okur. */
+  followUpDate: text("follow_up_date"),
   proposalDraft: text("proposal_draft"),
   approvedBy: text("approved_by"),
   approvedAt: text("approved_at"),

@@ -144,6 +144,11 @@ export async function handleListCandidates(request: Request, env: Env): Promise<
 /**
  * Sahibinin "sadece yeni müşterileri ve sonuçları görecek" isteğine
  * hizmet eden özet sayaçlar - dashboard bu endpoint'i kullanır.
+ *
+ * `counts.follow_up_due`, gerçek bir `CandidateStatus` DEĞİL - bugüne
+ * kadar (dahil) takip tarihi gelmiş aday sayısı. Dashboard'daki "Takip"
+ * nav rozetini bu besliyor; ayrı bir round-trip gerekmesin diye buraya
+ * eklendi (bkz. apps/dashboard/src/index.ts fetchStats).
  */
 export async function handleStats(env: Env): Promise<Response> {
   const db = createDb(env.DB);
@@ -157,6 +162,13 @@ export async function handleStats(env: Env): Promise<Response> {
     number
   >;
   for (const row of rows) counts[row.status] = Number(row.count);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const followUpRows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(candidates)
+    .where(sql`${candidates.followUpDate} IS NOT NULL AND ${candidates.followUpDate} <= ${today}`);
+  counts.follow_up_due = Number(followUpRows[0]?.count ?? 0);
 
   return json({ counts });
 }

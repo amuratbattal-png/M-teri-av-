@@ -14,6 +14,7 @@ import {
 import { handleListCommunications } from "./routes/communications";
 import { handleAlert } from "./routes/alerts";
 import { handleGetSettings, handleUpdateSettings } from "./routes/settings";
+import { handleGetReport } from "./routes/reports";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -80,6 +81,10 @@ export default {
 
     if (pathname === "/settings" && method === "POST") {
       return handleUpdateSettings(request, env);
+    }
+
+    if (pathname === "/report" && method === "GET") {
+      return handleGetReport(env);
     }
 
     if (pathname === "/candidates/bulk-approve" && method === "POST") {

@@ -543,6 +543,42 @@ Neden bu yapı:
       artık 3 ayrı şablon kutusu var: Genel, "Yeni web sitesi", "Web
       sitesi yenileme". `settings` tablosu zaten key/value olduğu için
       YENİ MİGRATION GEREKMİYOR - sadece kod deploy'u yeterli.
+- [x] **Takip hatırlatıcısı + CSV dışa aktarma + Rapor sayfası eklendi
+      (kod hazır, CANLIYA ALMADAN ÖNCE D1 MIGRATION UYGULANMALI - yeni
+      `follow_up_date` sütunu, `migrations/0003_followup.sql`):**
+      1. **Takip hatırlatıcısı.** Aday popup'ındaki not alanının yanına
+         bir "tekrar arama/takip tarihi" (`<input type="date">`) eklendi
+         - `candidates.follow_up_date` (`YYYY-MM-DD`) sütunu,
+         `POST /candidates/:id/notes` artık `followUpDate`'i de kabul
+         ediyor (boş string gönderilirse temizlenir). Yeni **"Takip"**
+         sayfası (`/takip`) takip tarihi eklenmiş TÜM adayları
+         (durumdan bağımsız) tarihe göre sıralı listeliyor -
+         gecikmiş/bugünkü kırmızı/sarı rozetle öne çıkıyor. Sol menüdeki
+         "Takip" rozeti, bugüne kadar (dahil) tarihi gelmiş aday
+         sayısını gösteriyor (`apps/control` `handleStats` artık
+         `counts.follow_up_due` de döndürüyor - ekstra round-trip
+         gerekmesin diye `/stats`'a eklendi, ayrı endpoint değil).
+      2. **CSV dışa aktarma.** "Tüm Adaylar" sayfasına, o an uygulanan
+         filtrelerle (sektör/şehir/ihtiyaç/isim) birebir eşleşen bir
+         "Bu listeyi CSV indir" linki eklendi
+         (`GET /adaylar/export.csv?...`, `apps/dashboard/src/index.ts`).
+         UTF-8 BOM ekleniyor (Excel/Windows'ta Türkçe karakterler
+         BOM'suz bozulabiliyor). Sütunlar: Ad, Sektör, Şehir, Kaynak,
+         Durum, İhtiyaçlar, Web Sitesi, Telefon, WhatsApp, E-posta,
+         Keşfedilme Tarihi, Not, Takip Tarihi.
+      3. **Rapor sayfası (`/rapor`).** Yeni `apps/control`
+         `GET /report` endpoint'i (`routes/reports.ts`), D1'de
+         `GROUP BY` ile sektör/şehir/durum kırılımlarını hesaplıyor
+         (tüm `candidates` tablosunu worker'a çekmiyor). Dashboard'da:
+         - **Dönüşüm hunisi**: Toplam bulunan → Onaylanan → Gönderilen →
+           Yanıtlayan → Müşteriye dönüşen, her aşama toplamın yüzdesiyle.
+         - **Sektöre/şehre göre dağılım**: basit CSS çubuk grafikler
+           (harici kütüphane yok, mevcut renk sistemiyle tutarlı).
+      **Deploy sırası:** `follow_up_date` sütunu olmadan `apps/control`
+      deploy edilirse `handleStats`'taki yeni sorgu ("no such column")
+      hata verir - `/stats` her sayfada çağrıldığı için TÜM SAYFALAR
+      etkilenir. Migration `apps/control` redeploy'undan ÖNCE
+      uygulanmalı (bkz. `docs/deployment.md`).
 - [ ] `linkedin-scanner`, `tiktok-scanner`, `instagram-scanner`,
       `tender-site-scanner`, `freelancer-gallery-scanner` için gerçek
       kaynak entegrasyonları yazılacak (iskelet hazır, `scan.ts`

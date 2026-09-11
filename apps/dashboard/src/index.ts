@@ -5,8 +5,14 @@ import {
   renderApprovedPage,
   renderSentPage,
   renderSettingsPage,
+  renderFollowUpsPage,
+  renderReportPage,
+  matchesCandidateFilters,
+  candidateCsvRow,
+  CANDIDATE_CSV_HEADERS,
   type CommunicationRow,
   type SettingsData,
+  type ReportData,
 } from "./render";
 
 export interface Env {
@@ -70,6 +76,11 @@ async function fetchSettings(env: Env): Promise<SettingsData> {
   return settings;
 }
 
+async function fetchReport(env: Env): Promise<ReportData> {
+  const res = await callControl(env, "/report");
+  return (await res.json()) as ReportData;
+}
+
 /**
  * Aday popup'ları (bkz. apps/dashboard/src/render.ts candidateDetailDialog)
  * artık Onaylar/Onaylananlar/Tüm Adaylar sayfalarının hepsinde aynı - her
@@ -77,10 +88,18 @@ async function fetchSettings(env: Env): Promise<SettingsData> {
  * var. Açık yönlendirme (open redirect) riskine karşı sadece bilinen
  * sayfa yollarına izin verilir.
  */
-const ALLOWED_REDIRECTS = new Set(["/", "/onaylananlar", "/adaylar"]);
+const ALLOWED_REDIRECTS = new Set(["/", "/onaylananlar", "/adaylar", "/takip"]);
 function safeRedirect(origin: string, value: unknown): Response {
   const path = typeof value === "string" && ALLOWED_REDIRECTS.has(value) ? value : "/";
   return Response.redirect(origin + path, 303);
+}
+
+/** CSV hücresi - virgül/tırnak/satır sonu içeriyorsa tırnak içine alır, iç tırnakları ikiler (RFC 4180). */
+function csvCell(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }
 
 export default {
@@ -125,6 +144,49 @@ export default {
       const need = url.searchParams.get("need") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
       return new Response(renderAllCandidatesPage(counts, all, sector, city, q, need), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Tüm Adaylar sayfasındaki "Bu listeyi CSV indir" linki - AYNI
+    // filtreler (sektör/şehir/ihtiyaç/isim) ve AYNI "onaylananlar hariç"
+    // kuralı (bkz. renderAllCandidatesPage) uygulanır, ekranda gördüğün
+    // liste birebir CSV'ye düşsün diye.
+    if (url.pathname === "/adaylar/export.csv" && request.method === "GET") {
+      const sector = url.searchParams.get("sector") || undefined;
+      const city = url.searchParams.get("city") || undefined;
+      const need = url.searchParams.get("need") || undefined;
+      const q = url.searchParams.get("q") || undefined;
+      const all = await fetchCandidates(env);
+      const filtered = all.filter(
+        (c) => c.status !== "approved" && matchesCandidateFilters(c, { sector, city, need, query: q }),
+      );
+
+      const lines = [CANDIDATE_CSV_HEADERS, ...filtered.map(candidateCsvRow)].map((row) =>
+        row.map(csvCell).join(","),
+      );
+      // Excel (Windows) Türkçe karakterleri BOM olmadan bozabiliyor.
+      const csv = "﻿" + lines.join("\r\n") + "\r\n";
+      const filename = `adaylar-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      return new Response(csv, {
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    }
+
+    if (url.pathname === "/takip" && request.method === "GET") {
+      const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
+      return new Response(renderFollowUpsPage(counts, all), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/rapor" && request.method === "GET") {
+      const [counts, report] = await Promise.all([fetchStats(env), fetchReport(env)]);
+      return new Response(renderReportPage(counts, report), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -178,15 +240,17 @@ export default {
       return safeRedirect(url.origin, form.get("redirect"));
     }
 
-    // Serbest metin not (mini-CRM) - popup'taki "Notu Kaydet" formu.
+    // Serbest metin not (mini-CRM) + tekrar arama/takip tarihi -
+    // popup'taki "Notu Kaydet" formu (bkz. render.ts Takip sayfası).
     const notesMatch = url.pathname.match(/^\/candidates\/([^/]+)\/notes$/);
     if (notesMatch && request.method === "POST") {
       const form = await request.formData();
       const evaluationNotes = String(form.get("evaluationNotes") ?? "");
+      const followUpDate = String(form.get("followUpDate") ?? "");
       await callControl(env, `/candidates/${notesMatch[1]}/notes`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ evaluationNotes }),
+        body: JSON.stringify({ evaluationNotes, followUpDate }),
       });
       return safeRedirect(url.origin, form.get("redirect"));
     }

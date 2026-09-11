@@ -50,6 +50,8 @@ export interface Candidate {
   discoveredAt: string; // ISO timestamp
   status: CandidateStatus;
   evaluationNotes: string | null;
+  /** "YYYY-MM-DD" - sahibinin belirlediği tekrar arama/takip tarihi, yoksa null. */
+  followUpDate: string | null;
   proposalDraft: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
