@@ -1,4 +1,4 @@
-import { scanNextSector, type ScanDebugInfo } from "./scan";
+import { scanNextSector, diagnoseCustomSearch, type ScanDebugInfo } from "./scan";
 
 export interface Env {
   SCAN_STATE: KVNamespace;
@@ -133,6 +133,26 @@ export default {
         JSON.stringify({ ok: true, ranAt: new Date().toISOString(), diagnostics }),
         { headers: { "content-type": "application/json" } },
       );
+    }
+
+    // Sadece "google_search" (Custom Search JSON API) kanalını izole test
+    // eder - /run-now'ın aksine sektör × şehir turunu (ve Places API
+    // anahtarını) beklemeden, tek bir istekle sonuç döner. Google'ın 403
+    // hatasını araştırırken hızlı, tekrarlanabilir bir teşhis için (bkz.
+    // CLAUDE.md "Bilinen sorun").
+    if (url.pathname === "/diagnose-search") {
+      const provided = url.searchParams.get("secret")?.trim() ?? "";
+      const expected = env.SCAN_SHARED_SECRET?.trim() ?? "";
+      if (provided !== expected) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const diagnosis = await diagnoseCustomSearch(env);
+      return new Response(JSON.stringify({ ranAt: new Date().toISOString(), diagnosis }, null, 2), {
+        headers: { "content-type": "application/json" },
+      });
     }
 
     return new Response(

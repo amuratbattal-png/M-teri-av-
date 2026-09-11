@@ -86,11 +86,44 @@ async function searchPlaces(
  * programmablesearchengine.google.com üzerinden bir arama motoru (cx)
  * oluşturulup "Search the entire web" açılmalı.
  */
+/**
+ * Google'ın döndürdüğü standart hata gövdesi. "errors[].reason" ve
+ * özellikle "errors[].extendedHelp" asıl teşhis sinyalini taşıyor:
+ * "accessNotConfigured" gibi bir reason'da extendedHelp linki genelde
+ * `...customsearch.googleapis.com/overview?project=<PROJECT_NUMBER>`
+ * şeklinde, anahtarın Google tarafında GERÇEKTE hangi proje numarasına
+ * bağlı olduğunu gösteriyor - "proje/anahtar eşleşmesi" şüphesini kesin
+ * olarak doğrulamak/elemek için en güvenilir tek sinyal bu.
+ */
+interface GoogleApiErrorBody {
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+    errors?: Array<{ message?: string; domain?: string; reason?: string; extendedHelp?: string }>;
+  };
+}
+
+export interface WebSearchApiError {
+  /** İnsan tarafından okunması kolay, tek satırlık özet - loglarda/uyarı e-postasında kullanılır. */
+  summary: string;
+  httpStatus: number;
+  /** Google'ın ham gövdesi, HİÇ KESİLMEDEN - bilinmeyen/yeni bir hata şekli çıkarsa kaybolmasın diye. */
+  rawBody: string;
+  /** Gövde JSON olarak ayrıştırılabildiyse çıkarılan alanlar (bkz. GoogleApiErrorBody). */
+  status?: string;
+  reason?: string;
+  domain?: string;
+  message?: string;
+  /** Genelde gerçek proje numarasını içeren yardım linki - bkz. üstteki not. */
+  extendedHelp?: string;
+}
+
 async function searchGoogleWeb(
   query: string,
   apiKey: string,
   searchEngineId: string,
-): Promise<{ data: WebSearchResponse; apiError?: string }> {
+): Promise<{ data: WebSearchResponse; apiError?: WebSearchApiError }> {
   const params = new URLSearchParams({
     key: apiKey,
     cx: searchEngineId,
@@ -105,10 +138,34 @@ async function searchGoogleWeb(
   if (!res.ok) {
     const text = await res.text();
     console.error("Custom Search API hatası", res.status, text);
-    return {
-      data: {},
-      apiError: `status=${res.status} bodyLen=${text.length} body=${text.slice(0, 300)}`,
+
+    const apiError: WebSearchApiError = {
+      summary: `status=${res.status} bodyLen=${text.length}`,
+      httpStatus: res.status,
+      rawBody: text,
     };
+    try {
+      const parsed = JSON.parse(text) as GoogleApiErrorBody;
+      const firstError = parsed.error?.errors?.[0];
+      apiError.status = parsed.error?.status;
+      apiError.message = parsed.error?.message;
+      apiError.reason = firstError?.reason;
+      apiError.domain = firstError?.domain;
+      apiError.extendedHelp = firstError?.extendedHelp;
+      apiError.summary = [
+        `status=${res.status}`,
+        parsed.error?.status ? `googleStatus=${parsed.error.status}` : null,
+        firstError?.reason ? `reason=${firstError.reason}` : null,
+        parsed.error?.message ? `message="${parsed.error.message}"` : null,
+        firstError?.extendedHelp ? `extendedHelp=${firstError.extendedHelp}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    } catch {
+      // Gövde JSON değil (ör. HTML hata sayfası) - rawBody zaten tam halde döndü, o yeterli.
+    }
+
+    return { data: {}, apiError };
   }
 
   return { data: (await res.json()) as WebSearchResponse };
@@ -185,7 +242,7 @@ export interface ScanDebugInfo {
   webSearchEnabled: boolean;
   webQuery?: string;
   webResultsReturned?: number;
-  webApiError?: string;
+  webApiError?: WebSearchApiError;
   /** GOOGLE_SEARCH_API_KEY (veya yoksa SEARCH_API_KEY) uzunluğu - secret
    * yapıştırma sırasında bozulmayı tespit etmek için (bu projede daha
    * önce iki kez yaşandı, bkz. CLAUDE.md "Bilinen risk"). Gerçek bir
@@ -262,7 +319,7 @@ async function collectWebSearchResults(
   sector: (typeof SECTORS)[number],
   apiKey: string,
   searchEngineId: string,
-): Promise<{ results: ScanResult[]; query: string; returned: number; apiError?: string }> {
+): Promise<{ results: ScanResult[]; query: string; returned: number; apiError?: WebSearchApiError }> {
   const query = `"${sector.labelTr}" ("yeni açıldı" OR "web sitesi yaptırmak istiyorum" OR "sitemizi yenilemek istiyoruz")`;
   const { data, apiError } = await searchGoogleWeb(query, apiKey, searchEngineId);
   const items = data.items ?? [];
@@ -351,4 +408,50 @@ export async function scanNextSector(
   }
 
   return { results, nextCursorIndex, debug };
+}
+
+export interface CustomSearchDiagnosis {
+  configured: boolean;
+  query?: string;
+  apiKeyLength?: number;
+  apiKeyPrefix?: string;
+  apiKeySource?: "GOOGLE_SEARCH_API_KEY" | "SEARCH_API_KEY";
+  searchEngineId?: string;
+  resultsReturned?: number;
+  ok?: boolean;
+  error?: WebSearchApiError;
+}
+
+/**
+ * `google_search` (Custom Search JSON API) kanalını, tam sektör × şehir
+ * turunu beklemeden, TEK BAŞINA test eder. Places API'nin (SEARCH_API_KEY)
+ * tanımlı olup olmamasından bağımsız çalışır - sadece Custom Search API'ye
+ * özgü anahtar/motor kimliği yeterlidir. `/diagnose-search` endpoint'i
+ * (bkz. index.ts) bunu çağırır.
+ */
+export async function diagnoseCustomSearch(env: ScanEnv): Promise<CustomSearchDiagnosis> {
+  if (!env.GOOGLE_SEARCH_ENGINE_ID) {
+    return { configured: false };
+  }
+
+  const apiKeySource = env.GOOGLE_SEARCH_API_KEY ? "GOOGLE_SEARCH_API_KEY" : "SEARCH_API_KEY";
+  const apiKey = env.GOOGLE_SEARCH_API_KEY ?? env.SEARCH_API_KEY;
+  if (!apiKey) {
+    return { configured: false };
+  }
+
+  const query = "test";
+  const { data, apiError } = await searchGoogleWeb(query, apiKey, env.GOOGLE_SEARCH_ENGINE_ID);
+
+  return {
+    configured: true,
+    query,
+    apiKeyLength: apiKey.length,
+    apiKeyPrefix: apiKey.slice(0, 4),
+    apiKeySource,
+    searchEngineId: env.GOOGLE_SEARCH_ENGINE_ID,
+    resultsReturned: data.items?.length ?? 0,
+    ok: !apiError,
+    error: apiError,
+  };
 }

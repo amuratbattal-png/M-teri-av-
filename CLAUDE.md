@@ -216,6 +216,22 @@ Neden bu yapı:
       İstenirse ileride: (a) sıfırdan yeni Google Cloud projesi, veya
       (b) Brave Search API (kod hazır, `git revert` ile geri getirilebilir,
       bkz. commit 7c788b3) ile devam edilebilir.
+      **Teşhis iyileştirmesi (bu oturumda yapıldı, canlıda henüz test
+      edilmedi):** `webApiError` artık 300 karakterde kesilmiyor - ham
+      gövde tam haliyle korunuyor ve Google'ın hata JSON'ı ayrıştırılıp
+      `status`/`reason`/`message`/`extendedHelp` alanları ayrı ayrı
+      çıkarılıyor. `extendedHelp` linki genelde
+      `.../customsearch.googleapis.com/overview?project=<PROJE_NUMARASI>`
+      şeklinde - anahtarın Google tarafında GERÇEKTE hangi proje
+      numarasına bağlı olduğunu gösteriyor, "proje/anahtar eşleşmesi"
+      şüphesini kesin doğrulamak için en güvenilir sinyal bu. Ayrıca
+      sektör × şehir turunu (ve Places API anahtarını) beklemeden Custom
+      Search API'yi tek başına test eden yeni bir uç nokta eklendi:
+      `GET /diagnose-search?secret=<SCAN_SHARED_SECRET>`
+      (`workers/google-search-scanner/src/index.ts`,
+      `diagnoseCustomSearch()` → `scan.ts`). Sonraki adım: bu endpoint'i
+      canlıda çağırıp `extendedHelp` linkindeki proje numarasını GCP
+      Console'daki hedef projenin numarasıyla karşılaştırmak.
 - [x] **E-posta gönderimi canlı ve doğrulandı**: Resend + `ajansim.net`
       domaini (Cloudflare üzerinden "Auto configure" ile DKIM/SPF/DMARC
       DNS kayıtları otomatik eklendi, domain "Verified"). Gönderen adres:
