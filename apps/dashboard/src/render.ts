@@ -644,12 +644,29 @@ function parseSocialProfiles(value: unknown): SocialProfileEntry[] {
   });
 }
 
+interface YahooResearchEntry {
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+/** rawMetadata.yahooResearch alanını (bkz. workers/google-search-scanner "firma ismini Yahoo'da arattır" notu, CLAUDE.md) güvenli şekilde tipler. */
+function parseYahooResearch(value: unknown): YahooResearchEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is YahooResearchEntry => {
+    if (!entry || typeof entry !== "object") return false;
+    const e = entry as Record<string, unknown>;
+    return typeof e.title === "string" && typeof e.url === "string";
+  });
+}
+
 function gatheredInfoSection(c: Candidate): string {
   const meta = (c.rawMetadata as Record<string, unknown> | null) ?? {};
   const address = typeof meta.formattedAddress === "string" ? meta.formattedAddress : null;
   const siteTitle = typeof meta.siteTitle === "string" ? meta.siteTitle : null;
   const siteTextSnippet = typeof meta.siteTextSnippet === "string" ? meta.siteTextSnippet : null;
   const socialProfiles = parseSocialProfiles(meta.socialProfiles);
+  const yahooResearch = parseYahooResearch(meta.yahooResearch);
 
   const rows = [
     address ? { label: "Adres", value: address } : null,
@@ -657,7 +674,7 @@ function gatheredInfoSection(c: Candidate): string {
     siteTextSnippet ? { label: "Web sitesi içeriğinden özet", value: siteTextSnippet } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
-  if (rows.length === 0 && socialProfiles.length === 0 && !c.evaluationNotes) return "";
+  if (rows.length === 0 && socialProfiles.length === 0 && yahooResearch.length === 0 && !c.evaluationNotes) return "";
 
   const rowsHtml = rows
     .map(
@@ -680,6 +697,17 @@ function gatheredInfoSection(c: Candidate): string {
     })
     .join("");
 
+  // Sahibinin "firma ismini Yahoo'da arattırıp hakkında bilgi
+  // toplayacak" isteği (bkz. CLAUDE.md) - Yahoo'nun otomatik istekleri
+  // sistematik olarak engellediği kanıtlandığı için (bkz. CLAUDE.md)
+  // bu genelde BOŞ olacak - varsa (nadiren) bulunan sonuçlar burada.
+  const yahooHtml = yahooResearch
+    .map(
+      (r) =>
+        `<p class="muted" style="margin:0.2rem 0"><strong>Yahoo'da bulundu:</strong> <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>${r.snippet ? ` — ${escapeHtml(r.snippet)}` : ""}</p>`,
+    )
+    .join("");
+
   // NOT: evaluationNotes hem AI'ın otomatik puanlama gerekçesini ("AI:
   // düşük puan (2/5) - ...") HEM sahibinin aşağıdaki "Notu Kaydet"
   // formuyla yazdığı serbest takip notunu ("ilgilenmiyor" vb.) taşıyan
@@ -690,13 +718,14 @@ function gatheredInfoSection(c: Candidate): string {
     ? `<p class="muted" style="margin:0.2rem 0"><strong>Not:</strong> ${escapeHtml(c.evaluationNotes)}</p>`
     : "";
 
-  if (!rowsHtml && !socialHtml && !notesHtml) return "";
+  if (!rowsHtml && !socialHtml && !yahooHtml && !notesHtml) return "";
 
   return `
     <div class="report-card" style="margin:0.75rem 0;padding:0.75rem 1rem">
       <div class="proposal-label">Toplanan bilgiler (AI'ın puanlama/teklif için kullandığı sinyaller)</div>
       ${rowsHtml}
       ${socialHtml}
+      ${yahooHtml}
       ${notesHtml}
     </div>`;
 }

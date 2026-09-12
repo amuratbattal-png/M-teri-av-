@@ -1510,6 +1510,48 @@ Neden bu yapı:
       bir Google Cloud projesiyle Custom Search API'yi düzeltmeyi
       (hâlâ masada duran, önerilen, garantili/ücretsiz çözüm) tekrar
       düşünebilir.
+- [ ] **YANLIŞ ANLAMA DÜZELTİLDİ + "firma ismini Yahoo'da arattır"
+      özelliği eklendi (HENÜZ CANLI TEST EDİLMEDİ, çok düşük başarı
+      ihtimaliyle).** Sahibi "hayır anlamadım ki firma ismini yahooda
+      arattırıp firma hakkında bilgi toplayacak" dedi - önceki
+      `yahoo-search-scanner` işi bir KEŞİF kanalı (sektör bazlı genel
+      sorgularla YENİ firma bulma) olarak kurulmuştu, ama sahibi
+      aslında ZATEN BULUNMUŞ bir firmanın adını arayıp hakkında bilgi
+      toplayan bir ZENGİNLEŞTİRME adımı istiyordu - bu, en baştaki
+      "firmayı googlede aratıp linkleri araştırıp rapor hazırlayalım
+      mı" sorusunun asıl anlamıymış, yanlış anlaşılmıştı.
+      Sahibine bu ayrımın az önce kanıtlanan Yahoo bot-bloğu sorununu
+      DEĞİŞTİRMEDİĞİ (blok sorguya değil isteğin kendisine bakıyor)
+      açıkça anlatıldı, `AskUserQuestion` ile "yine de dene" seçildi.
+      Refactor + yeni özellik:
+      - `searchYahoo`/`parseYahooResults` mantığı `workers/yahoo-search-scanner`'dan
+        çıkarılıp `packages/shared/src/yahoo-search.ts`'e taşındı (DRY) -
+        artık hem `yahoo-search-scanner` (keşif) hem `google-search-scanner`
+        (zenginleştirme) AYNI fonksiyonu kullanıyor.
+      - `workers/google-search-scanner/src/scan.ts` `collectMapsResults`:
+        her Google Maps adayı için (siteye sahip olsun olmasın) artık
+        `searchYahoo("{firma adı} {şehir}")` çağrılıyor, bulunan
+        sonuçlar (varsa) `rawMetadata.yahooResearch` dizisine
+        kaydediliyor - `assessLeadQuality`/`draftProposal` ZATEN
+        rawMetadata'yı genel olarak kullandığı için ek kod değişikliği
+        gerekmedi, otomatik olarak puanlama/teklife dahil oluyor.
+        `ScanDebugInfo`ya `mapsYahooResearchFound` sayacı eklendi
+        (`/run-now` yanıtında görülebilir - BEKLENEN değer 0).
+      - `apps/dashboard/src/render.ts` `gatheredInfoSection`'a
+        "Yahoo'da bulundu" satırları eklendi (`parseYahooResearch` -
+        tip güvenli).
+      **Beklenti AÇIKÇA çok düşük** - Yahoo'nun bot bloğu sorguya değil
+      isteğin kendisine baktığı için HER Maps adayında aynı "Too many
+      redirects" hatasına çarpılması bekleniyor; ama sistem bunu zaten
+      zarif karşılıyor (aday oluşturma akışını durdurmaz, sadece
+      `yahooResearch` alanı boş kalır). **Ek maliyet notu:** bu artık
+      HER Maps adayı için bir Yahoo isteği daha demek - 8 saniyeye kadar
+      sürebilen bir çağrı, taramaları biraz daha yavaşlatabilir (kabul
+      edilen bir ödünleşim, sahibi bilinçli olarak istedi).
+      **Henüz canlıda doğrulanmadı** - deploy edilip bir Google Maps
+      taraması tekrar denendiğinde `mapsYahooResearchFound`'ın
+      (muhtemelen 0 olarak) Canlı Log'da/`/run-now` yanıtında görülmesi
+      beklenir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

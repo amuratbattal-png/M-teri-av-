@@ -1,4 +1,4 @@
-import { SECTORS, CITIES, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
+import { SECTORS, CITIES, searchYahoo, type ScanResult, type NeedTag } from "@musteri-avcisi/shared";
 
 export interface ScanEnv {
   SEARCH_API_KEY?: string;
@@ -338,6 +338,13 @@ export interface ScanDebugInfo {
   webUsedScrapeFallback?: boolean;
   /** Kazıma hiç sonuç bulamazsa (büyük ihtimalle CAPTCHA/blok) ham HTML'in bir kısmı - teşhis için. */
   webScrapeRawSample?: string;
+  /**
+   * "Firma ismini Yahoo'da arattır" isteği (bkz. CLAUDE.md) - bu
+   * sektör×şehir turunda kaç Maps adayında Yahoo firma araması gerçekten
+   * sonuç buldu. Yahoo'nun otomatik istekleri sistematik olarak
+   * engellediği kanıtlandığı için (bkz. CLAUDE.md) BEKLENEN değer 0.
+   */
+  mapsYahooResearchFound?: number;
 }
 
 const GOOGLE_SCRAPE_TIMEOUT_MS = 8000;
@@ -446,11 +453,18 @@ async function collectMapsResults(
   sector: (typeof SECTORS)[number],
   city: (typeof CITIES)[number],
   apiKey: string,
-): Promise<{ results: ScanResult[]; placesReturned: number; apiError?: string }> {
+): Promise<{
+  results: ScanResult[];
+  placesReturned: number;
+  apiError?: string;
+  /** Kaç adayda Yahoo firma araması gerçekten sonuç buldu - bkz. "firma ismini Yahoo'da arattır" notu, CLAUDE.md. Beklenen: çoğunlukla 0. */
+  yahooResearchFound: number;
+}> {
   const query = `${sector.labelTr} ${city.labelTr}`;
   const { data, apiError } = await searchPlaces(query, apiKey);
   const places = data.places ?? [];
   const results: ScanResult[] = [];
+  let yahooResearchFound = 0;
 
   for (const place of places) {
     const name = place.displayName?.text;
@@ -500,6 +514,17 @@ async function collectMapsResults(
       }
     }
 
+    // Sahibinin "firma ismini Yahoo'da arattırıp hakkında bilgi
+    // toplayacak" isteği (bkz. CLAUDE.md) - Yahoo'nun otomatik istekleri
+    // SORGUYA BAKMAKSIZIN sistematik olarak engellediği KANITLANMIŞ
+    // olsa da (yahoo-search-scanner'da 2/2 "Too many redirects" ile
+    // başarısız oldu) sahibinin ısrarı üzerine yine de deneniyor - belki
+    // firma adıyla arama farklı davranır ihtimaline karşı. ÇOK DÜŞÜK
+    // BAŞARI İHTİMALİ - açıkça beklenen. `searchYahoo` (paylaşılan,
+    // yahoo-search-scanner ile AYNI fonksiyon) hiçbir zaman fırlatmaz,
+    // başarısız olursa sessizce boş döner, akışı durdurmaz.
+    const companyResearch = await searchYahoo(`${name} ${city.labelTr}`);
+
     results.push({
       name,
       sectorSlug: sector.slug,
@@ -522,11 +547,13 @@ async function collectMapsResults(
         ...(siteSnippet?.title ? { siteTitle: siteSnippet.title } : {}),
         ...(siteSnippet?.textSnippet ? { siteTextSnippet: siteSnippet.textSnippet } : {}),
         ...(socialInfo.length ? { socialProfiles: socialInfo } : {}),
+        ...(companyResearch.results.length ? { yahooResearch: companyResearch.results } : {}),
       },
     });
+    if (companyResearch.results.length > 0) yahooResearchFound++;
   }
 
-  return { results, placesReturned: places.length, apiError };
+  return { results, placesReturned: places.length, apiError, yahooResearchFound };
 }
 
 /** "google_search" kanalı: düz web araması sonuçlarını ScanResult'a çevirir. */
@@ -639,6 +666,7 @@ export async function scanNextSector(
     apiError: maps.apiError,
     apiKeyLength: env.SEARCH_API_KEY.length,
     webSearchEnabled: Boolean(env.GOOGLE_SEARCH_ENGINE_ID),
+    mapsYahooResearchFound: maps.yahooResearchFound,
   };
 
   const webSearchApiKey = env.GOOGLE_SEARCH_API_KEY ?? env.SEARCH_API_KEY;
