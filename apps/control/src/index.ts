@@ -8,6 +8,8 @@ import {
   handleReport,
   handleRescoreUnscored,
   handleRescoreStatus,
+  handleSetRescoreCron,
+  handleResetAndRescore,
   rescoreUnscoredBatch,
 } from "./routes/candidates";
 import {
@@ -29,6 +31,7 @@ import {
   handleVerifySetting,
 } from "./routes/settings";
 import { handleGetActivity, logActivity } from "./lib/activity-log";
+import { getEffectiveSettings } from "./lib/settings";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -71,10 +74,24 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
   }
 
   // Sadece okuma - "cronun %'lik değerini göreyim" isteği (bkz. CLAUDE.md):
-  // Ayarlar sayfası her açıldığında (buton basılmadan/cron beklemeden)
+  // Rapor sayfası her açıldığında (buton basılmadan/cron beklemeden)
   // mevcut ilerlemeyi göstermek için.
   if (pathname === "/candidates/rescore-status" && method === "GET") {
     return handleRescoreStatus(env);
+  }
+
+  // "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - bkz. CLAUDE.md.
+  if (pathname === "/candidates/rescore-cron/pause" && method === "POST") {
+    return handleSetRescoreCron(env, false);
+  }
+  if (pathname === "/candidates/rescore-cron/resume" && method === "POST") {
+    return handleSetRescoreCron(env, true);
+  }
+
+  // "Firmaları Yeniden Puanla" (Rapor sayfası) - bkz. CLAUDE.md, tüm
+  // pending_approval/on_hold adaylarının puanını sıfırlar.
+  if (pathname === "/candidates/reset-and-rescore" && method === "POST") {
+    return handleResetAndRescore(env);
   }
 
   if (pathname === "/settings" && method === "GET") {
@@ -276,11 +293,22 @@ export default {
    * mantığı (5 deneme, en kötü ihtimalle ~45s/aday) yüzünden küçük bir
    * batch bile bir sonraki tetiklenmeden BİTMEYİP üst üste binebilirdi -
    * 10 dakika + 5'lik (öncesi 15) daha küçük batch bu riski azaltıyor.
+   *
+   * "Cronu Durdur" (Rapor sayfası, bkz. CLAUDE.md) - `rescoreCronEnabled`
+   * false ise (sahibi bilinçli olarak durdurmuşsa) hiçbir şey yapmadan
+   * çıkar. Özellikle "Firmaları Yeniden Puanla" (bkz. handleResetAndRescore)
+   * gibi büyük, manuel bir işlem sırasında cron'un araya girip aynı
+   * adaylar üzerinde yarışmasını (çift NVIDIA çağrısı, 429 riski) önlemek
+   * için düşünüldü - sahibi büyük bir toplu işlem başlatmadan önce
+   * cron'u durdurabiliyor.
    */
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       (async () => {
         try {
+          const { rescoreCronEnabled } = await getEffectiveSettings(env);
+          if (!rescoreCronEnabled) return;
+
           // 15'ten 5'e düşürüldü (bkz. CLAUDE.md "429 tekrar" olayı) -
           // artık her NVIDIA çağrısı en kötü ihtimalle ~45 saniyeye kadar
           // (5 deneme, üstel bekleme) uzayabiliyor; büyük bir batch, bir

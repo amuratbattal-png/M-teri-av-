@@ -376,18 +376,18 @@ function shell(opts: {
       }, 5000);
     })();
 
-    // Ayarlar sayfasındaki "Puanlanmamış Adayları Yeniden Puanla" (bkz.
-    // CLAUDE.md "model end-of-life" olayı) - control'ün
+    // Rapor sayfasındaki "Bakım" kartı (bkz. CLAUDE.md "cron yönetimi"
+    // notu - önceden Ayarlar sayfasındaydı, oraya taşındı) - control'ün
     // /candidates/rescore-unscored'u küçük gruplar hâlinde işliyor
     // (bkz. apps/control/src/routes/candidates.ts RESCORE_BATCH_SIZE),
     // bu yüzden "remaining > 0" kaldıkça tekrar tekrar çağırıyoruz.
-    function rescoreUnscored(btn) {
+    // "Firmaları Yeniden Puanla" (resetAndRescoreAll) önce TÜM puanları
+    // sıfırlayıp SONRA bu AYNI döngüyü başlatıyor.
+    function runRescoreLoop(btn) {
       var statusEl = document.getElementById('rescore-status');
       var barFillEl = document.getElementById('rescore-bar-fill');
       var barCountEl = document.getElementById('rescore-bar-count');
       var detailEl = document.getElementById('rescore-detail');
-      var original = btn.textContent;
-      btn.disabled = true;
       var totalProcessed = 0;
       var totalMoved = 0;
       function step() {
@@ -399,8 +399,9 @@ function shell(opts: {
             if (statusEl) {
               statusEl.textContent = totalProcessed + ' aday yeniden puanlandı (' + totalMoved + ' askıda), kalan: ' + data.remaining;
             }
-            // Cronun %'lik değeri - bkz. CLAUDE.md. Manuel buton her adımda
-            // aynı sayıyı üretiyor, sayfa açıkken canlı ilerleme görülsün diye.
+            // Cronun %'lik değeri - bkz. CLAUDE.md. Manuel işlem her
+            // adımda aynı sayıyı üretiyor, sayfa açıkken canlı ilerleme
+            // görülsün diye.
             if (typeof data.percentComplete === 'number') {
               if (barFillEl) barFillEl.style.width = data.percentComplete + '%';
               if (barCountEl) barCountEl.textContent = '%' + data.percentComplete;
@@ -409,19 +410,54 @@ function shell(opts: {
             if (data.remaining > 0 && data.processed > 0) {
               setTimeout(step, 500);
             } else {
-              btn.disabled = false;
-              btn.textContent = original;
+              if (btn) btn.disabled = false;
               if (statusEl) statusEl.textContent += ' - tamamlandı.';
             }
           })
           .catch(function (err) {
-            btn.disabled = false;
-            btn.textContent = original;
+            if (btn) btn.disabled = false;
             if (statusEl) statusEl.textContent = 'Hata: ' + err;
           });
       }
       if (statusEl) statusEl.textContent = 'Başlatılıyor...';
       step();
+    }
+
+    // "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası "Bakım" kartı) -
+    // bkz. CLAUDE.md "cron yönetimi" notu. Sayfayı yeniden yükleyerek
+    // buton metnini/durumunu tazeliyor (sunucu taraflı render edildiği
+    // için).
+    function toggleRescoreCron(btn, action) {
+      var statusEl = document.getElementById('rescore-status');
+      btn.disabled = true;
+      fetch('/candidates/rescore-cron/' + action, { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function () { location.reload(); })
+        .catch(function (err) {
+          btn.disabled = false;
+          if (statusEl) statusEl.textContent = 'Hata: ' + err;
+        });
+    }
+
+    // "Firmaları Yeniden Puanla" (Rapor sayfası "Bakım" kartı) - bkz.
+    // CLAUDE.md "cron yönetimi" notu. Onay bekleyen + askıdaki TÜM
+    // adayların puanını sıfırlayıp aynı runRescoreLoop döngüsüyle
+    // sıfırdan yeniden puanlar - geri alınamaz, bu yüzden onay istiyor.
+    function resetAndRescoreAll(btn) {
+      var confirmed = confirm('Onay bekleyen ve askıdaki TÜM adayların puanı sıfırlanıp sıfırdan yeniden puanlanacak. Bu geri alınamaz. Devam edilsin mi?');
+      if (!confirmed) return;
+      var statusEl = document.getElementById('rescore-status');
+      btn.disabled = true;
+      fetch('/candidates/reset-and-rescore', { method: 'POST' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (statusEl) statusEl.textContent = data.resetCount + ' aday sıfırlandı, yeniden puanlanıyor...';
+          runRescoreLoop(btn);
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          if (statusEl) statusEl.textContent = 'Hata: ' + err;
+        });
     }
   </script>
 </body>
@@ -1292,6 +1328,13 @@ export interface ReportData {
   byChannel: Record<string, number>;
   byStatus: Record<string, number>;
   byCity: Record<string, number>;
+  /** "Cron durum bilgisini ayarlarda değil, rapor sayfasına taşı" isteği - bkz. CLAUDE.md. */
+  rescoreStatus: {
+    unscored: number;
+    totalPendingApproval: number;
+    percentComplete: number;
+    cronEnabled: boolean;
+  };
 }
 
 /** Sayaç kaydını büyükten küçüğe sıralı [etiket, sayı] listesine çevirir. */
@@ -1334,6 +1377,7 @@ export function renderReportPage(counts: Record<string, number>, report: ReportD
   const byCity = topEntries(report.byCity, (label) => label, 15);
   const byStatus = topEntries(report.byStatus, (slug) => STATUS_LABELS_TR[slug] ?? slug, 20);
 
+  const rs = report.rescoreStatus;
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Rapor - toplam ${report.total} aday</h2>
@@ -1342,6 +1386,27 @@ export function renderReportPage(counts: Record<string, number>, report: ReportD
       ${breakdownCard("Sektöre göre (ilk 12)", bySector)}
       ${breakdownCard("Kanala göre", byChannel)}
       ${breakdownCard("Şehre göre (ilk 15)", byCity)}
+    </div>
+
+    <div class="report-card" style="margin-top:1.5rem">
+      <h3 class="report-card-title">Bakım</h3>
+      <p class="muted">AI puanlaması olmayan ("puansız") adaylar her 10 dakikada bir arka planda (bir Cloudflare Cron Trigger ile) otomatik yeniden puanlanıyor. Cronu istediğin zaman durdurabilir/devam ettirebilirsin. "Firmaları Yeniden Puanla", onay bekleyen + askıdaki TÜM adayların puanını sıfırlayıp sıfırdan (artık zenginleştirilmiş - adres/site içeriği/sosyal medya sinyalleriyle) yeniden puanlar - onaylanmış/gönderilmiş adaylara dokunmaz.</p>
+      <div class="bar-row" style="margin:0.75rem 0 1rem">
+        <span class="bar-label">İlerleme</span>
+        <span class="bar-track"><span id="rescore-bar-fill" class="bar-fill" style="width:${rs.percentComplete}%"></span></span>
+        <span id="rescore-bar-count" class="bar-count">%${rs.percentComplete}</span>
+      </div>
+      <p id="rescore-detail" class="muted" style="margin:0 0 1rem">${rs.unscored} puansız aday kaldı (${rs.totalPendingApproval} onay bekleyenden).</p>
+      <p class="muted" style="margin:0 0 1rem">Cron durumu: <strong>${rs.cronEnabled ? "Aktif (her 10 dakikada bir otomatik çalışıyor)" : "Durduruldu"}</strong></p>
+      <div class="proposal-edit-row">
+        ${
+          rs.cronEnabled
+            ? `<button type="button" class="btn--filter" onclick="toggleRescoreCron(this, 'pause')">Cronu Durdur</button>`
+            : `<button type="button" class="btn--filter" onclick="toggleRescoreCron(this, 'resume')">Cronu Devam Ettir</button>`
+        }
+        <button type="button" class="btn--filter" onclick="resetAndRescoreAll(this)">Firmaları Yeniden Puanla</button>
+      </div>
+      <p id="rescore-status" class="muted" style="margin-top:0.5rem"></p>
     </div>
   `;
 
@@ -1382,8 +1447,6 @@ export interface SettingsData {
   proposalTemplate: string;
   aiSystemPrompt: string;
   catalog: CatalogFieldView[];
-  /** "Cronun %'lik değerini göreyim" isteği - bkz. CLAUDE.md. Sayfa her açıldığında (buton basılmadan) gösterilir. */
-  rescoreStatus: { unscored: number; totalPendingApproval: number; percentComplete: number };
 }
 
 /** Jenerik katalog alanı için tek input/textarea - form alanı adı `field__<key>` (bkz. dashboard index.ts POST /ayarlar). */
@@ -1565,19 +1628,6 @@ export function renderSettingsPage(
 
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
     </form>
-
-    <div class="report-card" style="margin-top:1.5rem">
-      <h3 class="report-card-title">Bakım</h3>
-      <p class="muted">NVIDIA modeli bir süre kullanılamaz durumdaydı (bkz. CLAUDE.md "model end-of-life" olayı) - bu dönemde hiç puanlanmadan onay bekleyenlere eklenmiş adaylar artık her 5 dakikada bir, bu sayfa kapalı olsa bile, arka planda (bir Cloudflare Cron Trigger ile) otomatik yeniden puanlanıyor. Aşağıdaki buton sadece beklemeden anlık tetiklemek içindir.</p>
-      <div class="bar-row" style="margin:0.75rem 0 1rem">
-        <span class="bar-label">İlerleme</span>
-        <span class="bar-track"><span id="rescore-bar-fill" class="bar-fill" style="width:${settings.rescoreStatus.percentComplete}%"></span></span>
-        <span id="rescore-bar-count" class="bar-count">%${settings.rescoreStatus.percentComplete}</span>
-      </div>
-      <p id="rescore-detail" class="muted" style="margin:0 0 1rem">${settings.rescoreStatus.unscored} puansız aday kaldı (${settings.rescoreStatus.totalPendingApproval} onay bekleyenden).</p>
-      <button type="button" class="btn--filter" onclick="rescoreUnscored(this)">Şimdi Puanla (Manuel)</button>
-      <p id="rescore-status" class="muted" style="margin-top:0.5rem"></p>
-    </div>
   `;
 
   return shell({

@@ -366,12 +366,39 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
       return new Response(data, { headers: { "content-type": "application/json" } });
     }
 
-    // "Puanlanmamış Adayları Yeniden Puanla" (bkz. Ayarlar sayfası) -
-    // NVIDIA modeli haftalarca ölüyken puansız kalmış pending_approval
-    // adayları küçük gruplar (bkz. RESCORE_BATCH_SIZE) hâlinde yeniden
-    // puanlar; JS tarafı `remaining > 0` kaldıkça tekrar tekrar çağırır.
+    // "Bakım" kartı (bkz. Rapor sayfası - önceden Ayarlar'daydı, bkz.
+    // CLAUDE.md "cron yönetimi" notu) - NVIDIA modeli haftalarca ölüyken
+    // puansız kalmış pending_approval adayları küçük gruplar (bkz.
+    // RESCORE_BATCH_SIZE) hâlinde yeniden puanlar; JS tarafı
+    // `remaining > 0` kaldıkça tekrar tekrar çağırır. "Firmaları Yeniden
+    // Puanla" da (aşağıdaki reset-and-rescore) sıfırladıktan sonra AYNI
+    // bu endpoint'i döngüyle çağırıyor.
     if (url.pathname === "/candidates/rescore-unscored" && request.method === "POST") {
       const res = await env.CONTROL_WORKER.fetch("https://internal/candidates/rescore-unscored", {
+        method: "POST",
+      });
+      const data = await res.text();
+      return new Response(data, { headers: { "content-type": "application/json" } });
+    }
+
+    // "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası "Bakım" kartı).
+    if (
+      (url.pathname === "/candidates/rescore-cron/pause" ||
+        url.pathname === "/candidates/rescore-cron/resume") &&
+      request.method === "POST"
+    ) {
+      const res = await env.CONTROL_WORKER.fetch(`https://internal${url.pathname}`, {
+        method: "POST",
+      });
+      const data = await res.text();
+      return new Response(data, { headers: { "content-type": "application/json" } });
+    }
+
+    // "Firmaları Yeniden Puanla" (Rapor sayfası "Bakım" kartı) - bkz.
+    // CLAUDE.md "cron yönetimi" notu, tüm pending_approval/on_hold
+    // adaylarının puanını sıfırlar.
+    if (url.pathname === "/candidates/reset-and-rescore" && request.method === "POST") {
+      const res = await env.CONTROL_WORKER.fetch("https://internal/candidates/reset-and-rescore", {
         method: "POST",
       });
       const data = await res.text();

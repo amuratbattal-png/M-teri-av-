@@ -1332,6 +1332,69 @@ Neden bu yapı:
       `ai_score IS NULL` olan adayları işliyor, bir kez puan alan bir
       aday "AI ile Yeniden Yaz" ile elle tetiklenmedikçe bir daha
       dokunulmuyor.
+- [x] **Cron yönetimi eklendi: durum bilgisi Ayarlar'dan Rapor sayfasına
+      taşındı + "Cronu Durdur"/"Cronu Devam Ettir"/"Firmaları Yeniden
+      Puanla" butonları.** Sahibi "cron durum bilgisini ayarlarda değil,
+      rapor sayfasına taşı... cronu durdurup en baştan puanlama
+      yapabileceğim bir buton yap" dedi.
+      - `apps/control/src/lib/settings.ts`: yeni `rescoreCronEnabled`
+        (D1'de satır yoksa varsayılan `true`) + `setRescoreCronEnabled(env, bool)`.
+      - `apps/control/src/index.ts` `scheduled()`: artık her tetiklendiğinde
+        önce bu bayrağı kontrol ediyor, `false` ise hiçbir NVIDIA çağrısı
+        yapmadan çıkıyor - sahibi büyük bir "Firmaları Yeniden Puanla"
+        işleminden önce cron'u durdurup ikisinin üst üste binip çift
+        çağrı/429 riskini artırmasını önleyebiliyor.
+      - `apps/control/src/routes/candidates.ts`: `RescoreStatus`'a
+        `cronEnabled` eklendi; yeni `handleSetRescoreCron` (`POST
+        /candidates/rescore-cron/pause` ve `/resume`) ve yeni
+        `handleResetAndRescore` (`POST /candidates/reset-and-rescore`) -
+        **`pending_approval` VE `on_hold` durumundaki TÜM adayların**
+        `aiScore`'unu ve `proposalDraft`'ını `NULL`'a çeker, `on_hold`
+        olanları da `pending_approval`'a geri döndürür - böylece HEPSİ
+        var olan `rescoreUnscoredBatch` tarafından (artık zenginleştirilmiş
+        sinyallerle - adres/site içeriği/sosyal medya) sıfırdan yeniden
+        işlenir. `approved`/`sent`/`rejected` adaylara DOKUNULMAZ (zaten
+        karara bağlanmış). **Bilinen ödünleşim (yorumda belirtildi):**
+        `on_hold`'dan dönenlerin `evaluationNotes`'u burada silinmiyor
+        (sahibinin yazmış olabileceği manuel notu korumak için) ama
+        yeniden `on_hold`'a düşerlerse `rescoreUnscoredBatch` YİNE DE
+        otomatik gerekçeyle üzerine yazıyor - bu zaten var olan bir
+        davranış, burada yeni bir risk eklemiyor.
+      - `handleReport`e `rescoreStatus` eklendi (`GET /settings`'ten
+        KALDIRILDI - artık sadece `GET /report`'te).
+      - `apps/dashboard/src/render.ts`: "Bakım" kartı `renderSettingsPage`'den
+        tamamen kaldırılıp `renderReportPage`'e taşındı - ilerleme çubuğu +
+        cron durumu metni + "Cronu Durdur"/"Cronu Devam Ettir" (duruma göre
+        tek görünen buton) + "Firmaları Yeniden Puanla". Paylaşılan
+        `<script>` bloğundaki eski `rescoreUnscored(btn)` fonksiyonu
+        `runRescoreLoop(btn)` olarak yeniden adlandırıldı (artık hem eski
+        akışta hem "Firmaları Yeniden Puanla" sıfırlamadan SONRA
+        kullanılıyor) + yeni `toggleRescoreCron(btn, action)` ve
+        `resetAndRescoreAll(btn)` (geri alınamaz olduğu için `confirm()`
+        ile onay istiyor) eklendi.
+      - `apps/dashboard/src/index.ts`: yeni 3 proxy route
+        (`/candidates/rescore-cron/pause`, `/resume`,
+        `/candidates/reset-and-rescore`) `CONTROL_WORKER`'a yönlendiriyor.
+      **Doğrulama notu:** bu değişiklikte render.ts'in normal (script
+      OLMAYAN) bir template literal'ına yanlışlıkla ÇIPLAK BİR TIRNAK
+      (backtick) yazdım ("puansız" kelimesini vurgulamak için) - bu,
+      `tsc` ÇALIŞTIRILINCA gerçek bir derleme hatası olarak YAKALANDI
+      (dış template literal'ı erken kapattığı için) ve şu şekilde
+      düzeltildi: normal çift tırnak kullanıldı. **Ders (CLAUDE.md'deki
+      "bare backtick" kuralının kapsamı genişletildi):** bu kural sadece
+      `<script>` bloğu İÇİN değil, render.ts'teki HERHANGİ bir template
+      literal (backtick string) için geçerli - hangisi olursa olsun,
+      içine çıplak bir ters tırnak yazmak o literal'i erken kapatır.
+      Script bloğu için ayrıca `node --check` ile de doğrulandı (yeni
+      `runRescoreLoop`/`toggleRescoreCron`/`resetAndRescoreAll`
+      fonksiyonları hatasız); her iki app `tsc` ile typecheck edildi,
+      örnek verilerle render edilip Ayarlar sayfasında Bakım kartının
+      GERÇEKTEN kalktığı (yorum satırlarındaki "Bakım" kelimesiyle
+      YANILTICI bir ilk testten sonra, HTML eleman düzeyinde tekrar
+      doğrulandı) ve Rapor sayfasında cron durumuna göre doğru butonun
+      (Durdur/Devam Ettir) göründüğü teyit edildi; her iki app
+      `wrangler --dry-run` ile bundle edildi.
+      **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

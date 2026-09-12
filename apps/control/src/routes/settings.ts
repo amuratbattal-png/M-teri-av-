@@ -10,7 +10,6 @@ import {
   readSettingsMap,
 } from "../lib/settings";
 import { runVerifier } from "../lib/verify";
-import { computeRescoreStatus } from "./candidates";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -30,10 +29,6 @@ function json(data: unknown, status = 200): Response {
 export async function handleGetSettings(env: Env): Promise<Response> {
   const s = await getEffectiveSettings(env);
   const catalog = await getCatalogView(env);
-  // "Cronun %'lik değerini göreyim" isteği (bkz. CLAUDE.md) - Ayarlar
-  // sayfası her açıldığında (buton basılmadan/cron beklemeden) mevcut
-  // yeniden puanlama ilerlemesini gösterebilmek için.
-  const rescoreStatus = await computeRescoreStatus(env);
   return json({
     activeSourceChannels: DEFAULT_FEATURE_FLAGS.activeSourceChannels,
     voiceCallEnabled: DEFAULT_FEATURE_FLAGS.voiceCallEnabled,
@@ -45,7 +40,6 @@ export async function handleGetSettings(env: Env): Promise<Response> {
     proposalTemplate: s.proposalTemplate,
     aiSystemPrompt: s.aiSystemPrompt,
     catalog,
-    rescoreStatus,
   });
 }
 

@@ -63,6 +63,8 @@ const KEYS = {
   alertEmail: "alert_email",
   proposalTemplate: "proposal_template",
   aiSystemPrompt: "ai_system_prompt",
+  /** "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - bkz. CLAUDE.md. */
+  rescoreCronEnabled: "rescore_cron_enabled",
 } as const;
 
 export interface EffectiveSettings {
@@ -85,6 +87,14 @@ export interface EffectiveSettings {
   alertEmail: string | null;
   proposalTemplate: string;
   aiSystemPrompt: string;
+  /**
+   * "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - `scheduled()`
+   * (bkz. index.ts) her tetiklendiğinde bunu kontrol edip false ise
+   * hiçbir şey yapmadan çıkar. Varsayılan (D1'de satır yoksa) `true` -
+   * yani cron normalde AÇIK, sadece sahibi bilinçli olarak durdurursa
+   * kapanır.
+   */
+  rescoreCronEnabled: boolean;
 }
 
 /**
@@ -119,6 +129,9 @@ export async function getEffectiveSettings(env: Env): Promise<EffectiveSettings>
     alertEmail: map[KEYS.alertEmail] || env.ALERT_EMAIL || null,
     proposalTemplate: map[KEYS.proposalTemplate] || DEFAULT_PROPOSAL_TEMPLATE,
     aiSystemPrompt: map[KEYS.aiSystemPrompt] || DEFAULT_AI_SYSTEM_PROMPT,
+    // Sadece AÇIKÇA "false" yazılmışsa kapalı say - D1'de hiç satır
+    // yoksa (henüz kimse dokunmadıysa) varsayılan AÇIK.
+    rescoreCronEnabled: map[KEYS.rescoreCronEnabled] !== "false",
   };
 }
 
@@ -187,6 +200,19 @@ export async function clearNvidiaApiKey(env: Env): Promise<void> {
  */
 export async function clearNvidiaModel(env: Env): Promise<void> {
   await deleteSetting(env, KEYS.nvidiaModel);
+}
+
+/**
+ * "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - `scheduled()`
+ * (index.ts) bunu her tetiklendiğinde kontrol ediyor, `false` ise hiçbir
+ * NVIDIA çağrısı yapmadan sessizce çıkıyor. Sahibinin "puanlamayı
+ * durdurup en baştan yapabileceğim bir buton" isteğinin bir parçası -
+ * büyük bir "Firmaları Yeniden Puanla" işlemine başlamadan önce cron'un
+ * araya girip aynı adaylar üzerinde yarışmasını önlemek için düşünüldü
+ * (bkz. resetScoresForRescan).
+ */
+export async function setRescoreCronEnabled(env: Env, enabled: boolean): Promise<void> {
+  await upsertSetting(env, KEYS.rescoreCronEnabled, enabled ? "true" : "false");
 }
 
 // --- Jenerik katalog (bkz. settings-catalog.ts) ----------------------------

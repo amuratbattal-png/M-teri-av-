@@ -10,7 +10,7 @@ import {
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 import { assessLeadQuality, ON_HOLD_MAX_SCORE } from "../lib/relevance";
-import { getEffectiveSettings } from "../lib/settings";
+import { getEffectiveSettings, setRescoreCronEnabled } from "../lib/settings";
 import { logActivity } from "../lib/activity-log";
 
 function json(data: unknown, status = 200): Response {
@@ -269,7 +269,12 @@ export async function handleReport(env: Env): Promise<Response> {
     }
   }
 
-  return json({ total: rows.length, bySector, byChannel, byStatus, byCity });
+  // "Cron durum bilgisini ayarlarda değil, rapor sayfasına taşı" isteği
+  // (bkz. CLAUDE.md) - Rapor sayfası her açıldığında (buton basılmadan/
+  // cron beklemeden) mevcut yeniden puanlama ilerlemesini gösterebilmek için.
+  const rescoreStatus = await computeRescoreStatus(env);
+
+  return json({ total: rows.length, bySector, byChannel, byStatus, byCity, rescoreStatus });
 }
 
 /** Tek çağrıda işlenecek en fazla aday sayısı - bkz. handleRescoreUnscored. */
@@ -325,6 +330,8 @@ export interface RescoreStatus {
   totalPendingApproval: number;
   /** (total - unscored) / total * 100, yuvarlanmış. total=0 ise 100. */
   percentComplete: number;
+  /** "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - şu anki durum. */
+  cronEnabled: boolean;
 }
 
 /**
@@ -357,12 +364,82 @@ export async function computeRescoreStatus(env: Env): Promise<RescoreStatus> {
   const percentComplete =
     totalNum === 0 ? 100 : Math.round(((totalNum - unscoredNum) / totalNum) * 100);
 
-  return { unscored: unscoredNum, totalPendingApproval: totalNum, percentComplete };
+  const { rescoreCronEnabled } = await getEffectiveSettings(env);
+
+  return {
+    unscored: unscoredNum,
+    totalPendingApproval: totalNum,
+    percentComplete,
+    cronEnabled: rescoreCronEnabled,
+  };
 }
 
-/** Sadece okuma - manuel butona basmadan/cron beklemeden mevcut ilerlemeyi görmek için (Ayarlar sayfası her açılışta bunu çağırır). */
+/** Sadece okuma - manuel butona basmadan/cron beklemeden mevcut ilerlemeyi görmek için (Rapor sayfası her açılışta bunu çağırır - bkz. CLAUDE.md "rapor sayfasına taşı" notu). */
 export async function handleRescoreStatus(env: Env): Promise<Response> {
   return json(await computeRescoreStatus(env));
+}
+
+/**
+ * "Cronu Durdur"/"Cronu Devam Ettir" butonları (Rapor sayfası) -
+ * `setRescoreCronEnabled`'ı çağırıp yeni durumu döner. `scheduled()`
+ * (index.ts) her tetiklendiğinde bunu kontrol ediyor.
+ */
+export async function handleSetRescoreCron(env: Env, enabled: boolean): Promise<Response> {
+  await setRescoreCronEnabled(env, enabled);
+  await logActivity(
+    env,
+    "info",
+    "lead-quality",
+    enabled ? "[Cron] Otomatik yeniden puanlama devam ettirildi." : "[Cron] Otomatik yeniden puanlama durduruldu.",
+  );
+  return json({ ok: true, cronEnabled: enabled });
+}
+
+/**
+ * "Firmaları Yeniden Puanla" butonu (Rapor sayfası) - sahibinin "en
+ * baştan puanlama yapabileceğim bir buton" isteği (bkz. CLAUDE.md).
+ * `pending_approval` VE `on_hold` durumundaki TÜM adayların puanını
+ * (ve teklif taslağını) sıfırlar, `on_hold` olanları da `pending_approval`'a
+ * geri döndürür - böylece HEPSİ, var olan `rescoreUnscoredBatch` (`ai_score
+ * IS NULL AND status='pending_approval'`) tarafından sıfırdan yeniden
+ * işlenir (zenginleştirilmiş yeni sinyallerle - adres/site içeriği/
+ * sosyal medya - bkz. CLAUDE.md). `approved`/`sent`/`rejected` durumundaki
+ * adaylara DOKUNULMAZ - onlar zaten karara bağlanmış, yeniden puanlamanın
+ * bir anlamı yok.
+ *
+ * BİLİNEN ÖDÜNLEŞİM: `on_hold`'dan dönenlerin `evaluationNotes` alanı
+ * BURADA silinmiyor (sahibinin yazmış olabileceği manuel bir notu
+ * kaybetmemek için) ama tekrar `on_hold`'a düşerlerse
+ * `rescoreUnscoredBatch` bunu YİNE DE otomatik gerekçeyle EZER - bu,
+ * zaten var olan bir davranış (bkz. rescoreUnscoredBatch), burada
+ * yeni bir risk eklemiyor.
+ *
+ * Sahibinin de belirttiği gibi otomatik akışlar (cron/canlı tarama)
+ * ZATEN sadece puansız adayları işliyor - bu buton BİLİNÇLİ, MANUEL bir
+ * istisna, otomatik hiçbir yer bunu kendiliğinden tetiklemiyor.
+ */
+export async function handleResetAndRescore(env: Env): Promise<Response> {
+  const db = createDb(env.DB);
+  const targets = await db
+    .select({ id: candidates.id })
+    .from(candidates)
+    .where(sql`${candidates.status} IN ('pending_approval', 'on_hold')`);
+
+  if (targets.length > 0) {
+    await db
+      .update(candidates)
+      .set({ status: "pending_approval", aiScore: null, proposalDraft: null })
+      .where(sql`${candidates.status} IN ('pending_approval', 'on_hold')`);
+  }
+
+  await logActivity(
+    env,
+    "warn",
+    "lead-quality",
+    `[Yeniden puanlama] ${targets.length} adayın puanı sıfırlandı - sıfırdan yeniden puanlanacak.`,
+  );
+
+  return json({ resetCount: targets.length });
 }
 
 export async function rescoreUnscoredBatch(
