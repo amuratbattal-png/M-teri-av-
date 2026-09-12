@@ -6,7 +6,18 @@ export interface LeadQualityContext {
   sectorLabel?: string;
   needTags: NeedTag[];
   sourceChannel: string;
-  /** Worker'ın rawMetadata'sı (ör. LinkedIn için { keyword, rawType }, Google Maps için { reviewsSample } - varsa). */
+  /**
+   * Zaten ÜCRETSİZ olarak elimizde olan ek sinyaller - sahibinin "firmayı
+   * google vs arasın verilere göre puan versin" isteği için AYRI bir
+   * ücretli/kırılgan arama API'si eklemek yerine (bkz. CLAUDE.md, o
+   * seçenek maliyet/güvenilirlik nedeniyle reddedildi) zaten Google
+   * Places'ten çekilen ve/veya sitenin kendisinden (eski site kontrolü
+   * için indirilen HTML) çıkarılan verileri AI'a daha kapsamlı veriyoruz.
+   */
+  sourceUrl?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  /** Worker'ın rawMetadata'sı (ör. LinkedIn için { keyword, rawType }, Google Maps için { formattedAddress, siteTitle, siteTextSnippet } - varsa). */
   rawMetadata?: Record<string, unknown> | null;
 }
 
@@ -43,8 +54,13 @@ const LEAD_QUALITY_SYSTEM_PROMPT = [
   "otobüs giydirme, video kurgu.",
   "",
   "Sana sosyal medya/arama taramasından çıkan HAM bir sonucun adını ve",
-  "bağlamını vereceğim (bazen Google yorumlarından bir örnek de olabilir).",
-  "Görevin: bunun bu hizmetlere GERÇEKTEN ihtiyacı olabilecek bir",
+  "bağlamını vereceğim - bazen firmanın web sitesinden çekilen başlık/kısa",
+  "metin özeti, telefon, ya da Google Maps'ten gelen adres gibi ek",
+  "sinyaller de olabilir (varsa 'Ek bağlam' alanında). Bunlar varsa MUTLAKA",
+  "değerlendirmene dahil et - ör. web sitesi metni firmanın zaten profesyonel",
+  "bir kurumsal kimliği/web tasarımı olduğunu gösteriyorsa bu daha düşük",
+  "bir puana işaret edebilir, sitesi yoksa/çok basitse bu daha yüksek bir",
+  "puana işaret edebilir. Görevin: bunun bu hizmetlere GERÇEKTEN ihtiyacı olabilecek bir",
   "şirket/kişi (potansiyel müşteri) olma ihtimalini 1-5 arası bir",
   "yıldızla puanlamak:",
   "5 = çok güçlü sinyal, kesin/neredeyse kesin bir potansiyel müşteri.",
@@ -99,7 +115,16 @@ export async function assessLeadQuality(
     `Kaynak kanal: ${ctx.sourceChannel}`,
     ctx.sectorLabel ? `Sektör/kategori: ${ctx.sectorLabel}` : null,
     ctx.needTags.length ? `Tahmini ihtiyaç etiketleri: ${ctx.needTags.join(", ")}` : null,
-    ctx.rawMetadata ? `Ek bağlam: ${JSON.stringify(ctx.rawMetadata).slice(0, 400)}` : null,
+    ctx.sourceUrl ? `Web sitesi: ${ctx.sourceUrl}` : null,
+    ctx.contactPhone ? `Telefon: ${ctx.contactPhone}` : null,
+    ctx.contactEmail ? `E-posta: ${ctx.contactEmail}` : null,
+    // rawMetadata artık (Google Maps için) sitenin kendisinden çıkarılan
+    // <title>/kısa metin özetini de taşıyabiliyor (bkz.
+    // google-search-scanner/src/scan.ts extractPageSnippet) - bu, "firmayı
+    // gerçekten araştırıp puan ver" isteğine ek ücretli bir arama API'si
+    // eklemeden karşılık veriyor. 400 karakterden 700'e çıkarıldı çünkü
+    // artık daha fazla, daha faydalı sinyal taşıyor.
+    ctx.rawMetadata ? `Ek bağlam: ${JSON.stringify(ctx.rawMetadata).slice(0, 700)}` : null,
   ]
     .filter(Boolean)
     .join("\n");

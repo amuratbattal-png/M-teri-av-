@@ -7,6 +7,7 @@ import {
   handleStats,
   handleReport,
   handleRescoreUnscored,
+  rescoreUnscoredBatch,
 } from "./routes/candidates";
 import {
   handleApprove,
@@ -26,7 +27,7 @@ import {
   handleInternalSettings,
   handleVerifySetting,
 } from "./routes/settings";
-import { handleGetActivity } from "./lib/activity-log";
+import { handleGetActivity, logActivity } from "./lib/activity-log";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -245,5 +246,48 @@ export default {
 
   async queue(batch: MessageBatch<OutreachJob>, env: Env): Promise<void> {
     return handleQueue(batch, env);
+  },
+
+  /**
+   * "Ayarlar sayfasını yenileyince puanlama başa dönüyor, bu cron bir
+   * sistem olsun" (sahibi, bkz. CLAUDE.md). Önceden "Puanlanmamış
+   * Adayları Yeniden Puanla" SADECE Ayarlar sayfası açıkken (tarayıcıdaki
+   * JS `setTimeout` döngüsü) ilerliyordu - sayfadan çıkılırsa/yenilenirse
+   * döngü durur, ilerleme sadece görünürde sıfırlanmış gibi görünürdü
+   * (aslında DB'deki puanlar kalıcıydı, ama sahibi bunu fark edemedi çünkü
+   * "kaç kaldı" sayacı sayfa her açıldığında yeniden 0'dan başlıyordu).
+   * Artık `wrangler.toml`'daki `[triggers] crons` sayesinde bu, sayfa
+   * açık olsun olmasın, arka planda kendiliğinden ilerliyor - manuel
+   * buton hâlâ duruyor (anlık tetiklemek için), ama artık ona bağımlı
+   * değil. `rescoreUnscoredBatch` ile AYNI mantığı kullanıyor (DRY) -
+   * `handleRescoreUnscored`'un HTTP sarmalayıcısı gibi, sadece burada
+   * Response'a değil `logActivity`'ye yazılıyor.
+   */
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const result = await rescoreUnscoredBatch(env, 15);
+          // Yapılacak bir şey yoksa (backlog bitmiş) sessiz kal - her 5
+          // dakikada bir "0 işlendi" satırıyla Canlı Log'u kirletmeyelim.
+          if (result.processed > 0) {
+            await logActivity(
+              env,
+              "info",
+              "lead-quality",
+              `[Zamanlı görev] ${result.processed} aday yeniden puanlandı (${result.movedToOnHold} askıya alındı), ${result.remaining} kaldı.`,
+            );
+          }
+        } catch (err) {
+          console.error("scheduled rescore başarısız", err);
+          await logActivity(
+            env,
+            "error",
+            "lead-quality",
+            `[Zamanlı görev] yeniden puanlama başarısız - ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })(),
+    );
   },
 };

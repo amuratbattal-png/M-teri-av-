@@ -82,6 +82,11 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         sectorLabel: sectorLabel(result.sectorSlug),
         needTags: result.needTags,
         sourceChannel: result.sourceChannel,
+        // Zaten ücretsiz olarak elde edilen ek sinyaller - bkz. CLAUDE.md
+        // "firmayı google vs arasın verilere göre puan versin" notu.
+        sourceUrl: result.sourceUrl,
+        contactPhone: result.contactPhone,
+        contactEmail: result.contactEmail,
         rawMetadata: result.rawMetadata,
       },
       proposalSettings,
@@ -277,18 +282,33 @@ function sleep(ms: number): Promise<void> {
  * puanlanmadan (`ai_score IS NULL`) onay bekleyenler listesine girdi -
  * bu, o dönemde gerçekten alakasız (ör. iş ilanı) olabilecek adayların
  * da Askıda'ya değil doğrudan Onaylar'a düşmüş olabileceği anlamına
- * geliyor. Bu endpoint böyle adayları BULUP artık çalışan modelle
+ * geliyor. Bu fonksiyon böyle adayları BULUP artık çalışan modelle
  * yeniden puanlıyor (ve teklif metnini de yeniden yazdırıyor - o da
  * aynı dönemde şablona düşmüş olabilir).
  *
  * TEK ÇAĞRIDA TÜMÜNÜ işlemek yerine (yüzlerce aday olabilir, bir
  * Cloudflare Worker isteği bunu güvenle bitiremeyebilir) küçük bir
- * batch (bkz. RESCORE_BATCH_SIZE) işler ve kaç tane kaldığını
- * döndürür - dashboard bunu `remaining > 0` kaldıkça tekrar tekrar
- * çağırıyor (bkz. apps/dashboard/src/render.ts renderSettingsPage
- * script'i).
+ * batch (`batchSize`) işler ve kaç tane kaldığını döndürür.
+ *
+ * İKİ ÇAĞIRAN var (bkz. CLAUDE.md "cron'a bağlandı" notu):
+ * 1. `handleRescoreUnscored` (HTTP `POST /candidates/rescore-unscored`) -
+ *    Ayarlar sayfasındaki "Puanlanmamış Adayları Yeniden Puanla" butonu,
+ *    `remaining > 0` kaldıkça tekrar tekrar çağırıyor - anlık/manuel.
+ * 2. `index.ts`'teki `scheduled()` (cron, her 5 dakikada bir) - sahibi
+ *    "ayarlar sayfasını yenileyince puanlama başa dönüyor, bu cron bir
+ *    sistem olsun" dedi: önceden bu SADECE tarayıcıda Ayarlar sayfası
+ *    açıkken (JS `setTimeout` döngüsüyle) ilerliyordu - sayfadan
+ *    çıkılırsa/yenilenirse döngü durur, geriye kalan iş DB'de kalırdı
+ *    (aslında "başa dönmüyordu" - zaten puanlanmışlar puanlı kalıyordu -
+ *    ama sahibi görünürde hiç ilerlemediğini düşündü, çünkü tekrar
+ *    girince sayaç 0'dan başlıyordu). Artık arka planda, sayfa açık
+ *    olsun olmasın, kendiliğinden ilerliyor - buton hâlâ duruyor, anlık
+ *    tetiklemek/ilerlemeyi izlemek için.
  */
-export async function handleRescoreUnscored(env: Env): Promise<Response> {
+export async function rescoreUnscoredBatch(
+  env: Env,
+  batchSize: number,
+): Promise<{ processed: number; movedToOnHold: number; remaining: number }> {
   const db = createDb(env.DB);
   const settings = await getEffectiveSettings(env);
 
@@ -296,7 +316,7 @@ export async function handleRescoreUnscored(env: Env): Promise<Response> {
     .select()
     .from(candidates)
     .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)))
-    .limit(RESCORE_BATCH_SIZE);
+    .limit(batchSize);
 
   let movedToOnHold = 0;
   let isFirst = true;
@@ -314,6 +334,11 @@ export async function handleRescoreUnscored(env: Env): Promise<Response> {
         sectorLabel: sectorLabel(candidate.sectorSlug),
         needTags,
         sourceChannel: candidate.sourceChannel,
+        // Zaten ücretsiz olarak elde edilen ek sinyaller - bkz. CLAUDE.md
+        // "firmayı google vs arasın verilere göre puan versin" notu.
+        sourceUrl: candidate.sourceUrl,
+        contactPhone: candidate.contactPhone,
+        contactEmail: candidate.contactEmail,
         rawMetadata: candidate.rawMetadata,
       },
       settings,
@@ -379,5 +404,11 @@ export async function handleRescoreUnscored(env: Env): Promise<Response> {
     .from(candidates)
     .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)));
 
-  return json({ processed: batch.length, movedToOnHold, remaining: Number(remaining) });
+  return { processed: batch.length, movedToOnHold, remaining: Number(remaining) };
+}
+
+/** HTTP sarmalayıcı - bkz. rescoreUnscoredBatch. Ayarlar sayfasındaki manuel buton bunu çağırır. */
+export async function handleRescoreUnscored(env: Env): Promise<Response> {
+  const result = await rescoreUnscoredBatch(env, RESCORE_BATCH_SIZE);
+  return json(result);
 }

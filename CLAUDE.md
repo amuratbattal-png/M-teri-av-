@@ -1081,6 +1081,75 @@ Neden bu yapı:
       örneğinde böyle yazıyor" diye birebir taklit etmek bu tür sessiz
       400 hatalarına yol açabilir.
       **Henüz canlıda doğrulanmadı.**
+- [x] **Üç ayrı istek birden geldi: (1) "AI ile Yeniden Yaz" da bu
+      düzeltilmiş sisteme bağlansın, (2) "Ayarlar sayfasını yenileyince
+      puanlama başa dönüyor, bu cron bir sistem olsun", (3) "puanlamayı
+      google vs bilgilere göre yapsın, firmayı arasın verilere göre puan
+      versin".**
+      1. **"AI ile Yeniden Yaz" incelendi - EK bir bağlama gerek yoktu.**
+         `apps/control/src/routes/approvals.ts` `handleRegenerateProposal`
+         zaten `lib/proposal.ts`'teki AYNI `draftProposal()`'ı çağırıyor -
+         yani yukarıdaki `fetchNvidiaChat`/`extra_body` düzeltmeleri ONA
+         da otomatik olarak uygulanmış oldu (paylaşılan fonksiyon, kod
+         tekrarı yok). Sadece sahibe bunun zaten bağlı olduğu doğrulandı.
+      2. **Toplu yeniden puanlama artık bir Cloudflare Cron Trigger.**
+         Kök sebep: özellik SADECE Ayarlar sayfası açıkken (tarayıcıdaki
+         `setTimeout` döngüsü) ilerliyordu - sayfa kapatılır/yenilenirse
+         döngü durur; DB'deki puanlar KALICIYDI (gerçekte "başa
+         dönmüyordu") ama "kaç kaldı" sayacı her sayfa açılışında sıfırdan
+         başladığı için sahibi ilerleme olmadığını düşündü. Düzeltme:
+         `apps/control/src/routes/candidates.ts`'teki mantık
+         `rescoreUnscoredBatch(env, batchSize)` adında, hem HTTP
+         (`handleRescoreUnscored`, manuel buton) hem cron tarafından
+         çağrılabilen paylaşılan bir fonksiyona çıkarıldı.
+         `apps/control/src/index.ts`'e yeni bir `scheduled()` handler'ı
+         eklendi - `wrangler.toml`'daki `[triggers] crons =
+         ["*/5 * * * *"]` sayesinde HER 5 DAKİKADA BİR, sayfa açık olsun
+         olmasın, arka planda bir batch (15 aday) işliyor; bir şey
+         işlendiyse Canlı Log'a `[Zamanlı görev] N aday yeniden puanlandı
+         (M askıya alındı), K kaldı` satırı düşüyor (backlog boşsa sessiz
+         kalıyor, her 5 dakikada "0 işlendi" ile Canlı Log'u kirletmemek
+         için). Manuel buton hâlâ duruyor (anlık tetiklemek/ilerlemeyi
+         izlemek için) ama artık ona bağımlı değil.
+      3. **"Google'da arayıp puanlasın" için 3 seçenek sahibine
+         `AskUserQuestion` ile soruldu** (Custom Search'ü tekrar denemek
+         - hâlâ 403 ile bozuk ve ertelenmiş; Google Places'in ücretli
+         Pro/Enterprise katmanına geçip yorum/rating çekmek - Brave'in
+         $5'ini bile reddettiği için önceden YAPILMAMASI kararlaştırılan
+         bir maliyet; ya da zaten ücretsiz elde edilen veriyi daha
+         kapsamlı kullanmak) - **sahibi "zaten ücretsiz olanı kullan"ı
+         seçti**. Yeni ücretli/kırılgan bir arama API'si eklenMEDİ.
+         Bunun yerine:
+         - `lib/relevance.ts` `LeadQualityContext`'e `sourceUrl`/
+           `contactPhone`/`contactEmail` eklendi (candidate/ScanResult'ta
+           zaten vardı, önceden AI'a hiç verilmiyordu) - AI puanlama
+           isteğine artık ayrı satırlar olarak ekleniyor.
+         - `workers/google-search-scanner/src/scan.ts`'e yeni
+           `extractPageSnippet(html)` - Google Maps adaylarının "eski
+           site mi?" kontrolü için ZATEN indirilen HTML'den (ekstra
+           istek YOK) `<title>` + kısa bir görünür metin özeti (~300
+           karakter) çıkarıp `rawMetadata.siteTitle`/`siteTextSnippet`
+           olarak saklıyor - "firmayı araştırıp puan ver" isteğine,
+           firmanın GERÇEK web sitesi içeriğini AI'a vererek karşılık
+           veriyor (ayrı bir Google araması yapmadan).
+         - `lib/relevance.ts`'teki `Ek bağlam` JSON kesme sınırı (artık
+           daha fazla, faydalı veri taşıdığı için) 400'den 700 karaktere
+           çıkarıldı; sistem talimatına da bu ek sinyalleri MUTLAKA
+           değerlendirmeye dahil etmesi için bir not eklendi (ör. site
+           içeriği zaten profesyonel görünüyorsa daha düşük puan,
+           basit/yoksa daha yüksek puan).
+         **Not:** bu sadece Google Maps (`google_maps`) kanalını
+         güçlendiriyor - LinkedIn/diğer kanallarda henüz indirilen bir
+         site HTML'i yok, bu yüzden onlarda `siteTitle`/`siteTextSnippet`
+         hâlâ boş kalacak (zararsız - `assessLeadQuality` bu alanlar
+         yoksa sadece isim/etiket/kaynağa göre puanlıyor, eskisi gibi).
+      **Henüz canlıda doğrulanmadı** - `apps/control` VE
+      `google-search-scanner` deploy edilip bir Google Maps taraması
+      tekrar denendiğinde Canlı Log'daki puanlama gerekçelerinde artık
+      site içeriğine/telefona referans görülmesi, ve `apps/control`
+      deploy edildikten sonra Ayarlar sayfası hiç açılmasa bile ~5
+      dakika içinde Canlı Log'da `[Zamanlı görev] ...` satırının
+      kendiliğinden belirmesi beklenir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

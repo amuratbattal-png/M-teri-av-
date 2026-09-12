@@ -62,3 +62,12 @@ service = "musteri-avcisi-channel-email"
 [vars]
 NVIDIA_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 ALERT_EMAIL = "info@ajansim.net"
+
+# "Ayarlar sayfasını yenileyince puanlama başa dönüyor, bu cron bir
+# sistem olsun" (sahibi, bkz. CLAUDE.md). Puansız kalmış adayları
+# (bkz. src/index.ts scheduled(), src/routes/candidates.ts
+# rescoreUnscoredBatch) artık Ayarlar sayfası açık olmasa da her 5
+# dakikada bir arka planda otomatik yeniden puanlıyor - manuel buton
+# hâlâ duruyor ama artık ona bağımlı değil.
+[triggers]
+crons = ["*/5 * * * *"]

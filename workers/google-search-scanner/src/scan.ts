@@ -175,6 +175,39 @@ function extractEmail(html: string): string | null {
   return generic ?? candidates[0];
 }
 
+/**
+ * Sitenin HTML kaynağından ücretsiz, basit bir "içerik özeti" çıkarır -
+ * <title> etiketi + <body>'nin görünür metninden kısa bir parça. Sahibinin
+ * "firmayı google vs arasın verilere göre puan versin" isteğine, ayrı bir
+ * ücretli/kırılgan arama API'si eklemeden (bkz. CLAUDE.md - o seçenek
+ * maliyet/güvenilirlik nedeniyle reddedildi) karşılık veriyor: zaten
+ * "eski site mi?" kontrolü için indirilen bu HTML'den ek istek yapmadan
+ * bir sinyal çıkarıp `lib/relevance.ts` assessLeadQuality'nin AI
+ * puanlamasına ("Ek bağlam" alanı üzerinden) besleniyor.
+ *
+ * Basit/kaba bir çıkarım - gerçek bir HTML parser değil, script/style
+ * içeriğini ve etiketleri kabaca temizleyip ilk birkaç yüz karakteri alır.
+ */
+function extractPageSnippet(html: string): { title?: string; textSnippet?: string } {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch
+    ? titleMatch[1].replace(/\s+/g, " ").trim().slice(0, 150)
+    : undefined;
+
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
+  const textSnippetRaw = bodyHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const textSnippet = textSnippetRaw ? textSnippetRaw.slice(0, 300) : undefined;
+
+  return { title, textSnippet };
+}
+
 export interface ScanDebugInfo {
   sectorLabel: string;
   cityLabel: string;
@@ -217,6 +250,10 @@ async function collectMapsResults(
 
     let needTags: NeedTag[];
     let contactEmail: string | null = null;
+    // Sahibinin "firmayı google vs arasın verilere göre puan versin"
+    // isteği için (bkz. CLAUDE.md) - zaten indirdiğimiz HTML'den ücretsiz
+    // bir içerik özeti, `lib/relevance.ts`'teki AI puanlamasına besleniyor.
+    let siteSnippet: { title?: string; textSnippet?: string } | undefined;
     if (!place.websiteUri) {
       needTags = ["website_new"];
     } else {
@@ -229,6 +266,7 @@ async function collectMapsResults(
       // (dashboard'daki mailto: linki) sadece eski sitesi taranan
       // adaylarda mümkün oluyor.
       contactEmail = extractEmail(html);
+      siteSnippet = extractPageSnippet(html);
     }
 
     results.push({
@@ -250,6 +288,8 @@ async function collectMapsResults(
         formattedAddress: place.formattedAddress,
         citySlug: city.slug,
         cityLabel: city.labelTr,
+        ...(siteSnippet?.title ? { siteTitle: siteSnippet.title } : {}),
+        ...(siteSnippet?.textSnippet ? { siteTextSnippet: siteSnippet.textSnippet } : {}),
       },
     });
   }
