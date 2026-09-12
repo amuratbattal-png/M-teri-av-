@@ -57,30 +57,32 @@ async function searchLinkedIn(
   sessionCookie: string,
   csrfToken: string,
 ): Promise<{ results: ScanResult[]; debug: ScanDebugInfo }> {
-  // İlk canlı denemede 400 (Bad Request) alındı - bkz. CLAUDE.md. İki
-  // değişiklik yapıldı (bilinen açık kaynak "linkedin-api" istemcilerinden
-  // - ör. tomquirk/linkedin-api - alınan desenler):
-  //   1. `accept: application/json` DEĞİL, Voyager'ın beklediği
-  //      `application/vnd.linkedin.normalized+json+2.1` - bazı Voyager
-  //      endpoint'leri Accept başlığı tam bu değilse 400 dönüyor.
-  //   2. `resultType:List(CONTENT)` filtresi kaldırıldı - "CONTENT" bu
-  //      decorationId için geçerli bir enum değeri olmayabilir (400'ün
-  //      sebebi bu da olabilir). Şimdilik filtresiz, geniş arama.
-  // `decorationId`'deki "-172" versiyon numarası da LinkedIn'in sık
-  // değiştirdiği, kırılgan bir değer - hâlâ 400 alınırsa asıl şüpheli bu.
+  // İlk iki canlı denemede 400 (Bad Request) alındı - bkz. CLAUDE.md.
+  // İkinci denemede tam istek URL'si görüldü ve ÇİFT encode hatası ortaya
+  // çıktı: `query` değeri önce kendimiz `encodeURIComponent` ile
+  // encode edilmiş, sonra `URLSearchParams.toString()` bunu TEKRAR encode
+  // etmiş (`%20` → `%2520`) - sunucu tarafında keyword içinde literal
+  // "%20" metni olarak görünüyordu, gerçek boşluk değil. Daha da önemlisi,
+  // `URLSearchParams` RESTli sorgu söz diziminin parçası olan `(`, `)`,
+  // `:`, `,` karakterlerini de encode ediyor - gerçek LinkedIn
+  // istemcileri (ör. tomquirk/linkedin-api) bu yüzden URL'yi
+  // `URLSearchParams` ile DEĞİL, elle string birleştirerek kuruyor; bu
+  // yapısal karakterler literal (encode edilmemiş) kalmalı, sadece
+  // keyword'ün kendisi (boşluk vb.) bir KEZ encode edilmeli. Ayrıca:
+  //   - `accept: application/json` DEĞİL, Voyager'ın beklediği
+  //     `application/vnd.linkedin.normalized+json+2.1`.
+  //   - `resultType:List(CONTENT)` filtresi kaldırıldı (geçersiz enum
+  //     olabilirdi).
+  // `decorationId`'deki "-172" versiyon numarası hâlâ kırılgan bir değer -
+  // bu iki düzeltmeden sonra da 400 gelirse asıl şüpheli bu.
+  const encodedKeyword = encodeURIComponent(keyword);
   const query =
-    `(keywords:${encodeURIComponent(keyword)},flagshipSearchIntent:SEARCH_SRP,` +
-    `queryParameters:(keywords:List(${encodeURIComponent(keyword)})),` +
+    `(keywords:${encodedKeyword},flagshipSearchIntent:SEARCH_SRP,` +
+    `queryParameters:(keywords:List(${encodedKeyword})),` +
     `includeFiltersInResponse:false)`;
-  const params = new URLSearchParams({
-    decorationId: "com.linkedin.voyager.dash.deco.search.SearchClusterCollection-172",
-    origin: "GLOBAL_SEARCH_HEADER",
-    q: "all",
-    query,
-    start: "0",
-    count: "10",
-  });
-  const requestUrl = `${VOYAGER_SEARCH_URL}?${params.toString()}`;
+  const requestUrl =
+    `${VOYAGER_SEARCH_URL}?decorationId=com.linkedin.voyager.dash.deco.search.SearchClusterCollection-172` +
+    `&origin=GLOBAL_SEARCH_HEADER&q=all&query=${query}&start=0&count=10`;
 
   const res = await fetch(requestUrl, {
     headers: {
