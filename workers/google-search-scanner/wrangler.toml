@@ -1,0 +1,42 @@
+name = "musteri-avcisi-google-search-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Her 30 dakikada bir tetiklenir; her calismada sirali sektor listesinden
+# bir sonraki sektoru tarar (bkz. src/scan.ts).
+[triggers]
+crons = ["*/30 * * * *"]
+
+# Bu worker'ın kendi tarama ilerlemesini (hangi sektörde kaldığı) tuttuğu KV.
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "d0985dc320d847ff8b3ecf13d4f37b26"
+
+# Control'e servis binding'i ile bağlanır (workers.dev üzerinden düz
+# fetch() ile worker-to-worker istek Cloudflare tarafından engelleniyor -
+# "error 1042" - bu yüzden CONTROL_API_URL yerine service binding kullanılır).
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
+
+# Gercek arama/scraping icin API anahtari (Google Places API, SerpApi vb.)
+# `wrangler secret put SEARCH_API_KEY` ile eklenmeli. Eklenene kadar
+# scan() fonksiyonu sahte (stub) veri dondurur.
+
+# Duz Google web aramasi (google_search kanali) icin Custom Search
+# JSON API. Bos birakilirsa sadece Google Maps (Places API) taranir,
+# duz web aramasi atlanir.
+#
+# GOOGLE_SEARCH_API_KEY: Custom Search API'ye ozel, ayri bir anahtar
+# (onerilen - `wrangler secret put GOOGLE_SEARCH_API_KEY` ile eklenmeli,
+# gizli oldugu icin secret). Tanimli degilse SEARCH_API_KEY'e (Places
+# API anahtari) geri doner - o da Custom Search API'ye izinliyse calisir.
+#
+# GOOGLE_SEARCH_ENGINE_ID: programmablesearchengine.google.com'dan
+# alinan arama motoru kimligi - gizli degil, normal var.
+GOOGLE_SEARCH_ENGINE_ID = "f28b89812aab34a03"

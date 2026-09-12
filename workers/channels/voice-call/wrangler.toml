@@ -1,0 +1,19 @@
+name = "musteri-avcisi-channel-voice-call"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# PASİF MODÜL: sahibinin isteğiyle sesli arama şimdilik devre dışı.
+# Mimari hazır - aktif etmek için:
+#   1. VOICE_CALL_ENABLED = "true" yapın
+#   2. Gerçek bir sağlayıcı (ör. Twilio Voice) kimlik bilgilerini
+#      `wrangler secret put` ile ekleyin
+#   3. apps/control/wrangler.toml içine bu worker için bir
+#      [[services]] binding'i (VOICE_CALL_WORKER) ekleyin ve
+#      apps/control/src/index.ts `queue()` fonksiyonunda channel
+#      seçimine dahil edin.
+
+# OUTREACH_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put OUTREACH_SHARED_SECRET` ile ayarlanmalı
+# (apps/control ile AYNI değer).
+[vars]
+VOICE_CALL_ENABLED = "false"

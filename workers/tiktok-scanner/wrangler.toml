@@ -1,0 +1,28 @@
+name = "musteri-avcisi-tiktok-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# BAŞLANGIÇTA PASİF - bkz. packages/shared/src/config.ts activeSourceChannels.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "1800db04200348fab7f181b6d310690a"
+
+# Control'e servis binding'i ile bağlanır (workers.dev üzerinden düz
+# fetch() ile worker-to-worker istek Cloudflare tarafından engelleniyor -
+# "error 1042" - bu yüzden CONTROL_API_URL yerine service binding kullanılır).
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
+
+# TikTok tarafında hashtag/anahtar kelime takibi için resmi TikTok API'si
+# ya da üçüncü parti bir tarama servisi gerekiyor - `wrangler secret put
+# TIKTOK_API_KEY` ile eklenmeli. Kullanım şartlarına aykırı olabilir,
+# sahibi riski kabul etti (bkz. CLAUDE.md).
