@@ -259,6 +259,18 @@ export async function handleReport(env: Env): Promise<Response> {
 const RESCORE_BATCH_SIZE = 15;
 
 /**
+ * NVIDIA çağrıları arasında kısa bir bekleme - `fetchNvidiaChat`'in
+ * kendi 429 yeniden deneme mantığına (bkz. lib/nvidia-fetch.ts) EK bir
+ * güvenlik payı. Bu batch, aday sayısı kadar (her biri 1-2 NVIDIA
+ * çağrısı) art arda istek attığı için (bkz. CLAUDE.md, "429 Too Many
+ * Requests" olayı) araya küçük bir boşluk koymak, zaten sınırda olan
+ * ücretsiz kotayı gereksiz yere zorlamamak için.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * "Eski verileri de kontrol etsin" - sahibinin isteği (bkz. CLAUDE.md
  * "model end-of-life" olayı). NVIDIA modeli haftalarca ölü kaldığı için
  * (FAIL-OPEN sayesinde) `pending_approval` durumundaki birçok aday HİÇ
@@ -287,7 +299,12 @@ export async function handleRescoreUnscored(env: Env): Promise<Response> {
     .limit(RESCORE_BATCH_SIZE);
 
   let movedToOnHold = 0;
+  let isFirst = true;
   for (const candidate of batch) {
+    // İlk adaydan önce bekleme yok, sonrakiler arasında var - bkz. sleep().
+    if (!isFirst) await sleep(350);
+    isFirst = false;
+
     const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
     const needTags = candidate.needTags as NeedTag[];
 
@@ -339,7 +356,9 @@ export async function handleRescoreUnscored(env: Env): Promise<Response> {
     }
 
     // Alakalı bulundu - puanı kaydet, teklif metnini de o dönem şablona
-    // düşmüş olabileceği için yeniden yazdır (artık AI çalışıyor).
+    // düşmüş olabileceği için yeniden yazdır (artık AI çalışıyor). Aynı
+    // aday için art arda 2. NVIDIA çağrısı - araya kısa bir boşluk.
+    await sleep(350);
     const proposal = await draftProposal(
       {
         candidateName: candidate.name,

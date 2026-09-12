@@ -1,4 +1,5 @@
 import type { NeedTag } from "@musteri-avcisi/shared";
+import { fetchNvidiaChat } from "./nvidia-fetch";
 
 export interface LeadQualityContext {
   candidateName: string;
@@ -104,29 +105,25 @@ export async function assessLeadQuality(
     .join("\n");
 
   try {
-    const res = await fetch(NVIDIA_CHAT_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${settings.nvidiaApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: settings.nvidiaModel,
-        messages: [
-          { role: "system", content: LEAD_QUALITY_SYSTEM_PROMPT },
-          { role: "user", content: contextLines },
-        ],
-        temperature: 0,
-        max_tokens: 150,
-        // DeepSeek/Nemotron gibi "reasoning" modeller varsayılan olarak
-        // uzun bir iç muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi
-        // kod örnekleri) - bizim kısa JSON çıktımız için bu istenmiyor
-        // (hem maliyetli hem JSON'ı bozma riski var), kapatılıyor.
-        // Modelden modele bu alanın adı değişiyor (DeepSeek: `thinking`,
-        // Nemotron: `enable_thinking`) - hangi model seçilirse seçilsin
-        // çalışsın diye İKİSİ DE gönderiliyor.
-        extra_body: { chat_template_kwargs: { thinking: false, enable_thinking: false } },
-      }),
+    // fetchNvidiaChat: 429 (Too Many Requests - bkz. CLAUDE.md, toplu
+    // "Yeniden Puanla" işleminde görüldü) durumunda kısa bekleyip
+    // otomatik yeniden dener.
+    const res = await fetchNvidiaChat(NVIDIA_CHAT_URL, settings.nvidiaApiKey, {
+      model: settings.nvidiaModel,
+      messages: [
+        { role: "system", content: LEAD_QUALITY_SYSTEM_PROMPT },
+        { role: "user", content: contextLines },
+      ],
+      temperature: 0,
+      max_tokens: 150,
+      // DeepSeek/Nemotron gibi "reasoning" modeller varsayılan olarak
+      // uzun bir iç muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi
+      // kod örnekleri) - bizim kısa JSON çıktımız için bu istenmiyor
+      // (hem maliyetli hem JSON'ı bozma riski var), kapatılıyor.
+      // Modelden modele bu alanın adı değişiyor (DeepSeek: `thinking`,
+      // Nemotron: `enable_thinking`) - hangi model seçilirse seçilsin
+      // çalışsın diye İKİSİ DE gönderiliyor.
+      extra_body: { chat_template_kwargs: { thinking: false, enable_thinking: false } },
     });
 
     if (!res.ok) {

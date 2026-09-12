@@ -1004,6 +1004,47 @@ Neden bu yapı:
       tür canlı API testleri her zaman sahibinin gerçek deploy edilmiş
       sistemi üzerinden yapılmalı, buradan `curl` ile denenemez.
       **Henüz canlıda doğrulanmadı.**
+- [x] **NVIDIA `401 Unauthorized` kök sebebi bulundu (model sorunu
+      DEĞİLDİ) ve ardından `429 Too Many Requests` düzeltildi.** Model
+      `nvidia/nemotron-3.5-lightning-30b-a3b`'ye geçildikten SONRA da
+      `401 Authentication failed` hatası sürdü - bu, sorunun partner-
+      barındırma/model erişimi değil, doğrudan API ANAHTARININ KENDİSİ
+      olduğunu gösterdi (muhtemelen sahibi, chat'e yapıştırdığı iki
+      anahtardan birini iptal etmişti ama Ayarlar panelini güncel yeni
+      bir anahtarla güncellemeyi atlamıştı - kendisine soruldu, "emin
+      değilim" dedi). Çözüm: build.nvidia.com'da sıfırdan bir anahtar
+      üretilip Ayarlar sayfasındaki **"Doğrula"** butonuyla (anahtar +
+      model ikisi birlikte, NVIDIA'nın gerçek `/v1/models` listesine
+      karşı) test edildi ("Anahtar ve model geçerli" onayı alındı),
+      sonra "Ayarları Kaydet" ile kaydedildi. **Doğrula'nın bilinen bir
+      sınırı not edildi:** anahtar `<input type="password">` alanı
+      güvenlik nedeniyle HER ZAMAN boş render edilir - yani buton sadece
+      O AN kutuya YAZILAN değeri test edebilir, D1/secret'ta fiilen
+      kayıtlı olanı değil; sahibi ilk denemede boş kutuyla deneyip
+      "anahtar olmadan doğrulamıyor" diye bildirdi, bu tasarım kendisine
+      açıklandı.
+      Anahtar/model sorunu çözülür çözülmez BEKLENEN bir sonraki adım
+      geldi: **"Puanlanmamış Adayları Yeniden Puanla" (Bakım) özelliği
+      art arda ~15-30 NVIDIA çağrısı yaptığı için (15 aday × 1-2 çağrı,
+      hiç aralık olmadan) ücretsiz kotanın hız sınırını aştı, `429 Too
+      Many Requests` hatası geldi** (Canlı Log'da ~10 aday, aynı saniyede
+      damgalı). İki katmanlı düzeltme:
+      1. Yeni `apps/control/src/lib/nvidia-fetch.ts` `fetchNvidiaChat()`
+         - `lib/proposal.ts` ve `lib/relevance.ts`'teki HAM `fetch()`
+         çağrılarının yerini aldı (DRY, tek doğru kaynak); `429` yanıtı
+         gelirse `Retry-After` header'ı varsa onu, yoksa artan basit bir
+         bekleme (1s/2s, en fazla 5s) uygulayıp en fazla 3 deneme yapar.
+      2. `apps/control/src/routes/candidates.ts` `handleRescoreUnscored`:
+         batch döngüsüne adaylar arasına (ve aynı adayın puanlama →
+         teklif-yazma çağrıları arasına) 350ms'lik küçük bir `sleep()`
+         eklendi - `fetchNvidiaChat`'in kendi yeniden deneme mantığına
+         EK bir güvenlik payı, 429'a düşme ihtimalini baştan azaltmak
+         için (retry tek başına yeterli olabilirdi ama batch + retry
+         gecikmeleri üst üste binince tek istekte uzun sürebilirdi).
+      **Henüz canlıda doğrulanmadı** - `apps/control` deploy edilip
+      "Puanlanmamış Adayları Yeniden Puanla" tekrar denendiğinde artık
+      429 almadan (yavaş da olsa) tamamlaması, ve gerçek yıldız
+      puanlarının/teklif metinlerinin Canlı Log'da görünmesi beklenir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
