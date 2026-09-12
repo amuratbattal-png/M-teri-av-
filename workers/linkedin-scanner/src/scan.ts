@@ -135,10 +135,55 @@ async function searchLinkedIn(
       keyword,
       status: res.status,
       parsedCount: results.length,
-      // Hiç sonuç çıkmadıysa ham yanıtı da taşı - gerçek şekli görüp parser'ı ayarlamak için.
-      rawSample: results.length === 0 ? bodyText.slice(0, 500) : undefined,
+      // Hiç sonuç çıkmadıysa ham yanıtın ilk 500 karakteri genelde işe
+      // yaramıyor (canlı testte sadece filtre UI metadata'sı çıktı,
+      // totalResultCount > 0 olmasına rağmen) - bunun yerine yanıtın
+      // GERÇEK ŞEKLİNİ (hangi anahtarın altında kaç öğe var) özetleyen
+      // summarizeVoyagerResponse() kullanılıyor.
+      rawSample: results.length === 0 ? summarizeVoyagerResponse(data) : undefined,
     },
   };
+}
+
+/**
+ * Ham yanıtın ilk N karakteri genelde işe yaramıyor çünkü LinkedIn'in
+ * Voyager yanıtları önce büyük bir metadata/filtre bloğu, asıl sonuçlar
+ * (`included` dizisi) çok sonra geliyor (bkz. CLAUDE.md - ilk canlı
+ * testte totalResultCount:427 olmasına rağmen ilk 500 karakter hiçbir
+ * sonuç içermiyordu). Bunun yerine yanıtın YAPISINI (hangi anahtarın
+ * altında kaç öğe/ne tip veri var) özetler - gerçek yanıt verisini değil,
+ * sadece şeklini taşıdığı için çok daha küçük ve daha kullanışlı.
+ */
+function summarizeVoyagerResponse(data: unknown): string {
+  if (typeof data !== "object" || data === null) return String(data);
+  const obj = data as Record<string, unknown>;
+  const summary: Record<string, unknown> = { topLevelKeys: Object.keys(obj) };
+
+  const describeArray = (arr: unknown[]) => ({
+    length: arr.length,
+    sampleTypes: arr.slice(0, 5).map((item) => {
+      if (typeof item !== "object" || item === null) return typeof item;
+      const rec = item as Record<string, unknown>;
+      return typeof rec.$type === "string" ? rec.$type : Object.keys(rec).slice(0, 6);
+    }),
+  });
+
+  if (Array.isArray(obj.included)) {
+    summary.included = describeArray(obj.included);
+  }
+  const dataField = obj.data;
+  if (typeof dataField === "object" && dataField !== null) {
+    const inner = dataField as Record<string, unknown>;
+    summary.dataKeys = Object.keys(inner);
+    if (Array.isArray(inner.included)) summary.dataIncluded = describeArray(inner.included);
+    if (Array.isArray(inner.elements)) summary.dataElements = describeArray(inner.elements);
+    const metadata = inner.metadata;
+    if (typeof metadata === "object" && metadata !== null) {
+      summary.metadataKeys = Object.keys(metadata as Record<string, unknown>);
+    }
+  }
+
+  return JSON.stringify(summary).slice(0, 1200);
 }
 
 /**
