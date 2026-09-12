@@ -630,6 +630,42 @@ Neden bu yapı:
       desende client-side (control'den TÜM sonuçlar çekilip
       `render.ts`'te JS ile filtreleniyor) - veri hacmi küçük olduğu
       için SQL tarafında ayrıca bir WHERE eklenmedi.
+- [x] **AI ile alaka (relevance) filtresi eklendi** - sahibi "Linkedin'de
+      aramalar hep iş ilanı oluyor, benimle alakalı değil... bu
+      aramaların hepsini bir yapay zekaya bağlayıp alakalı olup
+      olmadığını bulabilir" dedi. Kök sebep: LinkedIn'in genel (`q=all`)
+      anahtar kelime araması, "kurumsal kimlik", "logo tasarımı" gibi
+      ifadeler için LinkedIn'de en çok İŞ İLANLARINI (ör. "... Grafik
+      Tasarımcı Aranıyor") öne çıkarıyor - arama API'sinin kendisi bunu
+      ayıklamıyor. Yeni `apps/control/src/lib/relevance.ts`
+      (`assessRelevance`) - NVIDIA'ya (aynı `draftProposal`'ın kullandığı
+      `integrate.api.nvidia.com` chat completions, aynı API anahtarı/model)
+      adayın adını + tahmini ihtiyaç etiketlerini + kaynak kanalı +
+      rawMetadata'sını (LinkedIn için `keyword`/`rawType`) verip "bu
+      gerçekten bir potansiyel müşteri mi, yoksa bir iş ilanı/CV/rakip/
+      alakasız bir şey mi" diye soruyor, `{relevant: bool, reason: string}`
+      JSON'ı bekliyor. `apps/control/src/routes/candidates.ts`
+      `handleScanResults` artık her yeni adayı kaydetmeden ÖNCE bunu
+      çağırıyor - **TÜM kaynak kanalları için** (sadece LinkedIn değil;
+      Google Maps gibi zaten temiz kaynaklarda AI genelde "alakalı"
+      diyecek, maliyeti kabul edilebilir görüldü). Alakasız bulunursa
+      aday yine de KAYDEDİLİYOR (kaybolmuyor, "Tüm Adaylar"da görülebilir)
+      ama doğrudan `rejected` durumuna geçiyor, `evaluationNotes` alanına
+      `"AI: alakasız görünüyor - <gerekçe>"` yazılıyor, teklif metni hiç
+      üretilmiyor (gereksiz NVIDIA çağrısı yapılmıyor) - onay bekleyenler
+      listesi kirlenmiyor. **FAIL-OPEN tasarım (bilinçli):** NVIDIA anahtarı
+      tanımlı değilse, çağrı başarısız olursa, ya da yanıt beklenen JSON
+      şeklinde değilse `relevant: true` dönüyor - yani sistem ŞÜPHEDE
+      KALDIĞINDA adayı ASLA elemiyor, sadece AI net bir şekilde "alakasız"
+      dediğinde eliyor (gerekçe: kaçırılan bir gürültü sahibi tarafından
+      tek tıkla reddedilebilir, ama yanlışlıkla elenen gerçek bir müşteri
+      asla görülmez - bu çok daha maliyetli bir hata). Sahibi NVIDIA
+      anahtarını Ayarlar panelinden zaten girmişti - bu özellik onu hem
+      teklif kişiselleştirmede HEM DE artık bu alaka filtresinde
+      kullanıyor, ek bir anahtar gerekmedi. **Henüz canlıda doğrulanmadı**
+      - `apps/control` deploy edilip LinkedIn taraması tekrar denendiğinde,
+      iş ilanı sonuçlarının artık "Reddedildi" durumunda (Onay
+      bekleyenlerde DEĞİL) çıkması beklenir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

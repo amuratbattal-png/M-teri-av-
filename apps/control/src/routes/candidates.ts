@@ -8,6 +8,7 @@ import {
 } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
+import { assessRelevance } from "../lib/relevance";
 import { getEffectiveSettings } from "../lib/settings";
 
 function json(data: unknown, status = 200): Response {
@@ -26,9 +27,16 @@ function sectorLabel(slug: string): string {
 /**
  * Tarama worker'larının bulduğu adayları merkezi tabloya yazar.
  * Basit bir eşleşme ile (isim + sektör + kaynak) aynı adayı tekrar
- * eklemeyi engeller. Her yeni aday otomatik olarak `pending_approval`
- * durumuna kadar işlenir - AMA HİÇBİR ŞEY GÖNDERİLMEZ, gönderim sadece
- * `/candidates/:id/approve` çağrıldığında tetiklenir.
+ * eklemeyi engeller. Kaydetmeden önce NVIDIA ile bir "alakalı mı"
+ * kontrolü (bkz. lib/relevance.ts assessRelevance) yapılır - özellikle
+ * LinkedIn'de anahtar kelime taramasının çoğunlukla iş ilanı döndürmesi
+ * sorununa karşı (bkz. CLAUDE.md). Alakasız bulunursa aday yine de
+ * kaydedilir (kaybolmaz, denetlenebilir) ama doğrudan `rejected`
+ * durumuna geçer - onay bekleyenler listesini kirletmez, teklif metni de
+ * boşuna üretilmez. Alakalı bulunursa (ya da AI atlandıysa/başarısız
+ * olduysa - FAIL-OPEN, bkz. assessRelevance) her zamanki gibi
+ * `pending_approval`'a kadar işlenir - AMA HİÇBİR ŞEY GÖNDERİLMEZ,
+ * gönderim sadece `/candidates/:id/approve` çağrıldığında tetiklenir.
  */
 export async function handleScanResults(request: Request, env: Env): Promise<Response> {
   const auth = request.headers.get("x-scan-secret")?.trim();
@@ -63,6 +71,46 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const cityLabel = result.rawMetadata?.cityLabel;
+
+    const relevance = await assessRelevance(
+      {
+        candidateName: result.name,
+        sectorLabel: sectorLabel(result.sectorSlug),
+        needTags: result.needTags,
+        sourceChannel: result.sourceChannel,
+        rawMetadata: result.rawMetadata,
+      },
+      proposalSettings,
+    );
+    if (relevance.error) {
+      console.warn(`AI alaka kontrolü atlandı/başarısız (${result.name}): ${relevance.error}`);
+    }
+
+    if (!relevance.relevant) {
+      // Alakasız (ör. iş ilanı) - kaydedilir ama doğrudan reddedilir,
+      // teklif metni boşuna üretilmez ve onay bekleyenler listesi
+      // kirlenmez. "Tüm Adaylar" sayfasında hâlâ görülüp geri
+      // alınabilir (kaybolmaz).
+      await db.insert(candidates).values({
+        id,
+        name: result.name,
+        sectorSlug: result.sectorSlug,
+        sourceChannel: result.sourceChannel,
+        sourceUrl: result.sourceUrl ?? null,
+        country: "TR",
+        needTags: result.needTags,
+        contactEmail: result.contactEmail ?? null,
+        contactPhone: result.contactPhone ?? null,
+        contactWhatsapp: result.contactWhatsapp ?? null,
+        contactLinkedin: result.contactLinkedin ?? null,
+        discoveredAt: now,
+        status: "rejected",
+        evaluationNotes: `AI: alakasız görünüyor - ${relevance.reason || "gerekçe yok"}`,
+        rawMetadata: result.rawMetadata ?? null,
+      });
+      created.push(id);
+      continue;
+    }
 
     const proposal = await draftProposal(
       {
