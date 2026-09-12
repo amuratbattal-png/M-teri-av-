@@ -57,9 +57,20 @@ async function searchLinkedIn(
   sessionCookie: string,
   csrfToken: string,
 ): Promise<{ results: ScanResult[]; debug: ScanDebugInfo }> {
+  // İlk canlı denemede 400 (Bad Request) alındı - bkz. CLAUDE.md. İki
+  // değişiklik yapıldı (bilinen açık kaynak "linkedin-api" istemcilerinden
+  // - ör. tomquirk/linkedin-api - alınan desenler):
+  //   1. `accept: application/json` DEĞİL, Voyager'ın beklediği
+  //      `application/vnd.linkedin.normalized+json+2.1` - bazı Voyager
+  //      endpoint'leri Accept başlığı tam bu değilse 400 dönüyor.
+  //   2. `resultType:List(CONTENT)` filtresi kaldırıldı - "CONTENT" bu
+  //      decorationId için geçerli bir enum değeri olmayabilir (400'ün
+  //      sebebi bu da olabilir). Şimdilik filtresiz, geniş arama.
+  // `decorationId`'deki "-172" versiyon numarası da LinkedIn'in sık
+  // değiştirdiği, kırılgan bir değer - hâlâ 400 alınırsa asıl şüpheli bu.
   const query =
     `(keywords:${encodeURIComponent(keyword)},flagshipSearchIntent:SEARCH_SRP,` +
-    `queryParameters:(keywords:List(${encodeURIComponent(keyword)}),resultType:List(CONTENT)),` +
+    `queryParameters:(keywords:List(${encodeURIComponent(keyword)})),` +
     `includeFiltersInResponse:false)`;
   const params = new URLSearchParams({
     decorationId: "com.linkedin.voyager.dash.deco.search.SearchClusterCollection-172",
@@ -69,13 +80,14 @@ async function searchLinkedIn(
     start: "0",
     count: "10",
   });
+  const requestUrl = `${VOYAGER_SEARCH_URL}?${params.toString()}`;
 
-  const res = await fetch(`${VOYAGER_SEARCH_URL}?${params.toString()}`, {
+  const res = await fetch(requestUrl, {
     headers: {
       Cookie: `li_at=${sessionCookie}; JSESSIONID="${csrfToken}"`,
       "csrf-token": csrfToken,
       "x-restli-protocol-version": "2.0.0",
-      accept: "application/json",
+      accept: "application/vnd.linkedin.normalized+json+2.1",
       "x-li-lang": "tr_TR",
       "user-agent": BROWSER_USER_AGENT,
     },
@@ -85,7 +97,15 @@ async function searchLinkedIn(
     const text = await res.text();
     return {
       results: [],
-      debug: { keyword, status: res.status, apiError: text.slice(0, 300), parsedCount: 0 },
+      // requestUrl'de secret/çerez YOK (query param'larda sadece keyword
+      // ve sabit değerler var) - hâlâ 400 gelirse tam sorguyu görüp bilinen
+      // çalışan desenlerle karşılaştırmak için debug'a eklendi.
+      debug: {
+        keyword,
+        status: res.status,
+        apiError: `${text.slice(0, 300)} | url: ${requestUrl}`,
+        parsedCount: 0,
+      },
     };
   }
 
