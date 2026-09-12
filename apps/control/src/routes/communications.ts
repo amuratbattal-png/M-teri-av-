@@ -27,6 +27,7 @@ export async function handleListCommunications(env: Env): Promise<Response> {
       createdAt: communicationLog.createdAt,
       candidateName: candidates.name,
       sectorSlug: candidates.sectorSlug,
+      sourceChannel: candidates.sourceChannel,
       rawMetadata: candidates.rawMetadata,
     })
     .from(communicationLog)

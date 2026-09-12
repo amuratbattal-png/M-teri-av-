@@ -571,6 +571,65 @@ Neden bu yapı:
       doğrulanmadı** - `apps/control`'ün yeniden deploy edilmesi
       gerekiyor, sonra Ayarlar sayfasında tekrar "Ayarları Kaydet"
       denenip gerçekten kaydettiği teyit edilmeli.
+- [x] **`settings.updated_at` düzeltmesi canlıda doğrulandı** - deploy
+      sonrası Ayarlar sayfasından `li_at`/`JSESSIONID` kaydedildi,
+      "Panelde tanımlı" göründü.
+- [x] **`linkedin-scanner` CANLI DOĞRULANDI - uçtan uca çalışıyor
+      (bulundu → parse edildi → control'e kaydedildi).** Yukarıdaki
+      şüpheli noktalar sırayla gerçek hatalarla doğrulandı ve düzeltildi:
+      1) `SCAN_SHARED_SECRET` - sahibi ilk denemede benim örnek/placeholder
+         metnimi ("control'deki-ile-ayni-secret-degeri") olduğu gibi
+         secret olarak girmişti; orijinal değer kaybolmuştu, bu yüzden
+         yeni bir secret üretilip `apps/control` + `google-search-scanner`
+         + `company-formation-tracker` + `linkedin-scanner`'a aynı değer
+         girildi. 2) `LINKEDIN_CSRF_TOKEN` eksikliği - `scanNextKeyword`
+         önceden çerez/token eksikken debug hiç döndürmüyordu
+         (`/run-now` yanıtında `scan` alanı sessizce yoktu), bu yüzden
+         `li_at` girilmiş olmasına rağmen JSESSIONID unutulduğu
+         görünmüyordu - artık hangisinin eksik olduğu (değer değil,
+         sadece hangi env adı) `debug.apiError`'da geliyor. 3) HTTP 400 -
+         `accept: application/json` yerine Voyager'ın beklediği
+         `application/vnd.linkedin.normalized+json+2.1` yapıldı,
+         şüpheli `resultType:List(CONTENT)` filtresi kaldırıldı. 4) HTTP
+         400 (asıl sebep) - **çift URL-encode hatası**: `keyword` önce
+         kendimiz `encodeURIComponent` ile encode edilmiş, sonra
+         `URLSearchParams.toString()` bunu TEKRAR encode etmiş
+         (`%20` → `%2520`, sunucuya literal "%20" metni gitmiş, gerçek
+         boşluk değil); ayrıca `URLSearchParams` RESTli sorgu söz
+         diziminin parçası olan `(`, `)`, `:`, `,` karakterlerini de
+         yanlışlıkla encode ediyordu - URL artık `URLSearchParams`
+         KULLANILMADAN elle, tek seferlik encode ile kuruluyor (bilinen
+         `linkedin-api` istemcilerinin de yaptığı gibi). Bu 4 düzeltmeden
+         sonra canlı test: `200 OK`, `found: 6`, `parsedCount: 6`,
+         `posted: true`, `postStatus: 200` - `parseVoyagerResults`
+         ("iş arıyorum" anahtar kelimesi için) hiç değiştirilmeden
+         gerçek sonuç üretti. **Kalan adım:** bulunan 6 adayın
+         isim/verisinin gerçekten anlamlı olup olmadığı (LinkedIn arayüz
+         metni değil, gerçek kişi/firma adı) dashboard'dan kontrol
+         edilmeli - onaylandıktan sonra `activeSourceChannels`'e
+         "linkedin" eklenecek (google_maps ile aynı prensip, henüz
+         eklenmedi).
+- [x] **Kaynak (tarama kanalı) filtresi tüm aday listesi sayfalarına
+      eklendi** ("filtre yok sistemde her sayfaya ekle, yahoo, google
+      map, google search, linkedin, instagram vs hepsi için filtre yap"
+      denildi). Onaylar (`/`), Onaylananlar (`/onaylananlar`) ve Tüm
+      Adaylar (`/adaylar`) sayfalarındaki ortak `filterBar()`'a mevcut
+      Sektör/Şehir dropdown'larının yanına üçüncü bir **"Kaynak"**
+      dropdown'u eklendi - `packages/shared` `SOURCE_CHANNELS` listesindeki
+      TÜM kanalları (google_search, google_maps, yahoo_search, linkedin,
+      tiktok, instagram, tender_site, freelancer_gallery) otomatik
+      listeler, yeni bir kanal eklendiğinde ayrıca dokunmaya gerek yok.
+      Query param: `?source=<slug>`. **Gönderilenler** (`/gonderilenler`)
+      sayfasına da ayrı bir "Kaynak" filtresi eklendi - oradaki mevcut
+      "Kanal" filtresiyle (WhatsApp/E-posta/Sesli Arama - gönderim
+      kanalı) KARIŞTIRILMASIN diye bilinçli olarak farklı bir kavram
+      (`source` query param, "Kaynak" etiketi); bunun için
+      `apps/control/src/routes/communications.ts`'teki join'e
+      `sourceChannel` eklendi ve tabloya yeni bir "Kaynak" sütunu
+      kondu. Tüm filtreleme (sektör/şehir/kaynak/isim gibi) mevcut
+      desende client-side (control'den TÜM sonuçlar çekilip
+      `render.ts`'te JS ile filtreleniyor) - veri hacmi küçük olduğu
+      için SQL tarafında ayrıca bir WHERE eklenmedi.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

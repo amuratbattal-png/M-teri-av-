@@ -88,12 +88,13 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
     if (url.pathname === "/" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const source = url.searchParams.get("source") || undefined;
       const q = url.searchParams.get("q") || undefined;
       const [counts, pending] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "pending_approval"),
       ]);
-      return new Response(renderApprovalsPage(counts, pending, sector, city, q), {
+      return new Response(renderApprovalsPage(counts, pending, sector, city, source, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -101,12 +102,13 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
     if (url.pathname === "/onaylananlar" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const source = url.searchParams.get("source") || undefined;
       const q = url.searchParams.get("q") || undefined;
       const [counts, approved] = await Promise.all([
         fetchStats(env),
         fetchCandidates(env, "approved"),
       ]);
-      return new Response(renderApprovedPage(counts, approved, sector, city, q), {
+      return new Response(renderApprovedPage(counts, approved, sector, city, source, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -114,9 +116,10 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
     if (url.pathname === "/adaylar" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
+      const source = url.searchParams.get("source") || undefined;
       const q = url.searchParams.get("q") || undefined;
       const [counts, all] = await Promise.all([fetchStats(env), fetchCandidates(env)]);
-      return new Response(renderAllCandidatesPage(counts, all, sector, city, q), {
+      return new Response(renderAllCandidatesPage(counts, all, sector, city, source, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -124,12 +127,13 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
     if (url.pathname === "/gonderilenler" && request.method === "GET") {
       const channel = url.searchParams.get("channel") || undefined;
       const status = url.searchParams.get("status") || undefined;
+      const source = url.searchParams.get("source") || undefined;
       const q = url.searchParams.get("q") || undefined;
       const [counts, communications] = await Promise.all([
         fetchStats(env),
         fetchCommunications(env),
       ]);
-      return new Response(renderSentPage(counts, communications, channel, status, q), {
+      return new Response(renderSentPage(counts, communications, channel, status, source, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

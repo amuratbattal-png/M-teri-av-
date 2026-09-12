@@ -4,6 +4,7 @@ import {
   SECTORS,
   PARALLEL_TRACK,
   CITIES,
+  SOURCE_CHANNELS,
   type Candidate,
 } from "@musteri-avcisi/shared";
 
@@ -566,13 +567,15 @@ export function renderApprovalsPage(
   pending: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedSource?: string,
   selectedQuery?: string,
 ): string {
   const filtered = pending.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedSource || c.sourceChannel === selectedSource),
   );
   const sortedPending = [...filtered].sort((a, b) =>
     a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
@@ -581,7 +584,7 @@ export function renderApprovalsPage(
     sortedPending,
     "/",
     "🔍",
-    selectedSector || selectedCity || selectedQuery
+    selectedSector || selectedCity || selectedSource || selectedQuery
       ? "Bu filtreyle onay bekleyen aday yok."
       : "Onay bekleyen aday yok.<br>Tarama worker'ları her çalıştığında burası otomatik güncellenir.",
   );
@@ -589,7 +592,7 @@ export function renderApprovalsPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
-    ${filterBar({ action: "/", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/", selectedSector, selectedCity, selectedSource, selectedQuery })}
     ${bulkActionBar("/")}
     ${list}
   `;
@@ -605,13 +608,24 @@ export function renderApprovalsPage(
 
 // --- Tüm Adaylar sayfası --------------------------------------------------
 
-/** Sektör + şehir + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il. */
+/** Sektör + şehir + kaynak kanalı + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il / tüm tarama kanalları (google_maps, linkedin, yahoo_search, vb.). */
 function filterBar(opts: {
   action: string;
   selectedSector?: string;
   selectedCity?: string;
+  selectedSource?: string;
   selectedQuery?: string;
 }): string {
+  const sourceOptions = [
+    `<option value=""${opts.selectedSource ? "" : " selected"}>Tüm kaynaklar</option>`,
+    ...SOURCE_CHANNELS.map(
+      (slug) =>
+        `<option value="${slug}"${
+          opts.selectedSource === slug ? " selected" : ""
+        }>${escapeHtml(SOURCE_LABELS_TR[slug] ?? slug)}</option>`,
+    ),
+  ].join("");
+
   const sectorOptions = [
     `<option value=""${opts.selectedSector ? "" : " selected"}>Tüm sektörler</option>`,
     `<option value="${PARALLEL_TRACK.slug}"${
@@ -650,6 +664,8 @@ function filterBar(opts: {
       <select id="sector-filter" name="sector" onchange="this.form.submit()">${sectorOptions}</select>
       <label for="city-filter">Şehir</label>
       <select id="city-filter" name="city" onchange="this.form.submit()">${cityOptions}</select>
+      <label for="source-filter">Kaynak</label>
+      <select id="source-filter" name="source" onchange="this.form.submit()">${sourceOptions}</select>
       <button type="submit" class="btn--filter">Ara</button>
     </form>`;
 }
@@ -659,6 +675,7 @@ export function renderAllCandidatesPage(
   all: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedSource?: string,
   selectedQuery?: string,
 ): string {
   // Onaylanmış adaylar artık kendi sayfasında (bkz. renderApprovedPage) -
@@ -668,7 +685,8 @@ export function renderAllCandidatesPage(
       c.status !== "approved" &&
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedSource || c.sourceChannel === selectedSource),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
@@ -681,7 +699,7 @@ export function renderAllCandidatesPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
-    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedSource, selectedQuery })}
     ${bulkActionBar("/adaylar")}
     ${list}
   `;
@@ -702,20 +720,22 @@ export function renderApprovedPage(
   approved: Candidate[],
   selectedSector?: string,
   selectedCity?: string,
+  selectedSource?: string,
   selectedQuery?: string,
 ): string {
   const filtered = approved.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
-      (!selectedCity || candidateCitySlug(c) === selectedCity),
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedSource || c.sourceChannel === selectedSource),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
     sorted,
     "/onaylananlar",
     "✓",
-    selectedSector || selectedCity || selectedQuery
+    selectedSector || selectedCity || selectedSource || selectedQuery
       ? "Bu filtreyle onaylanmış aday yok."
       : "Henüz onaylanmış aday yok.",
   );
@@ -723,7 +743,7 @@ export function renderApprovedPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onaylananlar (${sorted.length})</h2>
-    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedQuery })}
+    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedSource, selectedQuery })}
     ${list}
   `;
 
@@ -744,6 +764,7 @@ export interface CommunicationRow {
   candidateId: string;
   candidateName: string | null;
   sectorSlug: string | null;
+  sourceChannel: string | null;
   channel: string;
   direction: string;
   status: string;
@@ -759,6 +780,7 @@ function communicationRow(r: CommunicationRow): string {
       <td>${escapeHtml(r.candidateName ?? "(silinmiş aday)")}</td>
       <td>${r.sectorSlug ? `<span class="badge">${escapeHtml(sectorLabel(r.sectorSlug))}</span>` : "—"}</td>
       <td>${typeof cityLabel === "string" ? escapeHtml(cityLabel) : "—"}</td>
+      <td>${r.sourceChannel ? `<span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[r.sourceChannel] ?? r.sourceChannel)}</span>` : "—"}</td>
       <td><span class="badge badge--source">${escapeHtml(CHANNEL_LABELS_TR[r.channel] ?? r.channel)}</span></td>
       <td><span class="status status--${tone}">${COMM_STATUS_LABELS_TR[r.status] ?? r.status}</span></td>
       <td class="muted">${fmtDate(r.createdAt)}</td>
@@ -770,17 +792,19 @@ export function renderSentPage(
   communications: CommunicationRow[],
   selectedChannel?: string,
   selectedStatus?: string,
+  selectedSource?: string,
   selectedQuery?: string,
 ): string {
   const filtered = communications.filter(
     (r) =>
       matchesQuery(r.candidateName ?? "", selectedQuery) &&
       (!selectedChannel || r.channel === selectedChannel) &&
-      (!selectedStatus || r.status === selectedStatus),
+      (!selectedStatus || r.status === selectedStatus) &&
+      (!selectedSource || r.sourceChannel === selectedSource),
   );
   const rows = filtered.length
     ? filtered.map(communicationRow).join("\n")
-    : `<tr><td colspan="6" class="muted">Henüz hiç gönderim yapılmadı.</td></tr>`;
+    : `<tr><td colspan="7" class="muted">Henüz hiç gönderim yapılmadı.</td></tr>`;
 
   const channelOptions = [
     `<option value=""${selectedChannel ? "" : " selected"}>Tüm kanallar</option>`,
@@ -798,6 +822,14 @@ export function renderSentPage(
     ),
   ].join("");
 
+  const sourceOptions = [
+    `<option value=""${selectedSource ? "" : " selected"}>Tüm kaynaklar</option>`,
+    ...SOURCE_CHANNELS.map(
+      (slug) =>
+        `<option value="${slug}"${selectedSource === slug ? " selected" : ""}>${escapeHtml(SOURCE_LABELS_TR[slug] ?? slug)}</option>`,
+    ),
+  ].join("");
+
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Gönderilenler (${filtered.length})</h2>
@@ -806,6 +838,8 @@ export function renderSentPage(
         ${ICONS.search}
         <input type="search" name="q" placeholder="Ada göre ara..." value="${escapeHtml(selectedQuery ?? "")}">
       </span>
+      <label for="source-filter">Kaynak</label>
+      <select id="source-filter" name="source" onchange="this.form.submit()">${sourceOptions}</select>
       <label for="channel-filter">Kanal</label>
       <select id="channel-filter" name="channel" onchange="this.form.submit()">${channelOptions}</select>
       <label for="status-filter">İletim durumu</label>
@@ -815,7 +849,7 @@ export function renderSentPage(
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kanal</th><th>İletim durumu</th><th>Tarih</th></tr>
+          <tr><th>Ad</th><th>Sektör</th><th>Şehir</th><th>Kaynak</th><th>Kanal</th><th>İletim durumu</th><th>Tarih</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
