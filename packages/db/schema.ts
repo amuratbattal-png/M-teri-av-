@@ -62,9 +62,21 @@ export const communicationLog = sqliteTable("communication_log", {
  * satır varsa o üstün gelir, yoksa env secret'a (wrangler secret put)
  * düşülür.
  */
+/**
+ * BİLİNEN ŞEMA UYUMSUZLUĞU (çözüldü, bkz. CLAUDE.md "Ayarları Kaydet
+ * hatası" notu): canlı D1'deki `settings` tablosunda `updated_at` NOT
+ * NULL bir sütun zaten vardı - muhtemelen `0002_settings.sql`'deki
+ * `CREATE TABLE IF NOT EXISTS` çalıştığında tablo başka bir şemayla
+ * (bu sütunla) zaten mevcuttu, bu yüzden migration hiçbir şey
+ * değiştirmedi. Kod bu sütunu hiç bilmediği için her `INSERT` bir
+ * `SQLITE_CONSTRAINT_NOTNULL` hatasıyla patlıyordu. Çözüm: canlıdaki
+ * gerçekliği burada da tanımlamak - her yazımda `updatedAt` gönderiliyor
+ * (bkz. apps/control/src/lib/settings.ts upsertSetting).
+ */
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value"),
+  updatedAt: text("updated_at").notNull(),
 });
 
 /**

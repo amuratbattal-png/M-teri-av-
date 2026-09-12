@@ -102,10 +102,14 @@ export interface SettingsPatch {
 
 async function upsertSetting(env: Env, key: string, value: string): Promise<void> {
   const db = createDb(env.DB);
+  const updatedAt = new Date().toISOString();
+  // `updatedAt` canlı D1'de NOT NULL bir sütun - bkz. packages/db/schema.ts
+  // `settings` yorumu ("Ayarları Kaydet hatası" olayı, CLAUDE.md). Her
+  // yazımda mutlaka gönderilmeli, aksi halde SQLITE_CONSTRAINT_NOTNULL.
   await db
     .insert(settingsTable)
-    .values({ key, value })
-    .onConflictDoUpdate({ target: settingsTable.key, set: { value } });
+    .values({ key, value, updatedAt })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value, updatedAt } });
 }
 
 async function deleteSetting(env: Env, key: string): Promise<void> {

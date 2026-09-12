@@ -547,6 +547,30 @@ Neden bu yapı:
       D1/route hata mesajını görecek; hâlâ hata alırsa o mesajı
       paylaşması yeterli, `wrangler tail`e gerek kalmadan kök sebep
       belirlenebilir.
+- [x] **Gerçek kök sebep bulundu ve düzeltildi: `settings.updated_at`
+      şema uyumsuzluğu - `follow_up_date` olayıyla AYNI SINIF sorun.**
+      Yukarıdaki görünürlük düzeltmesi sayesinde sahibi gerçek hatayı
+      gördü: `D1_ERROR: NOT NULL constraint failed: settings.updated_at:
+      SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)`. Canlı
+      D1'deki `settings` tablosunda `updated_at` diye NOT NULL (ve
+      varsayılan değeri olmayan) bir sütun zaten varmış - muhtemelen
+      `0002_settings.sql`'deki `CREATE TABLE IF NOT EXISTS`
+      çalıştığında tablo (başka bir sebeple/denemeyle) zaten bu sütunla
+      mevcuttu, bu yüzden migration hiçbir şey değiştirmedi ve kod bu
+      sütundan habersiz kaldı - her `INSERT` NOT NULL ihlaliyle
+      patlıyordu. Düzeltme (tabloyu BOZMADAN, sadece koda gerçekliği
+      tanıtarak): `packages/db/schema.ts` `settings` tablosuna
+      `updatedAt: text("updated_at").notNull()` eklendi;
+      `apps/control/src/lib/settings.ts` `upsertSetting()` artık her
+      `insert`/`onConflictDoUpdate`'te `updatedAt: new Date().toISOString()`
+      gönderiyor. `packages/db/migrations/0002_settings.sql` da (ileride
+      sıfırdan bir D1 kurulacaksa aynı hataya düşülmesin diye)
+      `updated_at TEXT NOT NULL DEFAULT (datetime('now'))` ile
+      güncellendi - `IF NOT EXISTS` olduğu için canlıdaki mevcut tabloyu
+      etkilemiyor. **Henüz sahibi tarafından deploy edilip canlıda
+      doğrulanmadı** - `apps/control`'ün yeniden deploy edilmesi
+      gerekiyor, sonra Ayarlar sayfasında tekrar "Ayarları Kaydet"
+      denenip gerçekten kaydettiği teyit edilmeli.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
