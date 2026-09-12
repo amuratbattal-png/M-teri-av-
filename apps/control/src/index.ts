@@ -6,6 +6,7 @@ import {
   handleListCandidates,
   handleStats,
   handleReport,
+  handleRescoreUnscored,
 } from "./routes/candidates";
 import {
   handleApprove,
@@ -61,6 +62,10 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 
   if (pathname === "/activity" && method === "GET") {
     return handleGetActivity(env);
+  }
+
+  if (pathname === "/candidates/rescore-unscored" && method === "POST") {
+    return handleRescoreUnscored(env);
   }
 
   if (pathname === "/settings" && method === "GET") {

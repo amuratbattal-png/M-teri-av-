@@ -895,6 +895,68 @@ Neden bu yapı:
       pinlenmiş modeli silip `wrangler.toml`'daki güncel
       `meta/llama-3.3-70b-instruct`'un devreye girmesini sağlayacak.
       **Henüz canlıda doğrulanmadı.**
+- [x] **`meta/llama-3.3-70b-instruct` DE `410 Gone` verdi - "halef" tahmini
+      de yanlış çıktı.** Sahibi model alanına doğrudan bu değeri yazıp
+      kaydetti (D1 pinlemesi düzeldi) ama Canlı Log'da AYNI `410`/"end
+      of life" hatasını gördü. Yani NVIDIA muhtemelen tüm `meta/llama-3.x-70b-instruct`
+      ailesini aynı anda emekliye ayırdı - ikinci bir kör tahmin daha
+      yanlış çıktı. **Ders (bir daha tahmin ETMEYECEĞİZ):** sahibi
+      build.nvidia.com model kataloğunu paylaştı - birçok model
+      "Ücretsiz Uç Nokta" ile ücretsiz, DeepSeek dahil (`deepseek-v4-pro-0813`,
+      `deepseek-v4-flash-0731`) zaten orada. Sahibe süreç anlatıldı:
+      (1) build.nvidia.com'da istediği modelin (DeepSeek önerildi)
+      sayfasını aç, (2) kod örneğindeki TAM `model` kimliğini kopyala
+      (kart başlığı ile API kimliği aynı olmayabilir), (3) Ayarlar'da
+      Model kutusuna yapıştır, (4) "Doğrula" butonuna bas (artık
+      modelin NVIDIA'nın canlı listesinde gerçekten var olup olmadığını
+      kontrol ediyor - bkz. yukarıdaki `verifyNvidia` notu), (5) geçerli
+      çıkarsa "Ayarları Kaydet". **Sahibinden hangi model kimliğinin
+      gerçekten geçerli çıktığı hâlâ bekleniyor** - onaylanınca
+      `wrangler.toml`/`DEFAULT_MODEL` de o değere güncellenecek (bir
+      sonraki oturumda tahmin etmeye devam etmemek için).
+- [x] **"Eski verileri de kontrol etsin" - AI haftalarca ölüyken
+      puansız kalmış `pending_approval` adayları toplu yeniden
+      puanlayan bir bakım özelliği eklendi.** Sahibi ayrıca "neden 30
+      dk'ya bağlı, 5 saniyede bir kontrol etsin" dedi -
+      **AÇIKLIĞA KAVUŞTURULDU VE SORULDU:** Canlı Log'un 5 saniyelik
+      tazelenmesi sadece EKRANI günceller (yeni bir LinkedIn isteği
+      atmaz); LinkedIn taraması 30 dakikada bir çünkü dokümante
+      edilmemiş bir iç API kullanılıyor ve çok sık istek atmak hesap
+      askıya alınma riskini ciddi artırıyor - `AskUserQuestion` ile
+      soruldu, **sahibi 30 dakikada kalmasını (önerilen seçenek)
+      onayladı**, değiştirilmedi.
+      "Eski verileri de kontrol etsin" isteği için: yeni
+      `apps/control/src/routes/candidates.ts` `handleRescoreUnscored`
+      (`POST /candidates/rescore-unscored`) - `status='pending_approval'
+      AND ai_score IS NULL` olan adayları (model ölüyken FAIL-OPEN
+      sayesinde hiç puanlanmadan geçmiş olanlar) bulup artık çalışan
+      modelle yeniden puanlıyor; puan ≤2 çıkarsa `on_hold`'a taşıyor,
+      3+ çıkarsa puanı kaydedip teklif metnini de yeniden yazdırıyor
+      (o dönem şablona düşmüş olabilir). **TEK ÇAĞRIDA TÜMÜNÜ İŞLEMİYOR**
+      (yüzlerce aday olabilir, bir Worker isteği güvenle bitiremeyebilir) -
+      `RESCORE_BATCH_SIZE` (15) kadarını işleyip kalan sayıyı dönüyor.
+      Dashboard'da Ayarlar sayfasına yeni bir **"Bakım"** kartı +
+      **"Puanlanmamış Adayları Yeniden Puanla"** butonu eklendi
+      (`rescoreUnscored()` JS'i - `remaining > 0` kaldıkça 500ms arayla
+      tekrar tekrar çağırıyor, ilerlemeyi gösteriyor).
+      **ÖNEMLİ (bkz. aşağıdaki ders):** bu özelliği eklerken render.ts'in
+      paylaşılan `<script>` bloğuna yeni JS eklerken AYNI hata sınıfını
+      İKİ KEZ DAHA yaptım - biri `\'` (kaçış), biri bir yorum satırı
+      içindeki ters tırnak (backtick) - ikisi de fark edilip
+      düzeltilmeden önce `node --check` ile yakalandı (ters tırnak
+      hatası ayrıca gerçek bir TS derleme hatası olarak da yakalandı,
+      çünkü outer template literal'ı erken kapatıyordu). **Kalıcı ders
+      (CLAUDE.md'ye BURAYA yazıldı ki unutulmasın):** render.ts'teki
+      `<script>` bloklarına yeni JS eklerken/düzenlerken (1) HİÇBİR
+      kaçış dizisi (`\n`, `\t`, `\'`, `\"` vb.) çıplak yazılmamalı -
+      gerekiyorsa çift ters eğik çizgi (`\\n`) kullanılmalı ya da
+      apostrof/tırnak içeren kelimeler tamamen kaçınılarak yeniden
+      yazılmalı, (2) o JS içine YORUM olarak bile tek bir ters tırnak
+      (`` ` ``) YAZILMAMALI, (3) her değişiklikten sonra bu repodaki
+      `tsc` YETERLİ DEĞİL (JS bir TS template literal'ı içinde düz metin
+      olarak göründüğü için çoğu hatayı yakalamıyor) - script içeriğini
+      ayıklayıp `node --check` ile (ya da gerçek bir tarayıcıda açıp
+      konsola bakarak) ayrıca doğrulamak ŞART.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

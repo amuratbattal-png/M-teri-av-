@@ -1,9 +1,10 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { createDb, candidates } from "@musteri-avcisi/db";
 import {
   CANDIDATE_STATUSES,
   SECTORS,
   PARALLEL_TRACK,
+  type NeedTag,
   type ScanResult,
 } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
@@ -252,4 +253,112 @@ export async function handleReport(env: Env): Promise<Response> {
   }
 
   return json({ total: rows.length, bySector, byChannel, byStatus, byCity });
+}
+
+/** Tek çağrıda işlenecek en fazla aday sayısı - bkz. handleRescoreUnscored. */
+const RESCORE_BATCH_SIZE = 15;
+
+/**
+ * "Eski verileri de kontrol etsin" - sahibinin isteği (bkz. CLAUDE.md
+ * "model end-of-life" olayı). NVIDIA modeli haftalarca ölü kaldığı için
+ * (FAIL-OPEN sayesinde) `pending_approval` durumundaki birçok aday HİÇ
+ * puanlanmadan (`ai_score IS NULL`) onay bekleyenler listesine girdi -
+ * bu, o dönemde gerçekten alakasız (ör. iş ilanı) olabilecek adayların
+ * da Askıda'ya değil doğrudan Onaylar'a düşmüş olabileceği anlamına
+ * geliyor. Bu endpoint böyle adayları BULUP artık çalışan modelle
+ * yeniden puanlıyor (ve teklif metnini de yeniden yazdırıyor - o da
+ * aynı dönemde şablona düşmüş olabilir).
+ *
+ * TEK ÇAĞRIDA TÜMÜNÜ işlemek yerine (yüzlerce aday olabilir, bir
+ * Cloudflare Worker isteği bunu güvenle bitiremeyebilir) küçük bir
+ * batch (bkz. RESCORE_BATCH_SIZE) işler ve kaç tane kaldığını
+ * döndürür - dashboard bunu `remaining > 0` kaldıkça tekrar tekrar
+ * çağırıyor (bkz. apps/dashboard/src/render.ts renderSettingsPage
+ * script'i).
+ */
+export async function handleRescoreUnscored(env: Env): Promise<Response> {
+  const db = createDb(env.DB);
+  const settings = await getEffectiveSettings(env);
+
+  const batch = await db
+    .select()
+    .from(candidates)
+    .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)))
+    .limit(RESCORE_BATCH_SIZE);
+
+  let movedToOnHold = 0;
+  for (const candidate of batch) {
+    const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+    const needTags = candidate.needTags as NeedTag[];
+
+    const quality = await assessLeadQuality(
+      {
+        candidateName: candidate.name,
+        sectorLabel: sectorLabel(candidate.sectorSlug),
+        needTags,
+        sourceChannel: candidate.sourceChannel,
+        rawMetadata: candidate.rawMetadata,
+      },
+      settings,
+    );
+    if (quality.error) {
+      await logActivity(
+        env,
+        "warn",
+        "lead-quality",
+        `[Yeniden puanlama] ${candidate.name} (${candidate.sourceChannel}): AI puanlayamadı - ${quality.error}`,
+      );
+      // Puanlanamadıysa (FAIL-OPEN) dokunmadan geç - bir daha ki toplu
+      // çalıştırmada tekrar denenir, ama sonsuz döngüye girmemesi için
+      // aiScore'u 0 ile işaretleyip "denendi ama başarısız" diye ayırt
+      // etmek yerine basitçe atlıyoruz (bir sonraki genel taramada zaten
+      // yeniden denenecek değil - bu adaylar zaten mevcut, tek yol
+      // Ayarlar'dan tekrar "Yeniden Puanla"ya basmak).
+      continue;
+    }
+    if (typeof quality.score !== "number") continue; // assessLeadQuality sözleşmesi: error yoksa score dolu olmalı, TS bunu bilemiyor.
+
+    await logActivity(
+      env,
+      "info",
+      "lead-quality",
+      `[Yeniden puanlama] ${candidate.name} (${candidate.sourceChannel}): ${quality.score}/5 yıldız - ${quality.reason || "gerekçe yok"}`,
+    );
+
+    if (quality.score <= ON_HOLD_MAX_SCORE) {
+      await db
+        .update(candidates)
+        .set({
+          status: "on_hold",
+          aiScore: quality.score,
+          evaluationNotes: `AI (yeniden puanlama): düşük puan (${quality.score}/5) - ${quality.reason || "gerekçe yok"}`,
+        })
+        .where(eq(candidates.id, candidate.id));
+      movedToOnHold++;
+      continue;
+    }
+
+    // Alakalı bulundu - puanı kaydet, teklif metnini de o dönem şablona
+    // düşmüş olabileceği için yeniden yazdır (artık AI çalışıyor).
+    const proposal = await draftProposal(
+      {
+        candidateName: candidate.name,
+        needTags,
+        sectorLabel: sectorLabel(candidate.sectorSlug),
+        cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+      },
+      settings,
+    );
+    await db
+      .update(candidates)
+      .set({ aiScore: quality.score, proposalDraft: proposal.text })
+      .where(eq(candidates.id, candidate.id));
+  }
+
+  const [{ remaining }] = await db
+    .select({ remaining: sql<number>`count(*)` })
+    .from(candidates)
+    .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)));
+
+  return json({ processed: batch.length, movedToOnHold, remaining: Number(remaining) });
 }

@@ -362,6 +362,18 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
       return new Response(data, { headers: { "content-type": "application/json" } });
     }
 
+    // "Puanlanmamış Adayları Yeniden Puanla" (bkz. Ayarlar sayfası) -
+    // NVIDIA modeli haftalarca ölüyken puansız kalmış pending_approval
+    // adayları küçük gruplar (bkz. RESCORE_BATCH_SIZE) hâlinde yeniden
+    // puanlar; JS tarafı `remaining > 0` kaldıkça tekrar tekrar çağırır.
+    if (url.pathname === "/candidates/rescore-unscored" && request.method === "POST") {
+      const res = await env.CONTROL_WORKER.fetch("https://internal/candidates/rescore-unscored", {
+        method: "POST",
+      });
+      const data = await res.text();
+      return new Response(data, { headers: { "content-type": "application/json" } });
+    }
+
     // Sahibi WhatsApp/e-postayı kendi hesabından MANUEL gönderdikten
     // sonra bunu işaretliyor - sistem otomatik göndermiyor.
     const markSentMatch = url.pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);

@@ -375,6 +375,44 @@ function shell(opts: {
           .catch(function (err) { console.error('canlı log tazelenemedi', err); });
       }, 5000);
     })();
+
+    // Ayarlar sayfasındaki "Puanlanmamış Adayları Yeniden Puanla" (bkz.
+    // CLAUDE.md "model end-of-life" olayı) - control'ün
+    // /candidates/rescore-unscored'u küçük gruplar hâlinde işliyor
+    // (bkz. apps/control/src/routes/candidates.ts RESCORE_BATCH_SIZE),
+    // bu yüzden "remaining > 0" kaldıkça tekrar tekrar çağırıyoruz.
+    function rescoreUnscored(btn) {
+      var statusEl = document.getElementById('rescore-status');
+      var original = btn.textContent;
+      btn.disabled = true;
+      var totalProcessed = 0;
+      var totalMoved = 0;
+      function step() {
+        fetch('/candidates/rescore-unscored', { method: 'POST' })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            totalProcessed += data.processed || 0;
+            totalMoved += data.movedToOnHold || 0;
+            if (statusEl) {
+              statusEl.textContent = totalProcessed + ' aday yeniden puanlandı (' + totalMoved + ' askıda), kalan: ' + data.remaining;
+            }
+            if (data.remaining > 0 && data.processed > 0) {
+              setTimeout(step, 500);
+            } else {
+              btn.disabled = false;
+              btn.textContent = original;
+              if (statusEl) statusEl.textContent += ' - tamamlandı.';
+            }
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = original;
+            if (statusEl) statusEl.textContent = 'Hata: ' + err;
+          });
+      }
+      if (statusEl) statusEl.textContent = 'Başlatılıyor...';
+      step();
+    }
   </script>
 </body>
 </html>`;
@@ -1390,6 +1428,13 @@ export function renderSettingsPage(
 
       <button type="submit" class="btn btn--approve">Ayarları Kaydet</button>
     </form>
+
+    <div class="report-card" style="margin-top:1.5rem">
+      <h3 class="report-card-title">Bakım</h3>
+      <p class="muted">NVIDIA modeli bir süre kullanılamaz durumdaydı (bkz. CLAUDE.md "model end-of-life" olayı) - bu dönemde hiç puanlanmadan onay bekleyenlere eklenmiş adayları artık çalışan modelle yeniden puanlar (ve teklif metinlerini de yeniden yazdırır). Çok sayıda aday varsa birkaç saniye sürebilir, sayfadan ayrılma.</p>
+      <button type="button" class="btn--filter" onclick="rescoreUnscored(this)">Puanlanmamış Adayları Yeniden Puanla</button>
+      <p id="rescore-status" class="muted" style="margin-top:0.5rem"></p>
+    </div>
   `;
 
   return shell({
