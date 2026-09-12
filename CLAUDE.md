@@ -1395,9 +1395,10 @@ Neden bu yapı:
       (Durdur/Devam Ettir) göründüğü teyit edildi; her iki app
       `wrangler --dry-run` ile bundle edildi.
       **Henüz canlıda doğrulanmadı.**
-- [ ] **`yahoo-search-scanner` gerçek koda bağlandı - HENÜZ CANLI TEST
-      EDİLMEDİ, LinkedIn Voyager entegrasyonuyla AYNI durumda (kırılgan/
-      kesin değil).** Sahibi "firmayı google'da aratıp linkleri
+- [x] **`yahoo-search-scanner` CANLI TEST EDİLDİ - SONUÇ OLUMSUZ: Yahoo
+      isteklerimizi bot olarak tespit edip sistematik olarak engelliyor.
+      Sahibi "şimdilik burada bırak" dedi, Google Cloud projesi
+      düzeltmesi ERTELENDİ.** Sahibi "firmayı google'da aratıp linkleri
       araştırıp rapor hazırlayabilir miyiz" diye sordu; Google Custom
       Search'ün hâlâ bozuk olduğu (403, ertelenmiş) hatırlatıldı,
       NVIDIA'nın bir arama motoru API'si OLMADIĞI netleştirildi
@@ -1432,6 +1433,45 @@ Neden bu yapı:
       `packages/shared/src/config.ts` `activeSourceChannels` listesine
       "yahoo_search" HENÜZ eklenmedi - önce canlı doğrulama gerekiyor
       (LinkedIn/google_maps ile aynı prensip).
+      **CANLI TEST SONUCU (deploy sonrası, sahibi tarafından `/run-now`
+      ile 2 kez denendi):** her ikisinde de BİREBİR AYNI hata:
+      `"Too many redirects"` - Yahoo, `search.yahoo.com/_bv/v.gif`
+      (bir "beacon doğrulama" uç noktası) arasında sonsuz bir yönlendirme
+      döngüsüne sokuyor. İki farklı sektör/sorguda AYNI imza görülmesi
+      bunun sorguya özgü rastgele bir şey DEĞİL, Yahoo'nun otomatik/
+      çerezsiz istekleri SİSTEMATİK olarak bu şekilde engellediği
+      anlamına geliyor - LinkedIn Voyager'daki gibi "birkaç düzeltmeyle
+      çalışır hale gelebilir" türünden bir sorun değil, temelde
+      Yahoo'nun bot koruması bu isteği hiç geçirmiyor.
+      **Önemli: sistem TASARLANDIĞI GİBİ davrandı** - hiçbir çökme/
+      hata fırlatma olmadı, `found: 0` + `apiError` ile net bir şekilde
+      raporlandı, sahte/boş bir kayıt oluşmadı (`posted: false`) -
+      `searchYahoo`'nun `catch` bloğu tam olarak bunun için vardı.
+      Sahibine (`AskUserQuestion`) "2/2 aynı hata yeterli kanıt mı,
+      Google Cloud projesine mi geçelim" diye soruldu - **"şimdilik
+      burada bırak" dedi**, Google Cloud projesi düzeltmesini
+      ERTELEDİ. Bu yüzden:
+      - Google Custom Search API HÂLÂ bozuk (403) - düzeltilmedi.
+      - `workers/google-search-scanner`'daki YENİ Google kazıma yedeği
+        (bkz. aşağıdaki not) de AYNI türden bir bot engellemesiyle
+        karşılaşması BEKLENİYOR (Google'ın koruması Yahoo'dan da
+        agresif) - henüz canlı test edilmedi ama Yahoo sonucu bunun
+        için kötü bir işaret.
+      - Yahoo cron'u (`*/30 * * * *`) hâlâ çalışıyor durumda -
+        devre dışı bırakılmadı (sahibi bunu istemedi), ama her
+        tetiklenmesinde muhtemelen aynı "Too many redirects" hatasını
+        üretmeye devam edecek - ZARARSIZ (aday oluşturmuyor, sadece
+        boşuna bir istek) ama de facto etkisiz. İstenirse ileride
+        `wrangler.toml`'daki cron kaldırılıp worker'ın kendisi
+        pasifleştirilebilir - şimdilik dokunulmadı.
+      **Sonuç:** arama motoru tarafında (Google/Yahoo, resmi API ya da
+      kazıma) şu an GERÇEKTEN çalışan tek bir yol yok. Sistem, sahibinin
+      "firmayı google vs arasın verilere göre puan versin" isteğine hâlâ
+      ÜCRETSİZ ve ÇALIŞAN yollarla karşılık veriyor: Google Places API
+      (google_maps, aktif), firmanın kendi web sitesinin içeriği, ve
+      (varsa) firmanın sitesinde link verdiği Instagram/Facebook/TikTok
+      profilinin OG etiketleri (bkz. yukarıdaki notlar) - bunların
+      hiçbiri arama motoru kazımasına bağımlı değil.
 - [ ] **"Google için de kazıma yapamıyor muyuz?" - sahibine dürüst risk
       değerlendirmesi yapıldı, o yine de denemeyi seçti; kod yazıldı,
       HENÜZ CANLI TEST EDİLMEDİ.** Google'ın bot engelleme sisteminin
