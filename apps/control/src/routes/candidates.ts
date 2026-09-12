@@ -10,6 +10,7 @@ import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
 import { assessLeadQuality, ON_HOLD_MAX_SCORE } from "../lib/relevance";
 import { getEffectiveSettings } from "../lib/settings";
+import { logActivity } from "../lib/activity-log";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -86,6 +87,19 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     );
     if (quality.error) {
       console.warn(`AI lead puanlaması atlandı/başarısız (${result.name}): ${quality.error}`);
+      await logActivity(
+        env,
+        "warn",
+        "lead-quality",
+        `${result.name} (${result.sourceChannel}): AI puanlayamadı - ${quality.error}`,
+      );
+    } else {
+      await logActivity(
+        env,
+        "info",
+        "lead-quality",
+        `${result.name} (${result.sourceChannel}): ${quality.score}/5 yıldız - ${quality.reason || "gerekçe yok"}`,
+      );
     }
 
     if (typeof quality.score === "number" && quality.score <= ON_HOLD_MAX_SCORE) {
@@ -111,6 +125,12 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         evaluationNotes: `AI: düşük puan (${quality.score}/5) - ${quality.reason || "gerekçe yok"}`,
         rawMetadata: result.rawMetadata ?? null,
       });
+      await logActivity(
+        env,
+        "warn",
+        "scan",
+        `${result.name}: Askıda'ya alındı (puan ${quality.score}/5) - onay bekleyenlere eklenmedi.`,
+      );
       created.push(id);
       continue;
     }
@@ -126,6 +146,9 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     );
     if (!proposal.usedAI) {
       console.warn(`AI teklif metni üretilemedi (${result.name}): ${proposal.error}`);
+      await logActivity(env, "warn", "proposal", `${result.name}: teklif AI ile yazılamadı - ${proposal.error}`);
+    } else {
+      await logActivity(env, "info", "proposal", `${result.name}: teklif metni AI ile yazıldı.`);
     }
 
     await db.insert(candidates).values({
@@ -148,6 +171,16 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     });
 
     created.push(id);
+  }
+
+  if (body.results.length > 0) {
+    const channel = body.results[0]?.sourceChannel ?? "bilinmiyor";
+    await logActivity(
+      env,
+      "info",
+      "scan",
+      `${channel}: ${body.results.length} sonuç alındı, ${created.length} yeni kayıt oluşturuldu (${body.results.length - created.length} zaten vardı).`,
+    );
   }
 
   return json({ created: created.length, ids: created });

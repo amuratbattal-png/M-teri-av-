@@ -728,6 +728,44 @@ Neden bu yapı:
         onaylamadan bu kısım YAPILMADI. Şu anki puanlama Google Maps
         adayları için de çalışıyor (isim/sektör/ihtiyaç etiketine göre)
         ama yorumları GÖRMÜYOR.
+- [x] **Dashboard'a "Canlı Log" (Terminal) sayfası eklendi.** Sahibi
+      "yapay zekanın çalıştığını nereden anlıyoruz, dashboard'a terminal
+      ekleyelim, orada ne yaptığını görelim" dedi. Yeni D1 tablosu
+      `activity_log` (migration `packages/db/migrations/0004_activity_log.sql`
+      - **deploy'dan önce uygulanmalı**, bkz. `docs/deployment.md`) ve
+      `apps/control/src/lib/activity-log.ts` (`logActivity`,
+      `readRecentActivity`, `handleGetActivity` - yeni `GET /activity`
+      endpoint'i) eklendi. `handleScanResults` (`routes/candidates.ts`)
+      artık şu olayları kısa Türkçe cümlelerle logluyor: her adayın AI
+      lead puanlama sonucu (`"<isim> (<kanal>): 4/5 yıldız - <gerekçe>"`
+      ya da AI atlandıysa/başarısızsa sebebi), Askıda'ya alınma kararı,
+      teklif metninin AI ile yazılıp yazılamadığı, ve her tarama
+      batch'inin özeti (`"<kanal>: N sonuç alındı, M yeni kayıt"`).
+      `logActivity` kendi başına ASLA ana akışı bozmaz (insert
+      başarısız olursa - ör. migration henüz uygulanmadıysa - sessizce
+      `console.error`'a düşer, hatayı yutar) ve satır sayısı sınırsız
+      büyümesin diye her yazımda ~%5 ihtimalle en yeni 2000 satır
+      dışındakileri buduyor (ekstra bir DELETE sorgusunu HER yazımda
+      çalıştırıp gecikme eklemek istemedik).
+      `apps/dashboard`: yeni **Canlı Log** sayfası (`/terminal`,
+      `renderTerminalPage`) - koyu, monospace bir "terminal" görünümünde
+      (`renderActivityLines`, seviyeye göre renkli: info/warn/error),
+      en yeni satır en altta (gerçek bir terminal gibi). Sayfa **5
+      saniyede bir kendini tazeliyor** - `GET /terminal/data` (sadece
+      log satırlarının HTML fragment'ını döner, tam sayfa değil) + basit
+      bir `setInterval`/`fetch` JS'i (`pollActivityLog`, `shell()`
+      script'inde) ile; kullanıcı yukarı kaydırıp geçmişi okuyorsa
+      otomatik aşağı kaydırma yapılmıyor. Sidebar'a "Tüm Adaylar" ile
+      "Rapor" arasına yeni bir nav öğesi eklendi. **Önemli sınırlama
+      (panelde de belirtiliyor):** bu, `wrangler tail`'in YERİNE
+      geçmiyor - `wrangler tail` HER ham isteği/yanıtı gösterir, bu
+      sadece yukarıdaki birkaç önemli olayın kısa özeti; daha derin bir
+      teşhis gerekirse (ör. LinkedIn Voyager entegrasyonunda olduğu gibi
+      tam bir API yanıtı) hâlâ `wrangler tail` ya da `/run-now` gerekir.
+      **Henüz canlıda doğrulanmadı** - migration uygulanıp
+      `apps/control` + `apps/dashboard` deploy edildikten sonra bir
+      tarama tetiklenip Canlı Log sayfasında satırların gerçekten
+      biriktiği ve sayfanın kendini tazelediği kontrol edilmeli.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

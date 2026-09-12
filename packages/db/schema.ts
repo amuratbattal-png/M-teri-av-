@@ -82,6 +82,26 @@ export const settings = sqliteTable("settings", {
 });
 
 /**
+ * "Canlı log" - dashboard'daki Terminal sayfasının okuduğu, AI'ın
+ * (lead puanlama, teklif yazımı) ve taramanın ne yaptığını gösteren
+ * kısa insan-okunur olay kaydı (bkz. apps/control/src/lib/activity-log.ts
+ * logActivity). Sahibi "yapay zekanın çalıştığını nereden anlıyoruz"
+ * dedi - `wrangler tail`e bakmadan (Cloudflare hesabına giriş
+ * gerektiriyor, canlı bir terminal oturumu) görebileceği bir yer.
+ * `wrangler tail`in YERİNE geçmiyor - sadece önemli olayların kısa bir
+ * özeti, tüm console.log çıktısı değil.
+ */
+export const activityLog = sqliteTable("activity_log", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  /** "info" | "warn" | "error" - dashboard'da renklendirme için. */
+  level: text("level").notNull().default("info"),
+  /** "lead-quality" | "proposal" | "scan" | "system" vb. - hangi bileşenden geldiği. */
+  source: text("source").notNull(),
+  message: text("message").notNull(),
+});
+
+/**
  * Tarama ilerleme takibi: alfabetik sektör taraması nerede kaldı,
  * paralel iş kolu (yeni şirket / iş arayan) ayrı satırda ilerler.
  */

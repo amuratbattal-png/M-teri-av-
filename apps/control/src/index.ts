@@ -25,6 +25,7 @@ import {
   handleInternalSettings,
   handleVerifySetting,
 } from "./routes/settings";
+import { handleGetActivity } from "./lib/activity-log";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -56,6 +57,10 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 
   if (pathname === "/report" && method === "GET") {
     return handleReport(env);
+  }
+
+  if (pathname === "/activity" && method === "GET") {
+    return handleGetActivity(env);
   }
 
   if (pathname === "/settings" && method === "GET") {

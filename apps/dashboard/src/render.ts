@@ -124,6 +124,19 @@ function fmtDate(iso: string): string {
   }
 }
 
+/** Terminal sayfası için saat:dakika:saniye - saniye önemli, çok satır kısa sürede birikiyor. */
+function fmtTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 // --- İkonlar (inline SVG, çizgi stili) ---------------------------------
 
 const ICONS = {
@@ -140,6 +153,7 @@ const ICONS = {
   xcircle: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   chart: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   gear: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4M17.7 17.7l-1.4-1.4M7.7 7.7L6.3 6.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  terminal: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 9.5l3.5 2.5-3.5 2.5M13 14.5h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 const TILE_ICON: Record<string, string> = {
@@ -161,6 +175,7 @@ type NavKey =
   | "askida"
   | "gonderilenler"
   | "adaylar"
+  | "terminal"
   | "rapor"
   | "ayarlar";
 
@@ -212,6 +227,7 @@ function shell(opts: {
         ${navItem("/askida", ICONS.clock, "Askıda", "askida", opts.onHoldCount)}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
+        ${navItem("/terminal", ICONS.terminal, "Canlı Log", "terminal")}
         ${navItem("/rapor", ICONS.chart, "Rapor", "rapor")}
         ${navItem("/ayarlar", ICONS.gear, "Ayarlar", "ayarlar")}
       </nav>
@@ -339,6 +355,26 @@ function shell(opts: {
           btn.textContent = original;
         });
     }
+
+    // Canlı Log sayfası - 5 saniyede bir kendini tazeler (bkz.
+    // render.ts renderTerminalPage / dashboard index.ts GET /terminal/data).
+    // Sayfada #activity-terminal yoksa (başka bir sayfadaysak) hiçbir şey
+    // yapmıyor. Kullanıcı yukarı kaydırıp geçmişi okuyorsa (en altta
+    // değilse) otomatik kaydırma yapılmıyor - okumasını bölmesin diye.
+    (function pollActivityLog() {
+      var el = document.getElementById('activity-terminal');
+      if (!el) return;
+      setInterval(function () {
+        var wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
+        fetch('/terminal/data')
+          .then(function (res) { return res.text(); })
+          .then(function (html) {
+            el.innerHTML = html;
+            if (wasAtBottom) el.scrollTop = el.scrollHeight;
+          })
+          .catch(function (err) { console.error('canlı log tazelenemedi', err); });
+      }, 5000);
+    })();
   </script>
 </body>
 </html>`;
@@ -986,6 +1022,94 @@ export function renderSentPage(
   });
 }
 
+// --- Terminal (canlı log) sayfası --------------------------------------
+
+/** control'ün /activity endpoint'inden dönen bir satır - bkz. apps/control/src/lib/activity-log.ts. */
+export interface ActivityEntry {
+  id: string;
+  createdAt: string;
+  level: string;
+  source: string;
+  message: string;
+}
+
+const ACTIVITY_SOURCE_LABELS_TR: Record<string, string> = {
+  "lead-quality": "Lead Puanlama",
+  proposal: "Teklif Yazımı",
+  scan: "Tarama",
+  system: "Sistem",
+};
+
+function activityLine(e: ActivityEntry): string {
+  const level = e.level === "error" ? "error" : e.level === "warn" ? "warn" : "info";
+  const sourceLabel = ACTIVITY_SOURCE_LABELS_TR[e.source] ?? e.source;
+  return `<div class="log-line log-line--${level}">` +
+    `<span class="log-time">${fmtTime(e.createdAt)}</span>` +
+    `<span class="log-source">[${escapeHtml(sourceLabel)}]</span>` +
+    `<span class="log-message">${escapeHtml(e.message)}</span>` +
+    `</div>`;
+}
+
+/**
+ * Log satırlarının HTML'i - hem tam sayfada (renderTerminalPage) hem de
+ * 5 saniyede bir tazelenen `/terminal/data` fragment'ında (bkz. dashboard
+ * index.ts) kullanılıyor, tek doğru kaynak (DRY) olsun diye ayrıldı.
+ */
+export function renderActivityLines(entries: ActivityEntry[]): string {
+  if (!entries.length) {
+    return `<div class="log-empty">Henüz kayıt yok - bir tarama çalıştığında burada AI'ın kararları görünecek.</div>`;
+  }
+  // API en yeniyi ÖNCE verir (bkz. apps/control/src/lib/activity-log.ts
+  // readRecentActivity, ORDER BY created_at DESC) - gerçek bir terminal
+  // gibi en yeni satır EN ALTTA görünsün diye burada ters çevriliyor.
+  return [...entries].reverse().map(activityLine).join("");
+}
+
+/**
+ * Sahibinin "yapay zekanın çalıştığını nereden anlıyoruz, dashboard'a
+ * terminal ekleyelim" isteğine cevap - AI'ın (lead puanlama, teklif
+ * yazımı) ve taramanın ne yaptığını gösteren, terminal görünümlü canlı
+ * bir log. `wrangler tail`in YERİNE geçmiyor - o HER şeyi (ham istek/
+ * yanıt) gösterir, bu sadece önemli olayların kısa Türkçe özeti. 5
+ * saniyede bir kendini tazeliyor (bkz. shell() script'i
+ * `pollActivityLog`), sayfayı yenilemene gerek yok.
+ */
+export function renderTerminalPage(
+  counts: Record<string, number>,
+  entries: ActivityEntry[],
+): string {
+  const lines = renderActivityLines(entries);
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Canlı Log</h2>
+    <p class="muted" style="margin:-0.5rem 0 1rem;max-width:70ch">
+      AI'ın her adayı nasıl puanladığını, teklif metninin yazılıp
+      yazılamadığını ve tarama sonuçlarını gösterir - 5 saniyede bir
+      kendini tazeler. Bu, "wrangler tail" komutunun yerine geçmez (o HER
+      isteği gösterir); burada sadece önemli kararların özeti var.
+    </p>
+    <div class="terminal" id="activity-terminal">${lines}</div>
+    <script>
+      // İlk yüklemede en alta (en yeni satıra) kaydır - poll script'i
+      // (shell()'de) sonraki tazelemelerde bunu zaten yapıyor.
+      (function () {
+        var el = document.getElementById('activity-terminal');
+        if (el) el.scrollTop = el.scrollHeight;
+      })();
+    </script>
+  `;
+
+  return shell({
+    active: "terminal",
+    pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
+    title: "Canlı Log",
+    subtitle: "Yapay zekanın gerçekten çalıştığını burada görebilirsin.",
+    content,
+  });
+}
+
 // --- Rapor sayfası -----------------------------------------------------
 
 /** control'ün /report endpoint'inden dönen ham sayaçlar. */
@@ -1577,6 +1701,25 @@ const STYLES = `
   .score-stars--ok { color: var(--ok); }
   .score-stars--warn { color: var(--warn); }
   .score-stars--bad { color: var(--bad); }
+
+  .terminal {
+    background: #05070c;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    line-height: 1.65;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  .log-line { display: flex; gap: 0.6rem; flex-wrap: wrap; white-space: pre-wrap; word-break: break-word; }
+  .log-time { color: var(--text-muted); flex-shrink: 0; }
+  .log-source { color: var(--violet); flex-shrink: 0; }
+  .log-line--warn .log-message { color: var(--warn); }
+  .log-line--error .log-message { color: var(--bad); }
+  .log-line--info .log-message { color: var(--text); }
+  .log-empty { color: var(--text-muted); }
 
   .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.85rem 0; }
   .pill {

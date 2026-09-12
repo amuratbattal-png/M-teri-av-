@@ -7,9 +7,12 @@ import {
   renderSentPage,
   renderReportPage,
   renderSettingsPage,
+  renderTerminalPage,
+  renderActivityLines,
   type CommunicationRow,
   type ReportData,
   type SettingsData,
+  type ActivityEntry,
 } from "./render";
 
 export interface Env {
@@ -62,6 +65,12 @@ async function fetchReport(env: Env): Promise<ReportData> {
 async function fetchSettings(env: Env): Promise<SettingsData> {
   const res = await env.CONTROL_WORKER.fetch("https://internal/settings");
   return (await res.json()) as SettingsData;
+}
+
+async function fetchActivity(env: Env): Promise<ActivityEntry[]> {
+  const res = await env.CONTROL_WORKER.fetch("https://internal/activity");
+  const { entries } = (await res.json()) as { entries: ActivityEntry[] };
+  return entries;
 }
 
 /**
@@ -149,6 +158,23 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
         fetchCommunications(env),
       ]);
       return new Response(renderSentPage(counts, communications, channel, status, source, q), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/terminal" && request.method === "GET") {
+      const [counts, entries] = await Promise.all([fetchStats(env), fetchActivity(env)]);
+      return new Response(renderTerminalPage(counts, entries), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Canlı Log sayfasının 5 saniyede bir tazelediği fragment - sadece
+    // #activity-terminal'in içini (tam sayfayı değil) döner (bkz.
+    // render.ts renderActivityLines / shell() script'i pollActivityLog).
+    if (url.pathname === "/terminal/data" && request.method === "GET") {
+      const entries = await fetchActivity(env);
+      return new Response(renderActivityLines(entries), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
