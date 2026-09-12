@@ -166,10 +166,22 @@ export async function scanNextKeyword(
   const nextCursorIndex = (cursorIndex + 1) % SOCIAL_KEYWORDS.length;
 
   if (!env.LINKEDIN_SESSION_COOKIE || !env.LINKEDIN_CSRF_TOKEN) {
-    console.warn(
-      `LINKEDIN_SESSION_COOKIE / LINKEDIN_CSRF_TOKEN tanımlı değil - "${keyword}" taraması atlandı.`,
-    );
-    return { results: [], nextCursorIndex };
+    // Önceden bu durumda debug hiç dönmüyordu - /run-now yanıtında "scan"
+    // alanı sessizce yok oluyordu, sahibi HANGİ değerin eksik olduğunu
+    // göremiyordu (bkz. CLAUDE.md - Ayarlar panelinden girilen li_at/
+    // JSESSIONID worker'a ulaşmıyor gibi görünen olay). Artık hangisinin
+    // eksik olduğu (gerçek değer değil, sadece var/yok) diagnostics'te
+    // görünüyor.
+    const missing = [
+      !env.LINKEDIN_SESSION_COOKIE && "LINKEDIN_SESSION_COOKIE (li_at)",
+      !env.LINKEDIN_CSRF_TOKEN && "LINKEDIN_CSRF_TOKEN (JSESSIONID)",
+    ].filter(Boolean).join(", ");
+    console.warn(`${missing} tanımlı değil - "${keyword}" taraması atlandı.`);
+    return {
+      results: [],
+      nextCursorIndex,
+      debug: { keyword, apiError: `Eksik: ${missing}. Ayarlar panelinden kaydedilip kaydedilmediğini kontrol et.`, parsedCount: 0 },
+    };
   }
 
   try {
