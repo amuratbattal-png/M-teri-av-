@@ -1268,6 +1268,70 @@ Neden bu yapı:
       render edildi, "Toplanan bilgiler" kutusunun ve içindeki
       adres/başlık/özetin gerçekten HTML'de çıktığı teyit edildi.
       **Henüz canlıda doğrulanmadı.**
+- [x] **"Instagram tiktok facebook buralarda da arasın bunlara göre puan
+      versin, bilgileri kaydetsin ve teklif metnini de buna göre
+      belirlesin" isteği - GERÇEKÇİ bir kısıtlamayla karşılandı,
+      sahibiyle netleştirildi.** Önce şu açıkça belirtildi: bu 3
+      platformun RESMİ arama API'si (Meta Graph API, TikTok API)
+      rastgele bir firma adını arayıp herkese açık profilini BULMAYA
+      izin vermiyor - sadece SAHİBİNİN yönettiği hesaplar için çalışıyor,
+      LinkedIn'deki gibi bir "iç API" arka kapısı da yok. `AskUserQuestion`
+      ile 3 seçenek sunuldu (atla / riskli-kırılgan HTML kazıma dene /
+      Cloudflare Browser Rendering - ek ücretli) - **sahibi "riskli/
+      kırılgan HTML kazıma dene"yi seçti**, garantisi olmadığı bilerek.
+      Uygulanan yaklaşım (`workers/google-search-scanner/src/scan.ts`):
+      - Rastgele arama YAPILAMADIĞI için, sadece firmanın KENDİ web
+        sitesinde (zaten "eski site mi?" kontrolü için indirilmiş HTML -
+        ekstra istek yok) link verdiği bir Instagram/Facebook/TikTok
+        profili varsa (`extractSocialLinks` - header/footer'daki "bizi
+        takip edin" linkleri) o keşfediliyor.
+      - Keşfedilen profilin herkese açık sayfası düz `fetch()` ile
+        (gerçekçi bir tarayıcı User-Agent'ıyla) çekilmeye çalışılıyor,
+        Open Graph meta etiketleri (`og:title`/`og:description`)
+        okunuyor - bunlar seçildi çünkü bu platformlar link ÖNİZLEME
+        kartları için bunları genelde JS gerektirmeden, sunucu
+        tarafında render ediyor (bazen anonim isteklere bile). **Hiçbir
+        garanti yok** - `fetchSocialSnippet` başarısız olursa (bot
+        duvarı/timeout/olmayan meta etiketi) `fetchSiteHtml` ile AYNI
+        "karar veremeyiz, sessizce devam et" ilkesiyle `null`/sadece-link
+        döner, aday akışı ASLA bunun yüzünden durmaz/hata vermez.
+      - Bulunan bilgi (`platform`, `url`, varsa `title`/`description`)
+        `rawMetadata.socialProfiles` dizisi olarak kaydediliyor - hem
+        `assessLeadQuality` (zaten rawMetadata'yı genel olarak "Ek
+        bağlam"a dahil ediyordu - EK KOD DEĞİŞİKLİĞİ GEREKMEDİ) hem
+        `draftProposal` (YENİ: `ProposalContext`'e `rawMetadata`
+        eklendi, `lib/proposal.ts` + 4 çağıran yer - `candidates.ts`
+        `handleScanResults`/`rescoreUnscoredBatch`, `approvals.ts`
+        `handleRegenerateProposal`/`handleUnhold` - güncellendi) artık
+        bunu görüyor, yani hem puanlama HEM teklif metni bu bilgiyi
+        kullanabiliyor.
+      - `apps/dashboard/src/render.ts` `gatheredInfoSection`'a sosyal
+        profil satırları eklendi (`parseSocialProfiles` - tip güvenli,
+        beklenmeyen bir şekil gelirse sessizce boş liste) - popup'ta
+        her platform için tıklanabilir link + varsa okunan başlık/
+        açıklama, okunamadıysa "(içerik okunamadı)" notu gösteriliyor.
+      **Kapsam sınırı (bilinçli):** bu SADECE `google_maps` kanalını
+      (ve sadece zaten bir web sitesi olan `website_redesign` adaylarını -
+      `website_new` adaylarında taranacak bir site yok) güçlendiriyor.
+      LinkedIn/diğer kanallarda bir web sitesi keşfi yok, bu yüzden
+      onlarda `socialProfiles` hep boş kalacak (zararsız). **Henüz
+      canlıda doğrulanmadı** - `google-search-scanner` + `apps/control`
+      deploy edilip bir Google Maps taraması tekrar denendiğinde
+      popup'ta sosyal medya satırlarının (varsa) göründüğü kontrol
+      edilmeli - sahibi büyük ihtimalle çoğu firma için "(içerik
+      okunamadı)" görecek (bu BEKLENEN, garanti verilmemişti), ama
+      bazı firmalar için gerçek bir Instagram/Facebook bio'su
+      görülürse bu bir kazanç.
+      **Ayrıca netleştirilen 2 nokta (kod değişikliği gerektirmedi,
+      zaten böyleydi):** (1) "3-5 saniyede verilen puan ne kadar
+      güvenilir" sorusuna dürüst cevap verildi - tek bir hızlı LLM
+      çağrısı gerçek bir "araştırma" değil, hızlı bir triyaj; yukarıdaki
+      site/sosyal medya zenginleştirmesi bunu güçlendiriyor ama sınırlı.
+      (2) "puan verilen firmaları tekrar puanlama" zaten GARANTİ
+      ALTINDA - hem manuel buton hem cron hem canlı tarama SADECE
+      `ai_score IS NULL` olan adayları işliyor, bir kez puan alan bir
+      aday "AI ile Yeniden Yaz" ile elle tetiklenmedikçe bir daha
+      dokunulmuyor.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

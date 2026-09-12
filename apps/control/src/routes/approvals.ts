@@ -87,6 +87,7 @@ export async function handleUnhold(env: Env, candidateId: string): Promise<Respo
       needTags: candidate.needTags as NeedTag[],
       sectorLabel: sectorLabel(candidate.sectorSlug),
       cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+      rawMetadata: candidate.rawMetadata as Record<string, unknown> | null,
     },
     proposalSettings,
   );
@@ -195,6 +196,7 @@ export async function handleRegenerateProposal(env: Env, candidateId: string): P
       needTags: candidate.needTags as NeedTag[],
       sectorLabel: sectorLabel(candidate.sectorSlug),
       cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+      rawMetadata: candidate.rawMetadata as Record<string, unknown> | null,
     },
     proposalSettings,
   );

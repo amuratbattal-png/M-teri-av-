@@ -208,6 +208,108 @@ function extractPageSnippet(html: string): { title?: string; textSnippet?: strin
   return { title, textSnippet };
 }
 
+const SOCIAL_FETCH_TIMEOUT_MS = 4000;
+/** Instagram/Facebook/TikTok'u gerçek bir tarayıcı gibi göstermeye çalışan User-Agent - bkz. fetchSocialSnippet notu. */
+const BROWSER_LIKE_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/**
+ * Firmanın kendi web sitesinin HTML'inden (zaten indirilmiş - ekstra
+ * istek yok) Instagram/Facebook/TikTok profil linklerini regex ile
+ * çıkarır. Genelde site header/footer'ında "bizi takip edin" ikonlarında
+ * bulunur. Sadece İLK eşleşen linki alır (genelde asıl işletme profili
+ * budur - sayfa içinde paylaşım butonları/widget'lar da aynı domain'e
+ * link verebilir ama bunlar nadiren tam bir profil path'i taşır).
+ */
+function extractSocialLinks(html: string): {
+  instagramUrl?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
+} {
+  const instagramMatch = html.match(
+    /https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._-]{2,30})/i,
+  );
+  const facebookMatch = html.match(
+    /https?:\/\/(?:www\.)?facebook\.com\/([a-zA-Z0-9.\-]{2,60})/i,
+  );
+  const tiktokMatch = html.match(/https?:\/\/(?:www\.)?tiktok\.com\/(@[a-zA-Z0-9._-]{2,30})/i);
+
+  // "share", "sharer.php", "login", "policies" gibi profil OLMAYAN,
+  // genel/işlevsel path'leri ele - profil sanıp boşuna fetch atmayalım.
+  const genericFacebookPaths = new Set(["sharer", "sharer.php", "login", "policies", "help"]);
+  const facebookHandle = facebookMatch?.[1]?.split("/")[0];
+
+  return {
+    instagramUrl: instagramMatch ? `https://www.instagram.com/${instagramMatch[1]}` : undefined,
+    facebookUrl:
+      facebookHandle && !genericFacebookPaths.has(facebookHandle.toLowerCase())
+        ? `https://www.facebook.com/${facebookHandle}`
+        : undefined,
+    tiktokUrl: tiktokMatch ? `https://www.tiktok.com/${tiktokMatch[1]}` : undefined,
+  };
+}
+
+/** `extractPageSnippet`'teki <title> mantığının Open Graph meta etiketleri için karşılığı - property/content sırası herhangi bir yönde olabildiği için iki regex de deneniyor. */
+function extractOgTag(html: string, property: "og:title" | "og:description"): string | undefined {
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']*)["']`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+property=["']${property}["']`, "i"),
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) return m[1].replace(/\s+/g, " ").trim().slice(0, 300);
+  }
+  return undefined;
+}
+
+/**
+ * Sahibinin "instagram tiktok facebook buralarda da arasın, buradaki
+ * bilgileri kaydetsin" isteği (bkz. CLAUDE.md) - AMA bu platformların
+ * RESMİ arama API'si yok (Meta Graph API/TikTok API sadece SİZİN
+ * yönettiğiniz hesaplar için çalışıyor, LinkedIn'deki gibi bir "iç API"
+ * arka kapısı da yok) - bu yüzden rastgele bir firma adını arayıp
+ * profilini BULAMIYORUZ, sadece firmanın KENDİ web sitesinde link
+ * verdiği bir profili varsa (bkz. extractSocialLinks) o profilin
+ * HERKESE AÇIK sayfasını en iyi ihtimalle okumaya çalışıyoruz.
+ *
+ * Sahibiyle konuşulup KABUL EDİLEN risk: bu "kırılgan" bir yöntem -
+ * garantisi YOK. Düz bir `fetch()` (JS çalıştırmıyor) bu platformların
+ * çoğu zaman bot/login duvarına çarpar. Buna rağmen denemeye değer,
+ * çünkü Instagram/Facebook/TikTok, ÖNİZLEME kartları (WhatsApp/Twitter'a
+ * bir link yapıştırınca çıkan resim+açıklama) için Open Graph meta
+ * etiketlerini (`og:title`, `og:description`) SUNUCU TARAFINDA, JS
+ * gerektirmeden render eder - bazen anonim bir isteğe bile bu meta
+ * etiketleriyle yanıt verirler (özellikle Instagram/Facebook'ta halka
+ * açık işletme sayfaları için). Hiçbir garanti yok - başarısız
+ * olursa (hata, timeout, olmayan meta etiketi) sessizce `null` döner,
+ * aday yine normal akışında (bu bilgi olmadan) işlenmeye devam eder -
+ * `fetchSiteHtml` ile AYNI "karar veremeyiz, güvenli tarafta kal" ilkesi.
+ */
+async function fetchSocialSnippet(
+  url: string,
+): Promise<{ title?: string; description?: string } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SOCIAL_FETCH_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": BROWSER_LIKE_USER_AGENT,
+        Accept: "text/html",
+      },
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const title = extractOgTag(html, "og:title");
+    const description = extractOgTag(html, "og:description");
+    if (!title && !description) return null;
+    return { title, description };
+  } catch {
+    return null;
+  }
+}
+
 export interface ScanDebugInfo {
   sectorLabel: string;
   cityLabel: string;
@@ -254,6 +356,10 @@ async function collectMapsResults(
     // isteği için (bkz. CLAUDE.md) - zaten indirdiğimiz HTML'den ücretsiz
     // bir içerik özeti, `lib/relevance.ts`'teki AI puanlamasına besleniyor.
     let siteSnippet: { title?: string; textSnippet?: string } | undefined;
+    // Sahibinin "instagram tiktok facebook buralarda da arasın, bilgileri
+    // kaydetsin, teklif metnini de buna göre belirlesin" isteği (bkz.
+    // CLAUDE.md) - kabul edilen risk: garantisi yok, bkz. fetchSocialSnippet.
+    const socialInfo: { platform: string; url: string; title?: string; description?: string }[] = [];
     if (!place.websiteUri) {
       needTags = ["website_new"];
     } else {
@@ -267,6 +373,25 @@ async function collectMapsResults(
       // adaylarda mümkün oluyor.
       contactEmail = extractEmail(html);
       siteSnippet = extractPageSnippet(html);
+
+      const social = extractSocialLinks(html);
+      const socialEntries: Array<[string, string | undefined]> = [
+        ["instagram", social.instagramUrl],
+        ["facebook", social.facebookUrl],
+        ["tiktok", social.tiktokUrl],
+      ];
+      for (const [platform, url] of socialEntries) {
+        if (!url) continue;
+        const snippet = await fetchSocialSnippet(url);
+        if (snippet) {
+          socialInfo.push({ platform, url, title: snippet.title, description: snippet.description });
+        } else {
+          // Sayfa okunamadı (bot duvarı/timeout vb.) ama linki en azından
+          // bulduk - içerik olmasa da URL'i kaydetmek yine faydalı
+          // (sahibi popup'tan elle bakabilir).
+          socialInfo.push({ platform, url });
+        }
+      }
     }
 
     results.push({
@@ -290,6 +415,7 @@ async function collectMapsResults(
         cityLabel: city.labelTr,
         ...(siteSnippet?.title ? { siteTitle: siteSnippet.title } : {}),
         ...(siteSnippet?.textSnippet ? { siteTextSnippet: siteSnippet.textSnippet } : {}),
+        ...(socialInfo.length ? { socialProfiles: socialInfo } : {}),
       },
     });
   }

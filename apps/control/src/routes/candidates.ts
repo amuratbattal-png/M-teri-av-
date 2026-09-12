@@ -158,6 +158,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         needTags: result.needTags,
         sectorLabel: sectorLabel(result.sectorSlug),
         cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+        rawMetadata: result.rawMetadata,
       },
       proposalSettings,
     );
@@ -449,6 +450,7 @@ export async function rescoreUnscoredBatch(
         needTags,
         sectorLabel: sectorLabel(candidate.sectorSlug),
         cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+        rawMetadata: candidate.rawMetadata,
       },
       settings,
     );

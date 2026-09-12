@@ -584,11 +584,36 @@ function onHoldForms(id: string, redirectTo: string): string {
  * diye. Hiçbir alan yoksa (ör. LinkedIn/website_new adayları - henüz
  * indirilmiş bir site yok) bölüm hiç render edilmez.
  */
+/** "instagram"/"facebook"/"tiktok" slug'ını görünen ada çevirir - bkz. workers/google-search-scanner extractSocialLinks. */
+const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+};
+
+interface SocialProfileEntry {
+  platform: string;
+  url: string;
+  title?: string;
+  description?: string;
+}
+
+/** rawMetadata.socialProfiles alanını (bkz. workers/google-search-scanner) güvenli şekilde tipler - beklenmeyen bir şekil gelirse (eski kayıt, bozuk veri) sessizce boş liste döner. */
+function parseSocialProfiles(value: unknown): SocialProfileEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is SocialProfileEntry => {
+    if (!entry || typeof entry !== "object") return false;
+    const e = entry as Record<string, unknown>;
+    return typeof e.platform === "string" && typeof e.url === "string";
+  });
+}
+
 function gatheredInfoSection(c: Candidate): string {
   const meta = (c.rawMetadata as Record<string, unknown> | null) ?? {};
   const address = typeof meta.formattedAddress === "string" ? meta.formattedAddress : null;
   const siteTitle = typeof meta.siteTitle === "string" ? meta.siteTitle : null;
   const siteTextSnippet = typeof meta.siteTextSnippet === "string" ? meta.siteTextSnippet : null;
+  const socialProfiles = parseSocialProfiles(meta.socialProfiles);
 
   const rows = [
     address ? { label: "Adres", value: address } : null,
@@ -596,13 +621,27 @@ function gatheredInfoSection(c: Candidate): string {
     siteTextSnippet ? { label: "Web sitesi içeriğinden özet", value: siteTextSnippet } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
-  if (rows.length === 0 && !c.evaluationNotes) return "";
+  if (rows.length === 0 && socialProfiles.length === 0 && !c.evaluationNotes) return "";
 
   const rowsHtml = rows
     .map(
       (r) =>
         `<p class="muted" style="margin:0.2rem 0"><strong>${escapeHtml(r.label)}:</strong> ${escapeHtml(r.value)}</p>`,
     )
+    .join("");
+
+  // Sahibinin "instagram tiktok facebook buralarda da arasın, bilgileri
+  // kaydetsin" isteği (bkz. CLAUDE.md) - resmi arama API'si olmadığı için
+  // sadece firmanın kendi sitesinde link verdiği bir profil varsa, o
+  // profilin herkese açık sayfasından (varsa) okunabilen başlık/açıklama
+  // gösteriliyor - okunamadıysa (bot duvarı vb.) sadece link gösteriliyor,
+  // sahibi elle bakabilsin diye.
+  const socialHtml = socialProfiles
+    .map((s) => {
+      const label = SOCIAL_PLATFORM_LABELS[s.platform] ?? s.platform;
+      const bio = [s.title, s.description].filter(Boolean).join(" — ");
+      return `<p class="muted" style="margin:0.2rem 0"><strong>${escapeHtml(label)}:</strong> <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>${bio ? ` — ${escapeHtml(bio)}` : " (içerik okunamadı)"}</p>`;
+    })
     .join("");
 
   // NOT: evaluationNotes hem AI'ın otomatik puanlama gerekçesini ("AI:
@@ -615,12 +654,13 @@ function gatheredInfoSection(c: Candidate): string {
     ? `<p class="muted" style="margin:0.2rem 0"><strong>Not:</strong> ${escapeHtml(c.evaluationNotes)}</p>`
     : "";
 
-  if (!rowsHtml && !notesHtml) return "";
+  if (!rowsHtml && !socialHtml && !notesHtml) return "";
 
   return `
     <div class="report-card" style="margin:0.75rem 0;padding:0.75rem 1rem">
       <div class="proposal-label">Toplanan bilgiler (AI'ın puanlama/teklif için kullandığı sinyaller)</div>
       ${rowsHtml}
+      ${socialHtml}
       ${notesHtml}
     </div>`;
 }

@@ -6,6 +6,15 @@ export interface ProposalContext {
   needTags: NeedTag[];
   sectorLabel?: string;
   cityLabel?: string;
+  /**
+   * Worker'ın rawMetadata'sı (ör. adres, web sitesi başlığı/içerik özeti,
+   * Instagram/Facebook/TikTok'tan bulunabilmişse profil linki + açıklama
+   * özeti - bkz. workers/google-search-scanner). Sahibinin "teklif
+   * metnini de buna göre belirlesin" isteği (bkz. CLAUDE.md) - AI, teklif
+   * yazarken bu sinyalleri de görebiliyor (ör. "sitenizde X hakkında
+   * bahsetmiştiniz" gibi kişiselleştirilmiş bir açılış).
+   */
+  rawMetadata?: Record<string, unknown> | null;
 }
 
 /** draftProposal'ın çalışması için gereken efektif ayarlar - bkz. lib/settings.ts getEffectiveSettings. */
@@ -71,6 +80,14 @@ export async function draftProposal(
     ctx.sectorLabel ? `Sektör: ${ctx.sectorLabel}` : null,
     ctx.cityLabel ? `Şehir: ${ctx.cityLabel}` : null,
     `Tespit edilen ihtiyaç: ${services}`,
+    // Varsa firma hakkında toplanan ek bilgiler (adres, web sitesi/
+    // sosyal medya içerik özeti) - mümkünse teklifi buna göre
+    // kişiselleştir (ör. sitesinde/profilinde bahsedilen bir şeye atıfta
+    // bulun), ama bu bilgi yoksa ya da alakasızsa genel bir teklif de
+    // yeterli - bkz. CLAUDE.md "teklif metnini de buna göre belirlesin" notu.
+    ctx.rawMetadata
+      ? `Firma hakkında toplanan ek bilgiler: ${JSON.stringify(ctx.rawMetadata).slice(0, 700)}`
+      : null,
   ]
     .filter(Boolean)
     .join("\n");
