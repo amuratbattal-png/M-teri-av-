@@ -1552,6 +1552,86 @@ Neden bu yapı:
       taraması tekrar denendiğinde `mapsYahooResearchFound`'ın
       (muhtemelen 0 olarak) Canlı Log'da/`/run-now` yanıtında görülmesi
       beklenir.
+- [x] **Google Places API 403'ü sıfırdan yeni bir Google Cloud projesiyle
+      ÇÖZÜLDÜ VE CANLIDA DOĞRULANDI - kök sebep "Places API (New)" ile
+      eski/legacy "Places API"nin FARKLI iki API kaydı olduğunun fark
+      edilmemesiydi.** Sahibi sıfırdan yeni bir proje ("Musteri Avcisi
+      Search", `musteri-avcisi-search`) oluşturup Places + Custom Search
+      için ayrı ayrı yeni anahtarlar üretti, ama ikisi de aynı türden
+      403 verdi ("blocked"/"does not have access") - önce faturalandırma
+      (billing) şüphelenildi, kontrol edildi, BAĞLIYDI ("OdemeYApıkredi"
+      hesabı) - bu ihtimal elendi. Gerçek kök sebep: anahtarın "API
+      restrictions" listesinde **"Places API"** (eski/legacy,
+      `places-backend.googleapis.com`) seçiliydi, ama kodumuzun
+      kullandığı uç nokta (`places.googleapis.com/v1/places:searchText`)
+      özellikle **"Places API (New)"** gerektiriyor - ikisi Cloud
+      Console'da TAMAMEN AYRI iki API kaydı, biri diğerinin yerine
+      geçmiyor. Düzeltme: `https://console.cloud.google.com/apis/library/places.googleapis.com`
+      (arama kutusu yerine DOĞRUDAN bu URL - arama kutusu genelde önce
+      legacy olanı gösteriyor) üzerinden "Places API (New)" etkinleştirildi,
+      anahtarın kısıtlaması "Places API (New)"e çevrildi - **"Doğrula"
+      butonu "Anahtar geçerli - Places API çalışıyor." döndürdü,
+      canlıda doğrulandı.** Sahibin bu yeni anahtarı Ayarlar panelinden
+      kaydetmesi yeterli oldu (mevcut D1-override mekanizması sayesinde
+      `google-search-scanner`'ın Cloudflare secret'ına dokunmaya gerek
+      kalmadı). **Ders (genel, ileride başka bir Google API'sinde de
+      karşımıza çıkabilir):** Google'ın bir API'yi "(New)" sürümüyle
+      yeniden yayınladığı durumlarda (Places bunlardan biri, başkaları
+      da olabilir), API Library arama kutusu ve anahtar kısıtlama
+      listesi eski/yeni ayrımını NET göstermeyebilir - kodun gerçekten
+      hangi servis adına (`*.googleapis.com` alt alan adı) istek attığı
+      MUTLAKA doğrulanmalı, "API adı eşleşiyor" görünümüne güvenilmemeli.
+- [ ] **Google Custom Search 403'ü AYNI yeni projede HÂLÂ ÇÖZÜLEMEDİ -
+      artık hesap/organizasyon seviyesinde olduğu KANITLANDI, kalan tek
+      test kişisel (Workspace dışı) bir Google hesabıyla denemek.**
+      Places API'nin yukarıdaki düzeltmeyle çalışır hale gelmesinden
+      SONRA bile Custom Search JSON API AYNI projede AYNI hatayı
+      ("This project does not have the access to Custom Search JSON
+      API") vermeye devam etti. Sırayla elenen ihtimaller (hepsi bu
+      YENİ projede, eskisinde zaten elenenlerin üzerine):
+      1. Anahtarın "API restrictions" listesi kontrol edildi - doğru
+         ("Custom Search API" seçili, tek API).
+      2. Anahtarın "Application restrictions" kontrol edildi - "None"
+         (bir HTTP referrer/IP kısıtlaması YOK, bu yüzden Cloudflare
+         Workers'ın sunucu tarafı isteği engellenmiyor).
+      3. `customsearch.googleapis.com`'un bu projede "Status: Enabled"
+         olduğu API Library sayfasından doğrudan doğrulandı.
+      4. Sahibin Google Workspace organizasyonu olduğu keşfedildi
+         (proje "Location: ajansim.net" gösteriyordu) -
+         `admin.google.com` → Apps → Additional Google services
+         listesi TAMAMEN tarandı (A'dan Pinpoint'e, listenin sonuna
+         kadar) - "Custom Search"/"Programmable Search Engine" diye bir
+         GİRDİ YOK, yani bu organizasyon-seviyesi anahtar bu API'yi
+         hiç kapsamıyor - bu ihtimal elendi.
+      5. `programmablesearchengine.google.com` kontrol paneli açıldı -
+         mevcut arama motorunda (cx) **"Tüm web'de ara" KAPALIYMIŞ** -
+         açıldı, YİNE AYNI hata. Sahibi ayrıca yeni bir arama motoru
+         daha oluşturdu (yeni cx: `d12984fbb75fe404e`, "tüm web'de ara"
+         baştan açık) - YİNE AYNI hata, cx'in kendisi sorun değilmiş.
+      6. **KESİN TEST:** sahibi anahtar+cx'i doğrudan KENDİ tarayıcısında
+         açtı (`https://www.googleapis.com/customsearch/v1?key=...&cx=...&q=test`)
+         - yani istek Cloudflare Workers'tan DEĞİL, doğrudan kendi
+         ev/ofis IP'sinden gitti - **YİNE BİREBİR AYNI JSON hata** geldi.
+         Bu, sorunun bizim Worker'ımızdan/Cloudflare'den KAYNAKLANMADIĞINI
+         kesin olarak kanıtladı - tamamen Google hesabı/proje seviyesinde.
+      **Şu an kanıtlanmış durum:** aynı Google hesabı/organizasyonu
+      (`ajansim.net` Workspace) altında oluşturulan HER YENİ proje +
+      HER YENİ anahtar + HER YENİ arama motoru (cx), doğru yapılandırılmış
+      olsa bile (billing bağlı, API enabled, kısıtlamalar doğru,
+      "tüm web'de ara" açık) Custom Search JSON API'de AYNI 403'ü
+      veriyor - ama Places API AYNI organizasyonda düzeltilebildi. Yani
+      engel Places'te değil, ÖZELLİKLE Custom Search'e özgü ve muhtemelen
+      bu Workspace organizasyonuna/hesabına bağlı, arayüzde GÖRÜNMEYEN
+      bir kısıtlama (Google'ın sessiz bir hesap/domain bayrağı olabilir).
+      **Sıradaki (henüz denenmedi) tek somut test:** `ajansim.net`
+      organizasyonuyla hiç ilgisi olmayan, tamamen bağımsız/kişisel bir
+      Google hesabıyla (organizasyon SEÇMEDEN) sıfırdan proje+anahtar
+      oluşturup aynı doğrudan tarayıcı testini tekrarlamak - çalışırsa
+      kök sebep kesinleşir (bu Workspace organizasyonu) ve çözüm sadece
+      Custom Search'ü o bağımsız hesaptan çalıştırmak olur (Places'e
+      dokunmadan, o zaten çalışıyor); çalışmazsa tek kalan yol Google
+      Cloud Destek'e bilet açmak. **Henüz denenmedi, sahibiyle bir
+      sonraki oturumda devam edilmeli.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
