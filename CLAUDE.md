@@ -1045,6 +1045,42 @@ Neden bu yapı:
       "Puanlanmamış Adayları Yeniden Puanla" tekrar denendiğinde artık
       429 almadan (yavaş da olsa) tamamlaması, ve gerçek yıldız
       puanlarının/teklif metinlerinin Canlı Log'da görünmesi beklenir.
+- [x] **429 düzeltmesi deploy edilir edilmez YENİ bir hata çıktı:
+      `status=400 {"error":{"message":"Validation: Unsupported
+      parameter(s): \`extra_body\`" ...}}` - bu, `deepseek-v4-pro`/
+      `nemotron` model geçişlerinden BERİ (haftalarca) hiç fark
+      edilmemiş, `chat_template_kwargs`/"thinking kapatma" özelliğinin
+      İLK GÜNDEN İTİBAREN yanlış gönderildiğini ortaya çıkardı.** Kök
+      sebep: `extra_body`, NVIDIA'nın kendi kod örneklerinde (Python)
+      görünen bir alan ama bu **OpenAI Python SDK'sının istemci tarafı
+      bir kavramı** - SDK, `extra_body`'ye verilen sözlüğün İÇERİĞİNİ
+      giden JSON isteğinin EN ÜST seviyesine birleştiriyor; sunucuya
+      literal `"extra_body"` adında bir alan HİÇ gitmiyor. Biz
+      `lib/proposal.ts`/`lib/relevance.ts`'te ham `fetch()` kullandığımız
+      (SDK yok) için kod örneğini birebir kopyalayıp `extra_body: {
+      chat_template_kwargs: {...} }` şeklinde NESTED gönderiyorduk -
+      NVIDIA'nın REST sunucusu bunu tanımadığı için `400 Unsupported
+      parameter(s): extra_body` ile reddediyordu. **Bu, muhtemelen
+      DeepSeek/Nemotron'a geçildiğinden beri (bkz. yukarıdaki iki not)
+      `chat_template_kwargs`in HİÇ ETKİLİ OLMADIĞI, yani "thinking"
+      kapatmanın baştan beri sessizce çalışmadığı anlamına geliyor -
+      ama asıl mesele şu ki bu satır o zamana kadar hiç 400'e YOL
+      AÇMAMIŞTI (muhtemelen o modeller bilinmeyen üst seviye alanları
+      sessizce yok sayıyordu, `extra_body` iç içe bir obje olduğu için
+      farklı davranmış olabilir) - `429` düzeltmesiyle birlikte
+      `fetchNvidiaChat`'e taşınan istek gövdesi ilk kez GERÇEK bir
+      canlı çağrıda test edilince ortaya çıktı.
+      **Düzeltme:** her iki dosyada da `extra_body: { chat_template_kwargs:
+      {...} }` yerine `chat_template_kwargs: {...}` doğrudan isteğin ÜST
+      SEVİYESİNE taşındı - SDK'nın yaptığının elle karşılığı.
+      **Ders:** NVIDIA/OpenAI'ın Python kod örneklerini ham `fetch()`
+      ile REST çağrısına çevirirken, SDK'ya özel istemci-tarafı
+      parametreleri (`extra_body`, `extra_headers`, `extra_query` gibi)
+      OLDUĞU GİBİ kopyalamak YANLIŞ - bunların içeriği isteğin üst
+      seviyesine açılmalı; SDK dokümantasyonuna bakılmadan "kod
+      örneğinde böyle yazıyor" diye birebir taklit etmek bu tür sessiz
+      400 hatalarına yol açabilir.
+      **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

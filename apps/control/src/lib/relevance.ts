@@ -123,7 +123,15 @@ export async function assessLeadQuality(
       // Modelden modele bu alanın adı değişiyor (DeepSeek: `thinking`,
       // Nemotron: `enable_thinking`) - hangi model seçilirse seçilsin
       // çalışsın diye İKİSİ DE gönderiliyor.
-      extra_body: { chat_template_kwargs: { thinking: false, enable_thinking: false } },
+      // NOT: NVIDIA'nın kendi kod örneklerinde bu `extra_body` diye
+      // NESTED görünüyor ama o, sadece OpenAI Python SDK'sının istemci
+      // tarafı bir kavramı - SDK, extra_body'nin İÇERİĞİNİ giden JSON'ın
+      // EN ÜST seviyesine birleştiriyor, sunucuya literal "extra_body"
+      // diye bir alan hiç gitmiyor. Biz ham fetch() kullandığımız için
+      // (SDK yok) bunu SDK'nın yaptığı gibi ÜST SEVİYEYE açmamız
+      // gerekiyor - nested gönderince NVIDIA "Unsupported parameter(s):
+      // extra_body" diye 400 döndürüyor (bkz. CLAUDE.md).
+      chat_template_kwargs: { thinking: false, enable_thinking: false },
     });
 
     if (!res.ok) {
