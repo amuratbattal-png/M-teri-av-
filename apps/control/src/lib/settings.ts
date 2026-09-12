@@ -23,15 +23,20 @@ import { isVerifiable } from "./verify";
  * tarafından kullanımdan kaldırıldı (`410 Gone`) - sistem AYLARCA
  * sessizce fail-open'a düşmüş (hiçbir aday puanlanmadı/teklif AI ile
  * yazılamadı ama hata da görünmüyordu), bu ancak Canlı Log sayfası
- * eklenince fark edildi. Yeni varsayılan `meta/llama-3.3-70b-instruct`
- * (3.1-70b'nin doğrudan halefi) - ama bu da GARANTİ DEĞİL, NVIDIA
- * modelleri istediği an kaldırabiliyor. Ayarlar sayfasındaki "Doğrula"
- * butonu artık sadece anahtarı değil, MODELİN de hâlâ var olup
- * olmadığını kontrol ediyor (bkz. lib/verify.ts verifyNvidia) - bu
- * aynı arıza bir daha sessizce yaşanmasın diye periyodik olarak
- * (ör. ayda bir) Ayarlar'dan "Doğrula"ya basmak iyi bir alışkanlık.
+ * eklenince fark edildi. İlk "halef" tahmini olarak denenen
+ * `meta/llama-3.3-70b-instruct` DE aynı hatayı verdi (410) - NVIDIA
+ * muhtemelen tüm `meta/llama-3.x-70b-instruct` ailesini aynı anda
+ * emekliye ayırdı. İki kör tahmin de yanlış çıktığı için bu sefer
+ * sahibinin build.nvidia.com kataloğundan getirdiği GERÇEK bir kod
+ * örneğindeki model kimliği kullanıldı: DeepSeek v4 Pro, "Ücretsiz Uç
+ * Nokta" (aynı NVIDIA API/anahtarı üzerinden, ek bir sağlayıcı/anahtar
+ * gerekmiyor). Yine de bu da GARANTİ DEĞİL - Ayarlar sayfasındaki
+ * "Doğrula" butonu artık sadece anahtarı değil, MODELİN de hâlâ var
+ * olup olmadığını kontrol ediyor (bkz. lib/verify.ts verifyNvidia) -
+ * bu iki olaydan sonra periyodik olarak (ör. ayda bir) Ayarlar'dan
+ * "Doğrula"ya basmak özellikle önemli bir alışkanlık.
  */
-const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
+const DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro-0813";
 
 export const DEFAULT_PROPOSAL_TEMPLATE = [
   "Merhaba {{isim}},",

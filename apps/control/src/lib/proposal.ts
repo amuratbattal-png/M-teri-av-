@@ -92,6 +92,11 @@ export async function draftProposal(
         ],
         temperature: 0.7,
         max_tokens: 400,
+        // DeepSeek gibi "reasoning" modeller varsayılan olarak uzun bir iç
+        // muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi kod örneği) -
+        // bizim kısa teklif metinleri için bu istenmiyor, kapatılıyor.
+        // Bunu desteklemeyen modeller bu alanı sessizce yok sayar.
+        extra_body: { chat_template_kwargs: { thinking: false } },
       }),
     });
 

@@ -38,20 +38,24 @@ service = "musteri-avcisi-channel-email"
 # `wrangler secret put NVIDIA_API_KEY` ile eklenmeli.
 #
 # Istege bagli: NVIDIA_MODEL (var, secret degil) - build.nvidia.com'daki
-# model kimligi, tanimli degilse "meta/llama-3.3-70b-instruct" kullanilir
-# (bkz. apps/control/src/lib/settings.ts DEFAULT_MODEL).
+# model kimligi, tanimli degilse "deepseek-ai/deepseek-v4-pro-0813"
+# kullanilir (bkz. apps/control/src/lib/settings.ts DEFAULT_MODEL).
 #
 # BILINEN ARIZA (cozuldu, bkz. CLAUDE.md "model end-of-life" notu):
-# "meta/llama-3.1-70b-instruct" 2026-08-26'da NVIDIA tarafindan
-# kullanimdan kaldirildi (410 Gone) - burada tanimli oldugu icin
-# kod tarafindaki DEFAULT_MODEL degisikligi bunu EZEMIYORDU, sistem
-# AYLARCA sessizce fail-open'a dusmustu. Ayarlar sayfasindan "Dogrula"
-# butonuyla (artik modelin GERCEKTEN var olup olmadigini da kontrol
-# ediyor - bkz. lib/verify.ts) periyodik kontrol onerilir.
+# once "meta/llama-3.1-70b-instruct", sonra "halef" tahmini olarak
+# denenen "meta/llama-3.3-70b-instruct" de 2026-08-26'da NVIDIA
+# tarafindan kullanimdan kaldirilmis (410 Gone) - NVIDIA muhtemelen
+# tum meta/llama-3.x-70b-instruct ailesini ayni anda emekliye ayirdi.
+# Iki kor tahmin de yanlis ciktigi icin bu sefer sahibin
+# build.nvidia.com kataloğundan getirdigi GERCEK bir kod ornegindeki
+# model kimligi kullanildi (DeepSeek v4 Pro, "Ucretsiz Uc Nokta").
+# Ayarlar sayfasindan "Dogrula" butonuyla (artik modelin GERCEKTEN var
+# olup olmadigini da kontrol ediyor - bkz. lib/verify.ts) periyodik
+# kontrol onerilir - bu iki olaydan sonra ozellikle onemli.
 #
 # ALERT_EMAIL: tarama/gonderim worker'lari sessiz ariza bildirirse
 # (bkz. routes/alerts.ts) bu adrese e-posta gider. Gizli degil, sadece
 # bir hedef adres - EMAIL_WORKER binding'i uzerinden gonderiliyor.
 [vars]
-NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
+NVIDIA_MODEL = "deepseek-ai/deepseek-v4-pro-0813"
 ALERT_EMAIL = "info@ajansim.net"

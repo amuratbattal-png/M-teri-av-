@@ -910,10 +910,23 @@ Neden bu yapı:
       Model kutusuna yapıştır, (4) "Doğrula" butonuna bas (artık
       modelin NVIDIA'nın canlı listesinde gerçekten var olup olmadığını
       kontrol ediyor - bkz. yukarıdaki `verifyNvidia` notu), (5) geçerli
-      çıkarsa "Ayarları Kaydet". **Sahibinden hangi model kimliğinin
-      gerçekten geçerli çıktığı hâlâ bekleniyor** - onaylanınca
-      `wrangler.toml`/`DEFAULT_MODEL` de o değere güncellenecek (bir
-      sonraki oturumda tahmin etmeye devam etmemek için).
+      çıkarsa "Ayarları Kaydet". **Sahibi gerçek kod örneğini paylaştı:**
+      `deepseek-ai/deepseek-v4-pro-0813` (DeepSeek v4 Pro, NVIDIA'nın
+      "Ücretsiz Uç Nokta" kataloğundan, aynı NVIDIA API/anahtarı
+      üzerinden - ek bir sağlayıcı/anahtar gerekmedi).
+      `wrangler.toml`'daki `NVIDIA_MODEL` ve `settings.ts`'teki
+      `DEFAULT_MODEL` bu değere güncellendi. **Ek bir bulgu:** paylaşılan
+      kod örneğinde `extra_body: {"chat_template_kwargs":{"thinking":false}}`
+      vardı - DeepSeek v4 bir "reasoning" (düşünme) modeli, bu kapatılmazsa
+      yanıt uzun bir iç muhakeme metniyle karışabilir (bizim kısa teklif
+      metinleri/JSON puanlama çıktımız için istenmiyor, hem maliyetli hem
+      JSON'ı bozma riski var) - bu parametre hem `lib/proposal.ts`
+      hem `lib/relevance.ts`'teki NVIDIA çağrılarına eklendi (bunu
+      desteklemeyen modeller alanı sessizce yok sayar, zararsız).
+      **Henüz canlıda doğrulanmadı** - deploy edilip LinkedIn taraması
+      tekrar denendiğinde Canlı Log'da gerçek yıldız puanları (ve
+      "AI ile Yeniden Yaz"in temiz, muhakeme-metni-içermeyen bir teklif
+      ürettiği) görülmeli.
 - [x] **"Eski verileri de kontrol etsin" - AI haftalarca ölüyken
       puansız kalmış `pending_approval` adayları toplu yeniden
       puanlayan bir bakım özelliği eklendi.** Sahibi ayrıca "neden 30
