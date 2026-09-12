@@ -327,6 +327,112 @@ export interface ScanDebugInfo {
    * Google API anahtarı normalde 39 karakter ve "AIza" ile başlar. */
   webApiKeyLength?: number;
   webApiKeyPrefix?: string;
+  /**
+   * "Yine de Google kazımayı dene" - sahibinin kararı (bkz. CLAUDE.md).
+   * Custom Search API 403 verirse (bu projede sürekli oluyor) devreye
+   * giren yedek yol denendiyse `true`. Google'ın bot engellemesi çok
+   * agresif olduğu için bunun BAŞARILI olması BEKLENMİYOR - `webApiError`
+   * mesajı hangisinin (API mi kazıma mı, ikisi de mi) başarısız olduğunu
+   * gösterir.
+   */
+  webUsedScrapeFallback?: boolean;
+  /** Kazıma hiç sonuç bulamazsa (büyük ihtimalle CAPTCHA/blok) ham HTML'in bir kısmı - teşhis için. */
+  webScrapeRawSample?: string;
+}
+
+const GOOGLE_SCRAPE_TIMEOUT_MS = 8000;
+
+/** Google'ın "/url?q=<hedef>&..." biçimindeki organik sonuç yönlendirmesinden gerçek hedef URL'i çıkarır. */
+function parseGoogleResults(html: string): Array<{ title: string; link: string }> {
+  const results: Array<{ title: string; link: string }> = [];
+  const linkRegex = /<a[^>]+href="\/url\?q=([^&"]+)[^"]*"[^>]*>(?:<h3[^>]*>([\s\S]*?)<\/h3>)?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkRegex.exec(html)) && results.length < 10) {
+    const titleHtml = match[2];
+    if (!titleHtml) continue; // h3 yoksa muhtemelen organik bir sonuç değil (resim/reklam/site bağlantıları vb.)
+    let link: string;
+    try {
+      link = decodeURIComponent(match[1]);
+    } catch {
+      link = match[1];
+    }
+    if (/^https?:\/\/([\w-]+\.)?google\./i.test(link)) continue; // Google'ın kendi sayfaları (önbellek/çeviri vb.)
+    const title = stripHtmlTags(titleHtml);
+    if (!title) continue;
+    results.push({ title, link });
+  }
+  return results;
+}
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * "Yine de Google kazımayı dene" - sahibinin bilinçli kararı (bkz.
+ * CLAUDE.md "Google kazıma" notu). Bu, Custom Search API 403 verdiğinde
+ * (bu projede sürekli oluyor, aylardır çözülemedi) devreye giren bir
+ * YEDEK yol - Google'ın herkese açık arama sonuçları sayfası doğrudan
+ * fetch() ile çekilip HTML'den regex ile ayıklanıyor.
+ *
+ * ÇOK DÜŞÜK BAŞARI İHTİMALİ - açıkça sahibiyle paylaşıldı ve kabul
+ * edildi: Google'ın bot engelleme sistemi Yahoo'dan ÇOK daha agresif -
+ * Cloudflare Workers gibi paylaşılan/veri merkezi IP aralıklarından
+ * gelen otomatik istekleri genelde İLK BİRKAÇ DENEMEDE CAPTCHA'ya
+ * ("Sistemlerimiz ağınızdan olağandışı trafik tespit etti") ya da
+ * 429'a yönlendiriyor. Yine de deneniyor çünkü zaten bozuk olan resmi
+ * API'nin yerine hiçbir şey koymamaktan iyi - başarısız olursa (`apiError`/
+ * `rawSample` ile, Yahoo'daki gibi) sessizce elenir, akışı DURDURMAZ.
+ *
+ * Google'ın organik sonuç linkleri klasik olarak kendi üzerinden
+ * `/url?q=<hedef>&...` biçiminde yönlendiriyor - Google'ın sık değişen
+ * (obfuscated/hash'li) CSS sınıflarının aksine bu biçim yıllardır
+ * nispeten sabit kaldı, bu yüzden ayıklama (`parseGoogleResults`) buna
+ * dayanıyor. Yine de GARANTİ YOK - bu sandbox'ın Google'a ağ erişimi
+ * olmadığı için gerçek bir yanıtla HİÇ test edilmedi (Yahoo'daki gibi).
+ */
+async function scrapeGoogleSearch(
+  query: string,
+): Promise<{ results: Array<{ title: string; link: string }>; apiError?: string; rawSample?: string }> {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=10&hl=tr&gl=tr`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GOOGLE_SCRAPE_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": BROWSER_LIKE_USER_AGENT,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "tr-TR,tr;q=0.9",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return { results: [], apiError: `status=${res.status} ${res.statusText}` };
+    }
+
+    const html = await res.text();
+
+    // Google'ın CAPTCHA/"olağandışı trafik" sayfası genelde bu
+    // ifadelerden birini içerir - parser'ın "hiç sonuç yok" demesi
+    // yerine GERÇEK nedeni göstermek için erken teşhis.
+    if (/unusual traffic|olağandışı trafik|recaptcha|our systems have detected/i.test(html)) {
+      return {
+        results: [],
+        apiError: "Google bot/CAPTCHA duvarına çarpıldı (beklenen risk, bkz. CLAUDE.md)",
+        rawSample: html.slice(0, 1000),
+      };
+    }
+
+    const results = parseGoogleResults(html);
+    if (results.length === 0) {
+      return { results: [], apiError: "parser hiç sonuç bulamadı", rawSample: html.slice(0, 2000) };
+    }
+    return { results };
+  } catch (err) {
+    return { results: [], apiError: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /**
@@ -428,13 +534,40 @@ async function collectWebSearchResults(
   sector: (typeof SECTORS)[number],
   apiKey: string,
   searchEngineId: string,
-): Promise<{ results: ScanResult[]; query: string; returned: number; apiError?: string }> {
+): Promise<{
+  results: ScanResult[];
+  query: string;
+  returned: number;
+  apiError?: string;
+  usedScrapeFallback?: boolean;
+  scrapeRawSample?: string;
+}> {
   const query = `"${sector.labelTr}" ("yeni açıldı" OR "web sitesi yaptırmak istiyorum" OR "sitemizi yenilemek istiyoruz")`;
   const { data, apiError } = await searchGoogleWeb(query, apiKey, searchEngineId);
-  const items = data.items ?? [];
-  const results: ScanResult[] = [];
+  let items: WebSearchResponse["items"] = data.items ?? [];
+  let usedScrapeFallback = false;
+  let scrapeRawSample: string | undefined;
+  let finalError = apiError;
 
-  for (const item of items) {
+  // Resmi Custom Search API başarısız olduysa (bu projede sürekli 403,
+  // bkz. CLAUDE.md) - sahibinin bilinçli kararıyla eklenen YEDEK yol:
+  // Google'ın sonuç sayfasını doğrudan kazımayı dene. Büyük ihtimalle
+  // BU DA başarısız olacak (bkz. scrapeGoogleSearch yorumu) - başarısız
+  // olursa sessizce boş kalır, akışı durdurmaz.
+  if (apiError) {
+    const scraped = await scrapeGoogleSearch(query);
+    usedScrapeFallback = true;
+    scrapeRawSample = scraped.rawSample;
+    if (scraped.results.length > 0) {
+      items = scraped.results;
+      finalError = `API başarısız (${apiError}); kazıma denendi ve ${scraped.results.length} sonuç buldu.`;
+    } else {
+      finalError = `API başarısız (${apiError}); kazıma da başarısız: ${scraped.apiError}`;
+    }
+  }
+
+  const results: ScanResult[] = [];
+  for (const item of items ?? []) {
     if (!item.title || !item.link) continue;
     results.push({
       name: item.title,
@@ -449,7 +582,14 @@ async function collectWebSearchResults(
     });
   }
 
-  return { results, query, returned: items.length, apiError };
+  return {
+    results,
+    query,
+    returned: items?.length ?? 0,
+    apiError: finalError,
+    usedScrapeFallback,
+    scrapeRawSample,
+  };
 }
 
 /**
@@ -510,10 +650,32 @@ export async function scanNextSector(
     debug.webQuery = web.query;
     debug.webResultsReturned = web.returned;
     debug.webApiError = web.apiError;
+    debug.webUsedScrapeFallback = web.usedScrapeFallback;
+    debug.webScrapeRawSample = web.scrapeRawSample;
   } else {
+    // GOOGLE_SEARCH_ENGINE_ID hiç tanımlı değilse resmi API'yi hiç
+    // denemeden doğrudan kazımaya geç - kazıma bir kimlik bilgisi/motor
+    // ID'si gerektirmiyor (bkz. scrapeGoogleSearch, "Yine de Google
+    // kazımayı dene" - sahibinin kararı, CLAUDE.md).
     console.warn(
-      `GOOGLE_SEARCH_ENGINE_ID tanımlı değil - "${sector.labelTr}" için düz Google araması (google_search) atlandı, sadece Maps tarandı.`,
+      `GOOGLE_SEARCH_ENGINE_ID tanımlı değil - "${sector.labelTr}" için doğrudan Google kazıması denenecek.`,
     );
+    const webQuery = `"${sector.labelTr}" ("yeni açıldı" OR "web sitesi yaptırmak istiyorum" OR "sitemizi yenilemek istiyoruz")`;
+    const scraped = await scrapeGoogleSearch(webQuery);
+    debug.webQuery = webQuery;
+    debug.webUsedScrapeFallback = true;
+    debug.webScrapeRawSample = scraped.rawSample;
+    debug.webResultsReturned = scraped.results.length;
+    debug.webApiError = scraped.results.length > 0 ? undefined : scraped.apiError;
+    for (const item of scraped.results) {
+      results.push({
+        name: item.title,
+        sectorSlug: sector.slug,
+        sourceChannel: "google_search",
+        sourceUrl: item.link,
+        needTags: ["website_new"],
+      });
+    }
   }
 
   return { results, nextCursorIndex, debug };

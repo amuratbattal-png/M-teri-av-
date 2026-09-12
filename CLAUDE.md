@@ -1432,6 +1432,44 @@ Neden bu yapı:
       `packages/shared/src/config.ts` `activeSourceChannels` listesine
       "yahoo_search" HENÜZ eklenmedi - önce canlı doğrulama gerekiyor
       (LinkedIn/google_maps ile aynı prensip).
+- [ ] **"Google için de kazıma yapamıyor muyuz?" - sahibine dürüst risk
+      değerlendirmesi yapıldı, o yine de denemeyi seçti; kod yazıldı,
+      HENÜZ CANLI TEST EDİLMEDİ.** Google'ın bot engelleme sisteminin
+      Yahoo'dan ÇOK daha agresif olduğu (Cloudflare Workers gibi veri
+      merkezi IP'lerinin genelde ilk birkaç denemede CAPTCHA'ya/429'a
+      çarptığı) `AskUserQuestion` ile açıkça anlatıldı - sahibi yine de
+      "Google kazımayı dene" dedi.
+      `workers/google-search-scanner/src/scan.ts`'e YENİ bir
+      `scrapeGoogleSearch` eklendi - resmi Custom Search API'nin YERİNE
+      değil, onun YEDEĞİ olarak devreye giriyor:
+      - `GOOGLE_SEARCH_ENGINE_ID` tanımlıysa önce her zamanki gibi resmi
+        API deneniyor; API `apiError` (bu projede sürekli 403) dönerse
+        `collectWebSearchResults` otomatik olarak kazımaya düşüyor.
+      - `GOOGLE_SEARCH_ENGINE_ID` HİÇ tanımlı değilse (API'yi denemeye
+        bile gerek yok) doğrudan kazımaya geçiliyor.
+      - `parseGoogleResults`: Google'ın organik sonuçlarda kullandığı
+        klasik `/url?q=<hedef>&...` kendi-üzerinden-yönlendirme
+        biçimini (Google'ın sık değişen hash'li CSS sınıflarının aksine
+        yıllardır nispeten sabit kalan bir desen) regex ile ayıklıyor,
+        Google'ın kendi sayfalarına (önbellek/çeviri) giden linkleri
+        eliyor.
+      - `scrapeGoogleSearch` ayrıca yanıtta "unusual traffic"/
+        "olağandışı trafik"/"recaptcha" gibi ifadeler ARARAK erken
+        teşhis yapıyor - CAPTCHA duvarına çarpılırsa parser'ın "sessizce
+        0 sonuç" demesi yerine `apiError`'da bunu AÇIKÇA belirtiyor.
+      - `ScanDebugInfo`'ya `webUsedScrapeFallback`/`webScrapeRawSample`
+        eklendi - `/run-now` yanıtında görülebilir.
+      **Bu sandbox'ın Google'a ağ erişimi olmadığı için Yahoo'daki gibi
+      gerçek bir yanıtla HİÇ test edilmedi** - sadece varsayılan markup
+      şekline göre yazılan sentetik bir örnek HTML ile mantık (node ile)
+      doğrulandı. **Beklenti açıkça düşük** - sahibiyle paylaşılan risk
+      değerlendirmesine göre ilk canlı denemede büyük ihtimalle
+      `apiError: "Google bot/CAPTCHA duvarına çarpıldı"` görülecek;
+      görülürse bu BEKLENEN bir sonuç, hata ayıklanacak bir "arıza"
+      değil - sahibi bunu görürse Google kazımayı bırakıp sıfırdan yeni
+      bir Google Cloud projesiyle Custom Search API'yi düzeltmeyi
+      (hâlâ masada duran, önerilen, garantili/ücretsiz çözüm) tekrar
+      düşünebilir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
