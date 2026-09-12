@@ -76,13 +76,15 @@ function safeRedirect(origin: string, value: unknown): Response {
   return Response.redirect(origin + path, 303);
 }
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const unauthorized = requireAuth(request, env);
-    if (unauthorized) return unauthorized;
+async function handleFetch(request: Request, env: Env): Promise<Response> {
+  const unauthorized = requireAuth(request, env);
+  if (unauthorized) return unauthorized;
 
-    const url = new URL(request.url);
+  const url = new URL(request.url);
+  return handleRoute(request, env, url);
+}
 
+async function handleRoute(request: Request, env: Env, url: URL): Promise<Response> {
     if (url.pathname === "/" && request.method === "GET") {
       const sector = url.searchParams.get("sector") || undefined;
       const city = url.searchParams.get("city") || undefined;
@@ -141,10 +143,12 @@ export default {
 
     if (url.pathname === "/ayarlar" && request.method === "GET") {
       const saved = url.searchParams.get("saved") === "1";
+      const error = url.searchParams.get("error") || undefined;
       const [counts, settings] = await Promise.all([fetchStats(env), fetchSettings(env)]);
-      return new Response(renderSettingsPage(counts, settings, env.DASHBOARD_USERNAME, saved), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return new Response(
+        renderSettingsPage(counts, settings, env.DASHBOARD_USERNAME, saved, error),
+        { headers: { "content-type": "text/html; charset=utf-8" } },
+      );
     }
 
     // Ayarlar formu - NVIDIA anahtarı/model, uyarı e-postası, teklif
@@ -161,19 +165,48 @@ export default {
           fields[name.slice("field__".length)] = value;
         }
       }
-      await env.CONTROL_WORKER.fetch("https://internal/settings", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          nvidiaApiKey: String(form.get("nvidiaApiKey") ?? ""),
-          nvidiaModel: String(form.get("nvidiaModel") ?? ""),
-          alertEmail: String(form.get("alertEmail") ?? ""),
-          proposalTemplate: String(form.get("proposalTemplate") ?? ""),
-          aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
-          clearNvidiaApiKey: form.get("clearNvidiaApiKey") === "1",
-          fields,
-        }),
-      });
+      // Önceden buradaki yanıt kontrol edilmiyordu - control tarafında bir
+      // hata olsa (ör. D1 hatası) bile sessizce "kaydedildi" gösteriliyordu,
+      // ya da service binding hata fırlatırsa dashboard'un kendisi
+      // Error 1101 veriyordu ("ayarları kaydet diyince hata veriyor" - bkz.
+      // CLAUDE.md). Artık control'ün gerçek yanıtı kontrol ediliyor ve
+      // hata varsa okunabilir bir mesaj olarak gösteriliyor.
+      let res: Response;
+      try {
+        res = await env.CONTROL_WORKER.fetch("https://internal/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            nvidiaApiKey: String(form.get("nvidiaApiKey") ?? ""),
+            nvidiaModel: String(form.get("nvidiaModel") ?? ""),
+            alertEmail: String(form.get("alertEmail") ?? ""),
+            proposalTemplate: String(form.get("proposalTemplate") ?? ""),
+            aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
+            clearNvidiaApiKey: form.get("clearNvidiaApiKey") === "1",
+            fields,
+          }),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return Response.redirect(
+          url.origin + "/ayarlar?error=" + encodeURIComponent(message),
+          303,
+        );
+      }
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+        let message = bodyText;
+        try {
+          const parsed = JSON.parse(bodyText) as { message?: string; error?: string };
+          message = parsed.message || parsed.error || bodyText;
+        } catch {
+          // düz metinse olduğu gibi kullan
+        }
+        return Response.redirect(
+          url.origin + "/ayarlar?error=" + encodeURIComponent(message || `HTTP ${res.status}`),
+          303,
+        );
+      }
       return Response.redirect(url.origin + "/ayarlar?saved=1", 303);
     }
 
@@ -286,5 +319,35 @@ export default {
     }
 
     return new Response("not found", { status: 404 });
+}
+
+const FATAL_ERROR_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+
+/** Basit, temaya uygun hata sayfası - hangi worker (control/dashboard) hangi mesajla başarısız olduğu görülebilsin (bkz. CLAUDE.md "ayarları kaydet diyince hata veriyor" olayı). */
+function renderFatalErrorPage(message: string): string {
+  const safeMessage = message.replace(/[&<>]/g, (c) => FATAL_ERROR_ESCAPES[c] ?? c);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Hata</title>
+  <style>body{font-family:system-ui,sans-serif;background:#0a0c14;color:#e6e8f0;padding:2rem;max-width:60ch;margin:0 auto}
+  h1{color:#f87171;font-size:1.1rem}pre{white-space:pre-wrap;background:#151827;border:1px solid #242940;border-radius:8px;padding:1rem;font-size:0.85rem}
+  a{color:#2dd4bf}</style></head>
+  <body><h1>Bir şeyler ters gitti</h1><pre>${safeMessage}</pre>
+  <p><a href="/">Ana sayfaya dön</a></p></body></html>`;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handleFetch(request, env);
+    } catch (err) {
+      // Önceden bu tür bir hata (ör. control service binding'i fırlattığında)
+      // hiç yakalanmıyordu - kullanıcı sadece Cloudflare'in opak
+      // Error 1101 sayfasını görüyordu. Artık gerçek hata mesajı okunabilir
+      // bir sayfada gösteriliyor.
+      console.error("dashboard isteği başarısız", err);
+      return new Response(
+        renderFatalErrorPage(err instanceof Error ? err.message : String(err)),
+        { status: 500, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
   },
 };

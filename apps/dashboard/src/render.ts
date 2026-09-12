@@ -999,6 +999,7 @@ export function renderSettingsPage(
   settings: SettingsData,
   dashboardUsername: string,
   saved?: boolean,
+  errorMessage?: string,
 ): string {
   const activeList = settings.activeSourceChannels
     .map((slug) => `<span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[slug] ?? slug)}</span>`)
@@ -1012,6 +1013,7 @@ export function renderSettingsPage(
 
   const content = `
     ${saved ? `<div class="banner banner--ok">Ayarlar kaydedildi.</div>` : ""}
+    ${errorMessage ? `<div class="banner banner--bad">Ayarlar kaydedilemedi: ${escapeHtml(errorMessage)}</div>` : ""}
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Ayarlar</h2>
 
@@ -1552,6 +1554,7 @@ const STYLES = `
     font-weight: 600;
   }
   .banner--ok { background: var(--ok-soft); color: var(--ok); border: 1px solid rgba(34,197,94,0.3); }
+  .banner--bad { background: var(--bad-soft); color: var(--bad); border: 1px solid rgba(248,113,113,0.35); white-space: pre-wrap; }
 
   .verify-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; flex-wrap: wrap; }
   .verify-result { font-size: 0.78rem; }

@@ -520,6 +520,33 @@ Neden bu yapı:
       hata → uyarı e-postası). `packages/shared/src/config.ts`
       `activeSourceChannels` listesine "linkedin" HENÜZ eklenmedi -
       önce canlı doğrulama gerekiyor (google_maps ile aynı prensip).
+- [x] **"Ayarları Kaydet" hatası düzeltildi (kök sebep: yakalanmamış
+      exception'lar Cloudflare'in opak Error 1101'ine dönüşüyordu).**
+      Sahibi LinkedIn çerezini/CSRF token'ını Ayarlar panelinden
+      kaydetmeye çalışırken hata aldı. Kod incelemesinde `apps/control`
+      (`index.ts` `fetch()`) ve `apps/dashboard` (`index.ts` `fetch()`)
+      handler'larının HİÇBİRİNDE üst seviye bir try/catch olmadığı
+      görüldü - `handlePostSettings`/`updateCatalogFields` (ya da
+      herhangi bir route) içinde fırlayan HERHANGİ bir hata (D1 hatası,
+      beklenmeyen veri şekli vb.) yakalanmadan Workers runtime'ına kadar
+      çıkıyordu; control'ün bunu bir service binding hatası olarak
+      fırlatması da dashboard'un KENDİSİNİ çökertiyordu - sahibinin
+      gördüğü "hata" muhtemelen buydu, gerçek D1/route hatası hiçbir
+      yerde görünür değildi (`wrangler tail`e bakmadan teşhis mümkün
+      değildi). Düzeltme: her iki worker'ın `fetch()` handler'ı artık
+      tüm route mantığını (`handleFetch`) bir try/catch içinde çalıştırıyor;
+      control artık `{ error, message }` JSON'ı 500 ile dönüyor, dashboard
+      bunu (ve control'den gelen HER `!res.ok` yanıtını, önceden hiç
+      kontrol edilmiyordu) okuyup Ayarlar sayfasında kırmızı bir
+      `banner--bad` mesajı olarak gösteriyor (`renderSettingsPage`
+      `errorMessage` parametresi, `/ayarlar?error=...`) - beklenmedik
+      diğer tüm hatalar için de dashboard artık opak 1101 yerine
+      okunabilir bir hata sayfası (`renderFatalErrorPage`) gösteriyor.
+      **Önemli:** bu, hatayı GÖRÜNÜR yapar ama altındaki gerçek sebebi
+      garanti çözmez - sahibi tekrar denediğinde artık ekranda gerçek
+      D1/route hata mesajını görecek; hâlâ hata alırsa o mesajı
+      paylaşması yeterli, `wrangler tail`e gerek kalmadan kök sebep
+      belirlenebilir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
