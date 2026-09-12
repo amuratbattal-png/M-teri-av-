@@ -808,6 +808,51 @@ Neden bu yapı:
       - `apps/control` deploy edilip tekrar bir tarama tetiklendiğinde
       Canlı Log'da artık `410` hatası yerine gerçek yıldız puanları
       görünmesi beklenir.
+- [x] **ÇOK ÖNEMLİ, UZUN SÜREDİR VAR OLAN BİR HATA BULUNDU VE DÜZELTİLDİ:
+      dashboard'daki TEK büyük paylaşılan `<script>` bloğu, tarayıcıda
+      HİÇ ÇALIŞMIYORDU (JS syntax hatası) - Canlı Log'un "5 saniyede bir
+      kendini yenilemiyor" şikayeti araştırılırken ortaya çıktı.**
+      Tarayıcı konsolunda `Uncaught SyntaxError: Invalid or unexpected
+      token` görüldü. Kök sebep: `render.ts`'teki TÜM `<script>` içeriği,
+      TEK BİR büyük TypeScript template literal'ı (backtick string)
+      içinde yazılıyor - bu yüzden o string'in içindeki HERHANGİ bir
+      `\n` (satır sonu kaçışı), tarayıcıya gitmeden ÖNCE TypeScript
+      derleyicisi tarafından GERÇEK bir satır sonu karakterine
+      çevriliyor. `regenerateProposal()` fonksiyonundaki
+      `alert('...\n\nSebep: ...')` satırındaki `\n\n` tam olarak buydu -
+      tarayıcıya giden JS'de tek tırnaklı bir string'in ORTASINDA gerçek
+      bir satır sonu vardı, bu geçersiz JS. **Bir JS parser, bir script
+      bloğunu çalıştırmadan önce TAMAMINI parse eder - script'in
+      HERHANGİ bir yerinde tek bir syntax hatası, o script'teki TÜM
+      fonksiyonların (yalnızca `regenerateProposal` değil,
+      `updateBulkBar`, `clearBulkSelection`, `verifySetting`, ve şimdi
+      `pollActivityLog`) HİÇ tanımlanmamasına yol açıyordu.** Yani bu
+      satır eklendiği günden beri (CLAUDE.md'deki "AI ile Yeniden Yaz
+      düzeltildi" notu) muhtemelen toplu onay kutucukları, "Doğrula"
+      butonları ve "AI ile Yeniden Yaz" da tarayıcıda gerçek anlamda hiç
+      çalışmamış olabilir - sadece hiç kimse (ben dahil) tarayıcı
+      konsoluna bakmamıştı, bu yüzden fark edilmemişti. **Düzeltme:**
+      `\n\n` → `\\n\\n` (çift ters eğik çizgi) - bu şekilde dış template
+      literal bunu ÖNCE `\n\n`'ye (gerçek satır sonuna değil, iki
+      karakterlik kaçış dizisine) çeviriyor, tarayıcıdaki JS motoru da
+      BUNU normal şekilde satır sonu olarak yorumluyor. Node'un kendi
+      JS ayrıştırıcısıyla (`node --check`) hem hatayı ("Invalid or
+      unexpected token", tam olarak sahibinin gördüğü hata) hem de
+      düzeltmeden sonra HER İKİ `<script>` bloğunun da geçerli
+      olduğunu doğruladım - bu repoda `tsc` bu tür client-side JS
+      hatalarını YAKALAMAZ (JS, bir TS template literal'ının içinde
+      düz metin olarak görünüyor), bu yüzden gelecekte benzer bir
+      `<script>` değişikliği yapılırsa aynı şekilde `node --check` ile
+      (ya da bir tarayıcıda gerçekten açıp konsola bakarak) doğrulanmalı.
+      **Ders:** render.ts'teki `<script>` bloğu içine yazılan JS'e asla
+      çıplak `\n`/`\t` gibi kaçış dizileri YAZILMAMALI - ya çift ters
+      eğik çizgi (`\\n`) kullanılmalı ya da string birleştirme/gerçek
+      satır sonlarıyla yazılmalı. **Henüz canlıda doğrulanmadı** -
+      `apps/dashboard` deploy edilip tarayıcı konsolunda artık hata
+      görünmediği, Canlı Log'un gerçekten 5 saniyede bir tazelendiği VE
+      "Doğrula"/"AI ile Yeniden Yaz"/toplu onay gibi diğer JS
+      özelliklerinin de (belki de ilk kez) gerçekten çalıştığı
+      doğrulanmalı.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

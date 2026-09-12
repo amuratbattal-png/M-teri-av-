@@ -294,7 +294,7 @@ function shell(opts: {
               document.getElementById('proposal-' + id).value = data.proposalDraft;
             }
             if (!data || !data.usedAI) {
-              alert('Yapay zeka ile yazılamadı, şablon metin kullanıldı.\n\nSebep: ' + ((data && data.aiError) || 'bilinmiyor'));
+              alert('Yapay zeka ile yazılamadı, şablon metin kullanıldı.\\n\\nSebep: ' + ((data && data.aiError) || 'bilinmiyor'));
             }
           })
           .catch(function (err) {
