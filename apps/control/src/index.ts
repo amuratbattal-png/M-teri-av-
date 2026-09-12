@@ -270,13 +270,23 @@ export default {
    * değil. `rescoreUnscoredBatch` ile AYNI mantığı kullanıyor (DRY) -
    * `handleRescoreUnscored`'un HTTP sarmalayıcısı gibi, sadece burada
    * Response'a değil `logActivity`'ye yazılıyor.
+   *
+   * Aralık 5 dakikadan 10 dakikaya çıkarıldı (bkz. CLAUDE.md "429 tekrar"
+   * olayı) - `fetchNvidiaChat`'in yeni, çok daha sabırlı üstel bekleme
+   * mantığı (5 deneme, en kötü ihtimalle ~45s/aday) yüzünden küçük bir
+   * batch bile bir sonraki tetiklenmeden BİTMEYİP üst üste binebilirdi -
+   * 10 dakika + 5'lik (öncesi 15) daha küçük batch bu riski azaltıyor.
    */
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       (async () => {
         try {
-          const result = await rescoreUnscoredBatch(env, 15);
-          // Yapılacak bir şey yoksa (backlog bitmiş) sessiz kal - her 5
+          // 15'ten 5'e düşürüldü (bkz. CLAUDE.md "429 tekrar" olayı) -
+          // artık her NVIDIA çağrısı en kötü ihtimalle ~45 saniyeye kadar
+          // (5 deneme, üstel bekleme) uzayabiliyor; büyük bir batch, bir
+          // sonraki cron tetiklenmeden bitmeyip üst üste binebilirdi.
+          const result = await rescoreUnscoredBatch(env, 5);
+          // Yapılacak bir şey yoksa (backlog bitmiş) sessiz kal - her 10
           // dakikada bir "0 işlendi" satırıyla Canlı Log'u kirletmeyelim.
           if (result.processed > 0) {
             await logActivity(

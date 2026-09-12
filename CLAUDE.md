@@ -1209,6 +1209,45 @@ Neden bu yapı:
       deploy edildikten sonra Ayarlar sayfasında ilerleme çubuğunun (ve
       diğer sayfalarda "AI Puanı" dropdown'ının) göründüğü kontrol
       edilmeli.
+- [x] **"429 Too Many Requests" İKİNCİ KEZ ortaya çıktı - önceki
+      düzeltme (350ms bekleme + 3 deneme/1-2s) YETERSİZ kaldı, çok daha
+      sabırlı bir sürüme geçildi.** Sahibi Canlı Log'dan art arda ~13
+      diş kliniği/avukat adayının hepsinin `429` ile başarısız olduğunu
+      bildirdi (satırlar arası ~3-4 saniye - bu, `fetchNvidiaChat`'in
+      eski 3 denemesinin/1-2 saniyelik beklemesinin TÜKENDİĞİNİ ama
+      limitin hâlâ aşılmakta olduğunu gösteriyordu - NVIDIA'nın ücretsiz
+      uç noktasının gerçek hız sınırı (RPM) belgelenmiyor, ama birkaç
+      saniyeden UZUN bir pencereye yayıldığı görülüyor). Düzeltme:
+      - `apps/control/src/lib/nvidia-fetch.ts` `fetchNvidiaChat`: 3
+        denemeden 5'e, üstel bekleme 1s/2s/5s tavanından 3s→6s→12s→24s
+        (30s tavan) çıkarıldı - bir çağrı en kötü ihtimalle ~45 saniyeye
+        kadar uzayabiliyor artık (kabul edilebilir, batch'ler zaten
+        küçük ve bir sonraki çağrı/cron tetiklenmesinde devam ediyor).
+      - `apps/control/src/routes/candidates.ts`: `rescoreUnscoredBatch`
+        içindeki bekleme 350ms'den 1500ms'ye çıkarıldı. **Ayrıca kök
+        sebebin YARISI bulundu:** `handleScanResults` (CANLI tarama
+        sonuçlarını işleyen, `/scan-results` - yani her Google Maps/
+        LinkedIn taraması yeni aday buldukça tetiklenen ASIL yol)
+        döngüsünde adaylar arasında HİÇ bekleme YOKTU - sadece
+        `rescoreUnscoredBatch`'e (manuel/cron "Yeniden Puanla") bekleme
+        eklenmişti önceki seferde. Yani canlı bir tarama 15 sonuç
+        bulduğunda 30'a kadar NVIDIA çağrısı anında art arda gidiyordu -
+        muhtemelen asıl patlama noktası burasıydı, rescore sadece
+        aynı anda çalışıp üstüne binen ikinci bir kaynaktı. Şimdi
+        `handleScanResults`'a da adaylar arası 700ms + aynı adayın
+        puanlama/teklif çağrıları arası 700ms bekleme eklendi.
+      - `apps/control/src/index.ts` `scheduled()` + `wrangler.toml`:
+        cron batch'i 15'ten 5'e, aralığı 5 dakikadan 10 dakikaya
+        düşürüldü - artık her çağrı çok daha uzun sürebildiği
+        (yukarıdaki ~45s tavan) için büyük bir batch'in bir sonraki
+        cron'a kadar bitmeyip üst üste binmesi riskini azaltmak için.
+      **Ders:** 429 gibi bir hız sınırı hatasını düzeltirken SADECE
+      belirtilen/şikayet edilen kod yolunu (burada: manuel "Yeniden
+      Puanla") değil, AYNI paylaşılan kaynağı (NVIDIA anahtarı)
+      kullanan TÜM kod yollarını (burada: canlı tarama sonucu işleme)
+      taramak gerekiyor - paylaşılan bir dış kaynağın hız sınırı,
+      hangi kod yolunun tetiklediğine bakmaksızın TÜM çağıranlar
+      arasında birikir. **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

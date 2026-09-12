@@ -57,7 +57,16 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
   const created: string[] = [];
   const proposalSettings = await getEffectiveSettings(env);
 
+  // Bu döngü, tek bir tarama sonucunda (ör. 15 Google Maps sonucu) her
+  // yeni aday için 1-2 NVIDIA çağrısı yapabiliyor - önceden ARALARINDA
+  // HİÇ bekleme yoktu, bu da (rescoreUnscoredBatch'teki gibi) 429'a
+  // katkıda bulunan bir kaynaktı (bkz. CLAUDE.md). Aynı `sleep()`'i
+  // burada da kullanıyoruz.
+  let isFirstResult = true;
   for (const result of body.results) {
+    if (!isFirstResult) await sleep(700);
+    isFirstResult = false;
+
     const existing = await db
       .select({ id: candidates.id })
       .from(candidates)
@@ -141,6 +150,8 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       continue;
     }
 
+    // Aynı aday için art arda 2. NVIDIA çağrısı - araya boşluk (bkz. sleep() yorumu).
+    await sleep(700);
     const proposal = await draftProposal(
       {
         candidateName: result.name,
@@ -264,12 +275,13 @@ export async function handleReport(env: Env): Promise<Response> {
 const RESCORE_BATCH_SIZE = 15;
 
 /**
- * NVIDIA çağrıları arasında kısa bir bekleme - `fetchNvidiaChat`'in
- * kendi 429 yeniden deneme mantığına (bkz. lib/nvidia-fetch.ts) EK bir
- * güvenlik payı. Bu batch, aday sayısı kadar (her biri 1-2 NVIDIA
- * çağrısı) art arda istek attığı için (bkz. CLAUDE.md, "429 Too Many
- * Requests" olayı) araya küçük bir boşluk koymak, zaten sınırda olan
- * ücretsiz kotayı gereksiz yere zorlamamak için.
+ * NVIDIA çağrıları arasında bir bekleme - `fetchNvidiaChat`'in kendi 429
+ * yeniden deneme mantığına (bkz. lib/nvidia-fetch.ts) EK bir güvenlik
+ * payı. Bu batch, aday sayısı kadar (her biri 1-2 NVIDIA çağrısı) art
+ * arda istek attığı için (bkz. CLAUDE.md, "429 Too Many Requests" olayı
+ * - İKİ KEZ yaşandı, ilk seferki 350ms'lik boşluk YETERSİZ kaldı) araya
+ * bir boşluk koymak, zaten sınırda olan ücretsiz kotayı gereksiz yere
+ * zorlamamak için. 350ms'den 1500ms'ye çıkarıldı.
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -369,7 +381,7 @@ export async function rescoreUnscoredBatch(
   let isFirst = true;
   for (const candidate of batch) {
     // İlk adaydan önce bekleme yok, sonrakiler arasında var - bkz. sleep().
-    if (!isFirst) await sleep(350);
+    if (!isFirst) await sleep(1500);
     isFirst = false;
 
     const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
@@ -430,7 +442,7 @@ export async function rescoreUnscoredBatch(
     // Alakalı bulundu - puanı kaydet, teklif metnini de o dönem şablona
     // düşmüş olabileceği için yeniden yazdır (artık AI çalışıyor). Aynı
     // aday için art arda 2. NVIDIA çağrısı - araya kısa bir boşluk.
-    await sleep(350);
+    await sleep(1500);
     const proposal = await draftProposal(
       {
         candidateName: candidate.name,
