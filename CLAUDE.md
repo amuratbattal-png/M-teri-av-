@@ -853,6 +853,48 @@ Neden bu yapı:
       "Doğrula"/"AI ile Yeniden Yaz"/toplu onay gibi diğer JS
       özelliklerinin de (belki de ilk kez) gerçekten çalıştığı
       doğrulanmalı.
+- [x] **JS düzeltmesi canlıda doğrulandı** (Canlı Log gerçekten 5
+      saniyede bir tazeleniyor) - AMA yeni model (`meta/llama-3.3-70b-instruct`)
+      hâlâ `410` hatası veriyordu, `apps/control` deploy edildikten
+      SONRA bile. **Gerçek kök sebep bulundu: model D1'de PİNLENMİŞTİ.**
+      Ayarlar formu her kaydedildiğinde (sahibi sadece LinkedIn çerezini
+      kaydetmek için bile formu gönderse) formdaki NVIDIA "Model" text
+      input'u da (her zaman O ANKİ etkin değerle dolu geliyor,
+      `<input value="...">`) birlikte gönderiliyor ve
+      `updateSettings`'in "resettable" mantığı (boş=sil, doluysa
+      kaydet) bunu HER SEFERİNDE D1'e yazıyordu - yani sahibi hiç
+      farkında olmadan eski ölü modeli (`meta/llama-3.1-70b-instruct`)
+      D1'e pinlemişti (muhtemelen li_at/JSESSIONID'i kaydederken).
+      `getEffectiveSettings`'te öncelik D1 > env var > kod varsayılanı
+      olduğu için, `wrangler.toml`'daki `NVIDIA_MODEL`'i güncellemek
+      TEK BAŞINA yetmiyordu - bu, NVIDIA anahtarı için zaten bilinen
+      "panel D1'i ezer" davranışının, sahibinin fark etmediği bir
+      yan etkisiydi (API anahtarı alanı her zaman BOŞ render edildiği
+      için bu sorunu hiç yaşamamıştı, ama model alanı normal bir text
+      input olduğu için doluydu). **Düzeltme:**
+      1. `EffectiveSettings`'e `nvidiaModelSource: "panel"|"env"|"default"`
+         eklendi (API anahtarının `nvidiaApiKeySource`'u ile aynı desen)
+         - Ayarlar sayfasında artık modelin nereden geldiği AÇIKÇA
+         gösteriliyor ("Şu an panelde KAYITLI (pinlenmiş) bir model
+         kullanılıyor - wrangler.toml'daki NVIDIA_MODEL'i değiştirsen
+         bile bu üstün gelir." gibi).
+      2. Yeni `clearNvidiaModel` (lib/settings.ts) + Ayarlar'da "Panel
+         model ayarını sil (wrangler.toml'a dön)" butonu (kaynak
+         "panel" ise görünür) - API anahtarındaki "sil" butonuyla aynı
+         desen.
+      3. **İNCE AMA KRİTİK DETAY:** `handlePostSettings`'te silme
+         işlemi artık `updateSettings`'ten SONRA çağrılıyor (öncesinde
+         değil) - çünkü model alanı formda hep dolu geldiği için,
+         `clearNvidiaModel` önce çağrılıp `updateSettings` sonra
+         çalışsaydı, formdaki eski değer silinmeyi HEMEN geri
+         yazardı. `updateSettings`'e de `clearNvidiaModel` true iken
+         `nvidiaModel: undefined` (formdaki değer yerine) veriliyor -
+         iki kat koruma.
+      **Sahibi için sıradaki adım:** Ayarlar sayfasına git, "Panel
+      model ayarını sil" butonuna bas (görünüyorsa) - bu, D1'deki eski
+      pinlenmiş modeli silip `wrangler.toml`'daki güncel
+      `meta/llama-3.3-70b-instruct`'un devreye girmesini sağlayacak.
+      **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

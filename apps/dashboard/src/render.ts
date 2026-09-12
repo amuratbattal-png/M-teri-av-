@@ -1202,6 +1202,7 @@ export interface SettingsData {
   activeSourceChannels: string[];
   voiceCallEnabled: boolean;
   nvidiaModel: string;
+  nvidiaModelSource: "panel" | "env" | "default";
   nvidiaApiKeyConfigured: boolean;
   nvidiaApiKeySource: "panel" | "secret" | "none";
   alertEmail: string | null;
@@ -1291,6 +1292,19 @@ export function renderSettingsPage(
       : "Şu an Cloudflare secret'ı (wrangler secret put) kullanılıyor."
     : "Tanımlı değil - AI kullanılamıyor, şablon metne düşülüyor.";
 
+  // bkz. CLAUDE.md "model end-of-life" olayı: Ayarlar formu her
+  // kaydedildiğinde (ör. sadece LinkedIn çerezini değiştirmek için) bu
+  // alan da o anki değeriyle gönderiliyor ve panelde PİNLENİYOR - bu
+  // yüzden wrangler.toml/kod varsayılanını güncellemek panelde eski bir
+  // değer varsa yetmiyor. Kaynağı burada göstermek bunu bir daha
+  // sessizce yaşanmaz kılıyor.
+  const modelHint =
+    settings.nvidiaModelSource === "panel"
+      ? "Şu an panelde KAYITLI (pinlenmiş) bir model kullanılıyor - wrangler.toml'daki NVIDIA_MODEL'i değiştirsen bile bu üstün gelir."
+      : settings.nvidiaModelSource === "env"
+        ? "Şu an wrangler.toml'daki NVIDIA_MODEL değeri kullanılıyor."
+        : "Şu an kod varsayılanı kullanılıyor.";
+
   const content = `
     ${saved ? `<div class="banner banner--ok">Ayarlar kaydedildi.</div>` : ""}
     ${errorMessage ? `<div class="banner banner--bad">Ayarlar kaydedilemedi: ${escapeHtml(errorMessage)}</div>` : ""}
@@ -1312,6 +1326,12 @@ export function renderSettingsPage(
           <h3 class="report-card-title">NVIDIA API (teklif kişiselleştirme)</h3>
           <label class="settings-label" for="nvidiaModel">Model</label>
           <input type="text" id="nvidiaModel" name="nvidiaModel" value="${escapeHtml(settings.nvidiaModel)}">
+          <p class="muted">${modelHint}</p>
+          ${
+            settings.nvidiaModelSource === "panel"
+              ? `<button type="submit" name="clearNvidiaModel" value="1" class="detail-link">Panel model ayarını sil (wrangler.toml'a dön)</button>`
+              : ""
+          }
           <label class="settings-label" for="nvidiaApiKey">API anahtarı</label>
           <input
             type="password"

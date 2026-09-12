@@ -228,6 +228,7 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
             proposalTemplate: String(form.get("proposalTemplate") ?? ""),
             aiSystemPrompt: String(form.get("aiSystemPrompt") ?? ""),
             clearNvidiaApiKey: form.get("clearNvidiaApiKey") === "1",
+            clearNvidiaModel: form.get("clearNvidiaModel") === "1",
             fields,
           }),
         });

@@ -4,6 +4,7 @@ import {
   getEffectiveSettings,
   updateSettings,
   clearNvidiaApiKey,
+  clearNvidiaModel,
   getCatalogView,
   updateCatalogFields,
   readSettingsMap,
@@ -32,6 +33,7 @@ export async function handleGetSettings(env: Env): Promise<Response> {
     activeSourceChannels: DEFAULT_FEATURE_FLAGS.activeSourceChannels,
     voiceCallEnabled: DEFAULT_FEATURE_FLAGS.voiceCallEnabled,
     nvidiaModel: s.nvidiaModel,
+    nvidiaModelSource: s.nvidiaModelSource,
     nvidiaApiKeyConfigured: s.nvidiaApiKeyConfigured,
     nvidiaApiKeySource: s.nvidiaApiKeySource,
     alertEmail: s.alertEmail,
@@ -46,8 +48,11 @@ export async function handleGetSettings(env: Env): Promise<Response> {
  * updateSettings için alan bazlı kurallar (nvidiaApiKey boşsa dokunulmaz,
  * diğerleri boşsa varsayılana döner). `{ clearNvidiaApiKey: true }`
  * gönderilirse panelden kaydedilmiş anahtar silinir (Cloudflare secret'a
- * geri dönülür). `fields`, sistemdeki diğer tüm API anahtarları/değerleri
- * için jenerik katalog patch'i (bkz. lib/settings.ts settings-catalog.ts).
+ * geri dönülür); `{ clearNvidiaModel: true }` aynısını model adı için
+ * yapar (wrangler.toml/kod varsayılanına döner) - bkz. CLAUDE.md "model
+ * end-of-life" olayı. `fields`, sistemdeki diğer tüm API anahtarları/
+ * değerleri için jenerik katalog patch'i (bkz. lib/settings.ts
+ * settings-catalog.ts).
  */
 export async function handlePostSettings(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as {
@@ -57,6 +62,7 @@ export async function handlePostSettings(request: Request, env: Env): Promise<Re
     proposalTemplate?: string;
     aiSystemPrompt?: string;
     clearNvidiaApiKey?: boolean;
+    clearNvidiaModel?: boolean;
     fields?: Record<string, string>;
   };
 
@@ -64,13 +70,23 @@ export async function handlePostSettings(request: Request, env: Env): Promise<Re
     await clearNvidiaApiKey(env);
   }
 
+  // NOT: model alanı formda hep O ANKİ etkin değerle dolu geliyor (ör.
+  // sadece LinkedIn çerezini kaydetmek için formu gönderdiğinde bile) -
+  // "sil" isteniyorsa updateSettings'e bu alanı HİÇ vermiyoruz, yoksa
+  // formdaki eski değer clearNvidiaModel'in hemen ardından geri yazılırdı
+  // (bkz. CLAUDE.md "model end-of-life" olayı - bu yüzden sil butonu SONRA
+  // çağrılıyor, updateSettings'ten sonra değil).
   await updateSettings(env, {
     nvidiaApiKey: body.nvidiaApiKey,
-    nvidiaModel: body.nvidiaModel,
+    nvidiaModel: body.clearNvidiaModel ? undefined : body.nvidiaModel,
     alertEmail: body.alertEmail,
     proposalTemplate: body.proposalTemplate,
     aiSystemPrompt: body.aiSystemPrompt,
   });
+
+  if (body.clearNvidiaModel) {
+    await clearNvidiaModel(env);
+  }
 
   if (body.fields && typeof body.fields === "object") {
     await updateCatalogFields(env, body.fields);

@@ -66,6 +66,17 @@ export interface EffectiveSettings {
   /** Anahtar D1'de mi (panelden ayarlanmış) yoksa Cloudflare secret'tan mı geliyor. */
   nvidiaApiKeySource: "panel" | "secret" | "none";
   nvidiaModel: string;
+  /**
+   * Model D1'de mi (panelden kaydedilmiş/PİNLENMİŞ) yoksa `wrangler.toml`
+   * var'ından/kod varsayılanından mı geliyor - bkz. CLAUDE.md "model
+   * end-of-life" olayı: Ayarlar formu her kaydedildiğinde (ör. sadece
+   * LinkedIn çerezini değiştirmek için) formda o an GÖRÜNEN model değeri
+   * de birlikte gönderiliyor ve D1'e yazılıyor - bu yüzden `wrangler.toml`
+   * içindeki `NVIDIA_MODEL`'i güncellemek TEK BAŞINA yetmiyor, panelde
+   * daha önce pinlenmiş eski bir değer varsa o üstün geliyor. Bu alan
+   * panelde görünür kılınıyor ki bu bir daha sessizce yaşanmasın.
+   */
+  nvidiaModelSource: "panel" | "env" | "default";
   alertEmail: string | null;
   proposalTemplate: string;
   aiSystemPrompt: string;
@@ -92,12 +103,14 @@ export async function getEffectiveSettings(env: Env): Promise<EffectiveSettings>
 
   const panelKey = map[KEYS.nvidiaApiKey];
   const nvidiaApiKey = panelKey || env.NVIDIA_API_KEY;
+  const panelModel = map[KEYS.nvidiaModel];
 
   return {
     nvidiaApiKey,
     nvidiaApiKeyConfigured: Boolean(nvidiaApiKey),
     nvidiaApiKeySource: panelKey ? "panel" : env.NVIDIA_API_KEY ? "secret" : "none",
-    nvidiaModel: map[KEYS.nvidiaModel] || env.NVIDIA_MODEL || DEFAULT_MODEL,
+    nvidiaModel: panelModel || env.NVIDIA_MODEL || DEFAULT_MODEL,
+    nvidiaModelSource: panelModel ? "panel" : env.NVIDIA_MODEL ? "env" : "default",
     alertEmail: map[KEYS.alertEmail] || env.ALERT_EMAIL || null,
     proposalTemplate: map[KEYS.proposalTemplate] || DEFAULT_PROPOSAL_TEMPLATE,
     aiSystemPrompt: map[KEYS.aiSystemPrompt] || DEFAULT_AI_SYSTEM_PROMPT,
@@ -158,6 +171,17 @@ export async function updateSettings(env: Env, patch: SettingsPatch): Promise<vo
 /** Panelden kaydedilmiş NVIDIA anahtarını siler, Cloudflare secret'a döner. */
 export async function clearNvidiaApiKey(env: Env): Promise<void> {
   await deleteSetting(env, KEYS.nvidiaApiKey);
+}
+
+/**
+ * Panelde pinlenmiş model adını siler, `wrangler.toml`/kod varsayılanına
+ * geri döner - bkz. CLAUDE.md "model end-of-life" olayı: Ayarlar formu
+ * her kaydedildiğinde formdaki o anki model değeri de yazıldığı için,
+ * `wrangler.toml`'daki `NVIDIA_MODEL`'i güncellemek panelde eski bir
+ * değer pinliyse yetmiyordu - bu buton o pini kaldırıyor.
+ */
+export async function clearNvidiaModel(env: Env): Promise<void> {
+  await deleteSetting(env, KEYS.nvidiaModel);
 }
 
 // --- Jenerik katalog (bkz. settings-catalog.ts) ----------------------------
