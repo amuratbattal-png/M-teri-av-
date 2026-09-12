@@ -92,11 +92,15 @@ export async function draftProposal(
         ],
         temperature: 0.7,
         max_tokens: 400,
-        // DeepSeek gibi "reasoning" modeller varsayılan olarak uzun bir iç
-        // muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi kod örneği) -
-        // bizim kısa teklif metinleri için bu istenmiyor, kapatılıyor.
-        // Bunu desteklemeyen modeller bu alanı sessizce yok sayar.
-        extra_body: { chat_template_kwargs: { thinking: false } },
+        // DeepSeek/Nemotron gibi "reasoning" modeller varsayılan olarak
+        // uzun bir iç muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi
+        // kod örnekleri) - bizim kısa teklif metinleri için bu
+        // istenmiyor, kapatılıyor. Modelden modele bu alanın adı
+        // değişiyor (DeepSeek: `thinking`, Nemotron: `enable_thinking`) -
+        // hangi model seçilirse seçilsin çalışsın diye İKİSİ DE
+        // gönderiliyor, bilmeyen/desteklemeyen model bunları sessizce
+        // yok sayar.
+        extra_body: { chat_template_kwargs: { thinking: false, enable_thinking: false } },
       }),
     });
 

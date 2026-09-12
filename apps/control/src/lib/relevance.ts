@@ -118,12 +118,14 @@ export async function assessLeadQuality(
         ],
         temperature: 0,
         max_tokens: 150,
-        // DeepSeek gibi "reasoning" modeller varsayılan olarak uzun bir iç
-        // muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi kod örneği) -
-        // bizim kısa JSON çıktımız için bu istenmiyor (hem maliyetli hem
-        // JSON'ı bozma riski var), kapatılıyor. Bunu desteklemeyen
-        // modeller bu alanı sessizce yok sayar.
-        extra_body: { chat_template_kwargs: { thinking: false } },
+        // DeepSeek/Nemotron gibi "reasoning" modeller varsayılan olarak
+        // uzun bir iç muhakeme metni üretebiliyor (bkz. NVIDIA'nın kendi
+        // kod örnekleri) - bizim kısa JSON çıktımız için bu istenmiyor
+        // (hem maliyetli hem JSON'ı bozma riski var), kapatılıyor.
+        // Modelden modele bu alanın adı değişiyor (DeepSeek: `thinking`,
+        // Nemotron: `enable_thinking`) - hangi model seçilirse seçilsin
+        // çalışsın diye İKİSİ DE gönderiliyor.
+        extra_body: { chat_template_kwargs: { thinking: false, enable_thinking: false } },
       }),
     });
 

@@ -18,25 +18,25 @@ import { isVerifiable } from "./verify";
  */
 
 /**
- * BİLİNEN ARIZA (çözüldü, bkz. CLAUDE.md "model end-of-life" notu):
- * eski varsayılan `meta/llama-3.1-70b-instruct`, 2026-08-26'da NVIDIA
- * tarafından kullanımdan kaldırıldı (`410 Gone`) - sistem AYLARCA
- * sessizce fail-open'a düşmüş (hiçbir aday puanlanmadı/teklif AI ile
- * yazılamadı ama hata da görünmüyordu), bu ancak Canlı Log sayfası
- * eklenince fark edildi. İlk "halef" tahmini olarak denenen
- * `meta/llama-3.3-70b-instruct` DE aynı hatayı verdi (410) - NVIDIA
- * muhtemelen tüm `meta/llama-3.x-70b-instruct` ailesini aynı anda
- * emekliye ayırdı. İki kör tahmin de yanlış çıktığı için bu sefer
- * sahibinin build.nvidia.com kataloğundan getirdiği GERÇEK bir kod
- * örneğindeki model kimliği kullanıldı: DeepSeek v4 Pro, "Ücretsiz Uç
- * Nokta" (aynı NVIDIA API/anahtarı üzerinden, ek bir sağlayıcı/anahtar
- * gerekmiyor). Yine de bu da GARANTİ DEĞİL - Ayarlar sayfasındaki
- * "Doğrula" butonu artık sadece anahtarı değil, MODELİN de hâlâ var
- * olup olmadığını kontrol ediyor (bkz. lib/verify.ts verifyNvidia) -
- * bu iki olaydan sonra periyodik olarak (ör. ayda bir) Ayarlar'dan
+ * BİLİNEN ARIZA (çözüldü, bkz. CLAUDE.md "model end-of-life" notu) -
+ * ÜÇ MODEL DENENDİ: 1) eski varsayılan `meta/llama-3.1-70b-instruct`,
+ * 2026-08-26'da NVIDIA tarafından kullanımdan kaldırıldı (`410 Gone`) -
+ * sistem AYLARCA sessizce fail-open'a düşmüş, bu ancak Canlı Log
+ * sayfası eklenince fark edildi. 2) "halef" tahmini `meta/llama-3.3-70b-instruct`
+ * DE aynı hatayı verdi - NVIDIA muhtemelen tüm `meta/llama-3.x-70b-instruct`
+ * ailesini emekliye ayırdı. 3) sahibinin getirdiği gerçek kod
+ * örneğindeki `deepseek-ai/deepseek-v4-pro-0813` ise `401 Unauthorized`
+ * verdi - hem partner-barındırmalı (DeepSeek AI, GMI Cloud/Together AI
+ * üzerinden - ek erişim izni gerektirebilir) hem de ertesi gün
+ * (2026-09-13) kullanımdan kaldırılacaktı. Bu yüzden NVIDIA'nın KENDİ
+ * (first-party) modeline geçildi: `nvidia/nemotron-3.5-lightning-30b-a3b`.
+ * Yine de bu da GARANTİ DEĞİL - Ayarlar sayfasındaki "Doğrula" butonu
+ * artık sadece anahtarı değil, MODELİN de hâlâ var olup olmadığını
+ * kontrol ediyor (bkz. lib/verify.ts verifyNvidia) - bu üçüncü
+ * olaydan sonra periyodik olarak (ör. ayda bir) Ayarlar'dan
  * "Doğrula"ya basmak özellikle önemli bir alışkanlık.
  */
-const DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro-0813";
+const DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
 
 export const DEFAULT_PROPOSAL_TEMPLATE = [
   "Merhaba {{isim}},",

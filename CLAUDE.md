@@ -970,6 +970,40 @@ Neden bu yapı:
       olarak göründüğü için çoğu hatayı yakalamıyor) - script içeriğini
       ayıklayıp `node --check` ile (ya da gerçek bir tarayıcıda açıp
       konsola bakarak) ayrıca doğrulamak ŞART.
+- [x] **NVIDIA modeli ÜÇÜNCÜ kez değiştirildi - şu an
+      `nvidia/nemotron-3.5-lightning-30b-a3b` (NVIDIA first-party).**
+      `deepseek-ai/deepseek-v4-pro-0813` (sahibinin build.nvidia.com'dan
+      getirdiği gerçek kod örneği) canlıda `401 Unauthorized` verdi.
+      Sebep muhtemelen ikisi birden: (a) bu model **partner-barındırmalı**
+      (Provider: DeepSeek AI, GMI Cloud/Together AI/Deep Infra üzerinden
+      sunuluyor) - böyle modeller temel NVIDIA anahtarından AYRI bir
+      erişim/onay gerektirebiliyor; (b) model sayfasında turuncu bir
+      uyarı vardı: **"Bu API 13.09.2026'da kullanımdan kaldırılacak"**
+      - yani neredeyse ertesi gün ölecekti, düzeltilse bile kısa ömürlü
+      olurdu. Bu yüzden NVIDIA'nın KENDİ modeline geçildi (first-party,
+      partner-erişim sorunu yaşama ihtimali yok, kullanımdan kaldırma
+      uyarısı yoktu, "Free Endpoint", 1 ay önce güncellenmiş).
+      **Ek fark:** bu modelin "düşünme" (reasoning) parametresi
+      DeepSeek'ten farklı - `thinking` değil **`enable_thinking`**
+      (NVIDIA'nın kendi kod örneğinde `enable_thinking: true` +
+      `reasoning_budget` gösteriliyordu, varsayılan muhtemelen kapalı).
+      Modelden modele bu alan adı değiştiği için `lib/proposal.ts` ve
+      `lib/relevance.ts`'teki `extra_body.chat_template_kwargs`'a
+      **HER İKİ alan adı da** (`thinking: false` VE
+      `enable_thinking: false`) eklendi - hangi model seçilirse
+      seçilsin çalışsın, bilinmeyen alan sessizce yok sayılır diye.
+      `wrangler.toml`/`DEFAULT_MODEL` üçüncü kez güncellendi.
+      **GÜVENLİK NOTU:** bu model arayışı sırasında sahibi CHAT'E İKİ
+      KEZ gerçek, canlı `nvapi-...` anahtarını yapıştırdı (NVIDIA'nın
+      kendi kod örneklerini kopyalarken) - kendisine her ikisinde de
+      test bitince build.nvidia.com'dan iptal edip yenilemesi
+      söylendi, ama bunun fiilen yapılıp yapılmadığı teyit edilmedi -
+      bir sonraki oturumda hatırlatılabilir. Ayrıca bu oturumda
+      sandbox'ın `integrate.api.nvidia.com`'a doğrudan ağ erişiminin
+      olmadığı (organizasyon politikası ile engelli) doğrulandı - bu
+      tür canlı API testleri her zaman sahibinin gerçek deploy edilmiş
+      sistemi üzerinden yapılmalı, buradan `curl` ile denenemez.
+      **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
