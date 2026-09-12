@@ -2,8 +2,13 @@ name = "musteri-avcisi-yahoo-search-scanner"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# BAŞLANGIÇTA PASİF - bkz. packages/shared/src/config.ts activeSourceChannels.
-# google-search-scanner ile aynı sektör listesini, ayrı bir cursor ile tarar.
+# Kod artık gerçek (bkz. src/scan.ts - Yahoo'nun resmi bir arama API'si
+# olmadığı için search.yahoo.com'un sonuç sayfası doğrudan fetch() ile
+# kazınıyor, bkz. CLAUDE.md "Yahoo kazıma" notu) ama HENÜZ CANLI TEST
+# EDİLMEDİ - bu yüzden packages/shared/src/config.ts activeSourceChannels
+# listesine "yahoo_search" henüz eklenmedi (LinkedIn'de olduğu gibi önce
+# canlı doğrulama gerekiyor). google-search-scanner ile aynı sektör
+# listesini, ayrı bir cursor ile tarar.
 [triggers]
 crons = ["*/30 * * * *"]
 
@@ -23,4 +28,7 @@ service = "musteri-avcisi-control"
 # `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
 # ile AYNI değer).
 
-# `wrangler secret put YAHOO_SEARCH_API_KEY` ile eklenmeli.
+# NOT: Eskiden burada YAHOO_SEARCH_API_KEY isteniyordu - artık gerekmiyor
+# (Yahoo'nun resmi bir arama API'si yok, HTML kazıma kimlik bilgisi
+# istemiyor). Ayarlar panelindeki "Yahoo Arama API anahtarı" alanı hâlâ
+# duruyor ama artık hiçbir yerde okunmuyor/kullanılmıyor.

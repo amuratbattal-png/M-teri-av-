@@ -53,13 +53,13 @@ export const SETTINGS_CATALOG: SettingFieldDef[] = [
     kind: "text",
   },
 
-  // --- Diğer arama motorları (yahoo-search-scanner, PASİF) ---
+  // --- Diğer arama motorları (yahoo-search-scanner) ---
   {
     key: "yahoo_search_api_key",
-    label: "Yahoo Arama API anahtarı",
+    label: "Yahoo Arama API anahtarı (KULLANILMIYOR)",
     group: "Diğer arama motorları (pasif)",
     kind: "secret",
-    help: "worker: yahoo-search-scanner - henüz aktif kanal değil.",
+    help: "Yahoo'nun resmi bir arama API'si yok (Yahoo BOSS yıllar önce kapatıldı) - worker artık search.yahoo.com'un sonuç sayfasını doğrudan kazıyor, kimlik bilgisi gerekmiyor. Bu alan artık okunmuyor, geriye dönük uyumluluk için duruyor.",
   },
 
   // --- Sosyal medya (PASİF) ---

@@ -1395,12 +1395,48 @@ Neden bu yapı:
       (Durdur/Devam Ettir) göründüğü teyit edildi; her iki app
       `wrangler --dry-run` ile bundle edildi.
       **Henüz canlıda doğrulanmadı.**
+- [ ] **`yahoo-search-scanner` gerçek koda bağlandı - HENÜZ CANLI TEST
+      EDİLMEDİ, LinkedIn Voyager entegrasyonuyla AYNI durumda (kırılgan/
+      kesin değil).** Sahibi "firmayı google'da aratıp linkleri
+      araştırıp rapor hazırlayabilir miyiz" diye sordu; Google Custom
+      Search'ün hâlâ bozuk olduğu (403, ertelenmiş) hatırlatıldı,
+      NVIDIA'nın bir arama motoru API'si OLMADIĞI netleştirildi
+      ("nvidia da buna uygun bir api yok mu" sorusuna dürüst cevap -
+      NVIDIA sadece LLM çıkarım servisi), sonra "Yahoo ya da başka bir
+      arama API'si" öneri geldi - **Yahoo'nun da resmi bir API'si
+      OLMADIĞI** (Yahoo BOSS yıllar önce kapatıldı) açıklanıp
+      `AskUserQuestion` ile "riskli/kırılgan HTML kazıma dene" seçeneği
+      sunuldu, **sahibi kabul etti**.
+      `workers/yahoo-search-scanner/src/scan.ts`'e gerçek kod yazıldı:
+      resmi API yerine `search.yahoo.com`'un HERKESE AÇIK arama
+      sonuçları sayfası doğrudan `fetch()` ile (gerçekçi bir tarayıcı
+      User-Agent'ıyla) çekilip HTML'den regex ile sonuçlar ayıklanıyor
+      (`parseYahooResults` - `class="algo"` bloklarını, başlık linkini
+      ve `fz-ms` sınıflı özeti arıyor; Yahoo'nun klasik `/RU=<url>/`
+      yönlendirme linkini de çözüyor). **Bu sandbox'ın Yahoo'ya ağ
+      erişimi olmadığı için gerçek bir yanıtla HİÇ test edilmedi** -
+      sadece varsayılan markup şekline göre yazılan sentetik bir örnek
+      HTML ile mantık doğrulandı (node ile, gerçek Yahoo değil).
+      `ScanDebugInfo.rawSample` alanı, parser hiç sonuç bulamazsa ham
+      HTML'i taşır - LinkedIn Voyager'da olduğu gibi canlı test +
+      iterasyon gerekecek (sahibi `/run-now`'ı deneyip sonucu/hatayı
+      paylaşacak, ona göre `parseYahooResults` ayarlanacak).
+      Artık bir API anahtarı GEREKMİYOR - eski `YAHOO_SEARCH_API_KEY`
+      kaldırıldı (Ayarlar panelindeki alan geriye dönük uyumluluk için
+      duruyor ama artık okunmuyor, help metni güncellendi). Yeni `/run-now`
+      (manuel tetikleme) ve sessiz arıza bildirimi (3 art arda hata →
+      uyarı e-postası) eklendi - google-search-scanner/linkedin-scanner
+      ile aynı desen. Sektör × şehir matrisi DEĞİL, ilk basit sürüm
+      (google_maps'teki gibi 81 il kombinasyonuna şimdilik
+      genişletilmedi - önce temel kazımanın çalıştığı doğrulanmalı).
+      `packages/shared/src/config.ts` `activeSourceChannels` listesine
+      "yahoo_search" HENÜZ eklenmedi - önce canlı doğrulama gerekiyor
+      (LinkedIn/google_maps ile aynı prensip).
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
       etiketleme ("sıcak lead" vb., need tag'lerden bağımsız); toplu
-      red + toplu not; `yahoo-search-scanner`'ı gerçek API'ye bağlamak
-      (düşük efor, sahibi de belirtti); tarama ilerleme göstergesi
+      red + toplu not; tarama ilerleme göstergesi
       (2.349 sektör×şehir kombinasyonunun neresinde olduğu,
       dashboard'da); "yakında bitecek domain" taraması (yeni kanal
       fikri); günlük/haftalık özet e-postası (düşük efor, mevcut
