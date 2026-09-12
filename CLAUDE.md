@@ -1248,6 +1248,26 @@ Neden bu yapı:
       taramak gerekiyor - paylaşılan bir dış kaynağın hız sınırı,
       hangi kod yolunun tetiklediğine bakmaksızın TÜM çağıranlar
       arasında birikir. **Henüz canlıda doğrulanmadı.**
+- [x] **"Firmaları detaylı incelediği ve hakkında topladığı bilgileri
+      detay sayfasında bana göstersin" isteği karşılandı.**
+      `apps/dashboard/src/render.ts`'e yeni `gatheredInfoSection(c)` -
+      aday popup'ında (`candidateDetailDialog`, tüm sayfalarda ortak)
+      artık zaten ücretsiz elde edilen (bkz. yukarıdaki "firmayı google
+      vs arasın verilere göre puan versin" notu) sinyaller varsa bir
+      **"Toplanan bilgiler"** kutusu gösteriliyor: adres
+      (`rawMetadata.formattedAddress`), web sitesi başlığı
+      (`rawMetadata.siteTitle`), web sitesi içerik özeti
+      (`rawMetadata.siteTextSnippet`) ve varsa `evaluationNotes` (AI'ın
+      otomatik gerekçesi VEYA sahibinin yazdığı serbest not - ikisi
+      AYNI alanı paylaşıyor, bu yüzden etiket kasıtlı olarak jenerik
+      "Not"). Önceden `evaluationNotes` sadece "Askıda" durumundaki
+      adaylarda gösteriliyordu - artık her durumda (varsa) görünüyor.
+      Hiçbir alan yoksa (ör. LinkedIn/`website_new` adayları - henüz
+      indirilmiş bir site yok) bölüm hiç render edilmiyor. Doğrulama:
+      `tsc` ile transpile edilip örnek `rawMetadata` içeren bir adayla
+      render edildi, "Toplanan bilgiler" kutusunun ve içindeki
+      adres/başlık/özetin gerçekten HTML'de çıktığı teyit edildi.
+      **Henüz canlıda doğrulanmadı.**
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

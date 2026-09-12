@@ -574,6 +574,57 @@ function onHoldForms(id: string, redirectTo: string): string {
  * alttaki aksiyon bloğu duruma göre değişir - onay bekliyorsa
  * Onayla/Reddet, değilse yok (gönderim zaten yukarıdaki linklerle).
  */
+/**
+ * "Firmaları detaylı incelediği ve hakkında topladığı bilgileri detay
+ * sayfasında göstersin" isteği (bkz. CLAUDE.md) - AI'ın puanlama/teklif
+ * yazarken kullandığı, zaten ücretsiz elde edilen ek sinyalleri (adres,
+ * web sitesi başlığı/kısa içerik özeti - bkz. workers/google-search-scanner
+ * extractPageSnippet) burada gösteriyoruz, sahibi "bu puan neye göre
+ * verildi" diye merak ettiğinde `wrangler tail`e bakmasına gerek kalmasın
+ * diye. Hiçbir alan yoksa (ör. LinkedIn/website_new adayları - henüz
+ * indirilmiş bir site yok) bölüm hiç render edilmez.
+ */
+function gatheredInfoSection(c: Candidate): string {
+  const meta = (c.rawMetadata as Record<string, unknown> | null) ?? {};
+  const address = typeof meta.formattedAddress === "string" ? meta.formattedAddress : null;
+  const siteTitle = typeof meta.siteTitle === "string" ? meta.siteTitle : null;
+  const siteTextSnippet = typeof meta.siteTextSnippet === "string" ? meta.siteTextSnippet : null;
+
+  const rows = [
+    address ? { label: "Adres", value: address } : null,
+    siteTitle ? { label: "Web sitesi başlığı", value: siteTitle } : null,
+    siteTextSnippet ? { label: "Web sitesi içeriğinden özet", value: siteTextSnippet } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
+
+  if (rows.length === 0 && !c.evaluationNotes) return "";
+
+  const rowsHtml = rows
+    .map(
+      (r) =>
+        `<p class="muted" style="margin:0.2rem 0"><strong>${escapeHtml(r.label)}:</strong> ${escapeHtml(r.value)}</p>`,
+    )
+    .join("");
+
+  // NOT: evaluationNotes hem AI'ın otomatik puanlama gerekçesini ("AI:
+  // düşük puan (2/5) - ...") HEM sahibinin aşağıdaki "Notu Kaydet"
+  // formuyla yazdığı serbest takip notunu ("ilgilenmiyor" vb.) taşıyan
+  // TEK/PAYLAŞILAN bir alan - bu yüzden etiket kasıtlı olarak jenerik
+  // "Not" (ikisinden hangisiyse) - önceden sadece "Askıda" durumunda
+  // gösteriliyordu, artık her durumda (varsa) gösteriliyor.
+  const notesHtml = c.evaluationNotes
+    ? `<p class="muted" style="margin:0.2rem 0"><strong>Not:</strong> ${escapeHtml(c.evaluationNotes)}</p>`
+    : "";
+
+  if (!rowsHtml && !notesHtml) return "";
+
+  return `
+    <div class="report-card" style="margin:0.75rem 0;padding:0.75rem 1rem">
+      <div class="proposal-label">Toplanan bilgiler (AI'ın puanlama/teklif için kullandığı sinyaller)</div>
+      ${rowsHtml}
+      ${notesHtml}
+    </div>`;
+}
+
 function candidateDetailDialog(c: Candidate, redirectTo: string): string {
   const pills = c.needTags
     .map((t) => `<span class="pill">${escapeHtml(NEED_TAG_LABELS_TR[t] ?? t)}</span>`)
@@ -598,11 +649,7 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
-        ${
-          c.status === "on_hold" && c.evaluationNotes
-            ? `<p class="muted">${escapeHtml(c.evaluationNotes)}</p>`
-            : ""
-        }
+        ${gatheredInfoSection(c)}
 
         <form method="post" action="/candidates/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
           <input type="hidden" name="redirect" value="${redirectTo}">
