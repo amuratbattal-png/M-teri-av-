@@ -496,6 +496,30 @@ Neden bu yapı:
       JS: `verifySetting()`); doğrulaması olmayanlarda "Doğrulama
       yok - bu kanalın gerçek entegrasyonu henüz yazılmadı" notu
       gösteriliyor.
+- [ ] **`linkedin-scanner` gerçek entegrasyona bağlandı - HENÜZ CANLI
+      TEST EDİLMEDİ, kırılgan/kesin değil.** Sahibi "bunu yapalım" dedi
+      (LinkedIn oturum çerezi yöntemi, risk zaten kabul edilmişti).
+      `workers/linkedin-scanner/src/scan.ts`'e gerçek kod yazıldı:
+      LinkedIn'in RESMİ bir arama API'si yok, bu yüzden LinkedIn'in
+      kendi web arayüzünün kullandığı, dokümante EDİLMEMİŞ "Voyager" iç
+      API'sine (`li_at` oturum çerezi + `JSESSIONID`/csrf-token ile
+      "giriş yapmış gibi") istek atıyor - açık kaynak "LinkedIn
+      scraper" projelerinden bilinen bir desen, ama bu repo içinde
+      canlı test edilmedi (sandbox'ın LinkedIn'e ağ erişimi yok).
+      **Kesin çalışacağı garanti değil** - LinkedIn bu iç API'nin
+      şeklini istediği an değiştirebilir. `ScanDebugInfo.rawSample`
+      alanı, parser hiç sonuç bulamazsa ham yanıtı taşır - Google
+      Custom Search entegrasyonunda olduğu gibi canlı test + iterasyon
+      gerekecek (sahibi çerezi girip `/run-now`'ı deneyip sonucu/hatayı
+      paylaşacak, ona göre `parseVoyagerResults` ayarlanacak).
+      Anahtar kelimeye göre kaba bir need-tag tahmini var (`KEYWORD_NEED_TAGS`
+      sözlüğü, sınıflandırma değil). Ayrıca eklenenler: yeni
+      `linkedin_csrf_token` katalog alanı (Ayarlar sayfası - `li_at` ile
+      birlikte gerekiyor); `google-search-scanner` ile aynı desende
+      `/run-now` (manuel tetikleme) ve sessiz arıza bildirimi (3 art arda
+      hata → uyarı e-postası). `packages/shared/src/config.ts`
+      `activeSourceChannels` listesine "linkedin" HENÜZ eklenmedi -
+      önce canlı doğrulama gerekiyor (google_maps ile aynı prensip).
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

@@ -65,10 +65,17 @@ export const SETTINGS_CATALOG: SettingFieldDef[] = [
   // --- Sosyal medya (PASİF) ---
   {
     key: "linkedin_session_cookie",
-    label: "LinkedIn oturum çerezi",
+    label: "LinkedIn oturum çerezi (li_at)",
     group: "Sosyal medya (pasif)",
     kind: "secret",
-    help: "worker: linkedin-scanner - erişim yöntemi henüz netleşmedi.",
+    help: "Tarayıcıda LinkedIn'e giriş yapıp F12 → Application → Cookies'den 'li_at' değerini kopyala. Birkaç haftada bir geçersiz olur, yeniden girmen gerekir.",
+  },
+  {
+    key: "linkedin_csrf_token",
+    label: "LinkedIn CSRF token (JSESSIONID)",
+    group: "Sosyal medya (pasif)",
+    kind: "secret",
+    help: "Aynı çerez listesinden 'JSESSIONID' değeri (tırnaksız, ör. ajax:1234567890123456789) - li_at ile birlikte gerekiyor.",
   },
   {
     key: "tiktok_api_key",

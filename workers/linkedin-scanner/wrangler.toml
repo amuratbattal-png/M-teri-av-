@@ -23,11 +23,11 @@ service = "musteri-avcisi-control"
 # `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
 # ile AYNI değer).
 
-# Sahibinin isteği: yerel bilgisayardaki bir yapay zeka yerine, KENDİ
-# LinkedIn profiline gerçek erişimi olan bir sistem kullanılacak. İki
-# olası yaklaşım (ikisi de deploy öncesi netleştirilmeli):
-#   1. LinkedIn'in resmi API'si (çok kısıtlı, bu kullanım senaryosunu
-#      büyük olasılıkla kapsamaz)
-#   2. Oturum tabanlı erişim (LINKEDIN_SESSION_COOKIE) - kullanım
-#      şartlarına aykırı olabilir, hesap askıya alınma riski var; sahibi
-#      bu riski kabul etti (bkz. CLAUDE.md).
+# Karar verildi: LinkedIn'in resmi API'si bu kullanım senaryosunu
+# kapsamıyor, bu yüzden oturum tabanlı erişim (LINKEDIN_SESSION_COOKIE +
+# LINKEDIN_CSRF_TOKEN, dokümante edilmemiş "Voyager" iç API'si) kullanılıyor
+# - kullanım şartlarına aykırı olabilir, hesap askıya alınma riski var;
+# sahibi bu riski bilerek kabul etti (bkz. CLAUDE.md). Bu iki değer
+# `wrangler secret put` İLE DEĞİL, Ayarlar panelinden (Cloudflare secret
+# yerine D1'de) girilecek şekilde tasarlandı - bkz.
+# apps/control/src/lib/settings-catalog.ts.
