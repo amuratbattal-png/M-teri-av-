@@ -20,6 +20,15 @@ export interface VerifyResult {
 
 type Verifier = (fields: Record<string, string>) => Promise<VerifyResult>;
 
+/**
+ * ÖNEMLİ (bkz. CLAUDE.md - "meta/llama-3.1-70b-instruct" 26 Ağustos
+ * 2026'da kullanımdan kaldırıldı, sistem AYLARCA sessizce fail-open'a
+ * düşmüş, hiç fark edilmemişti - Canlı Log sayesinde ortaya çıktı):
+ * anahtarın GEÇERLİ olması modelin de var olduğu anlamına gelmiyor.
+ * Bu yüzden `nvidia_model` alanı da doluysa, dönen model listesinde
+ * gerçekten var mı diye ayrıca kontrol ediliyor - "anahtar geçerli"
+ * demek artık "her şey çalışıyor" demek değil.
+ */
 async function verifyNvidia(fields: Record<string, string>): Promise<VerifyResult> {
   const key = fields.nvidia_api_key;
   if (!key) return { ok: false, message: "Anahtar girilmedi." };
@@ -27,8 +36,30 @@ async function verifyNvidia(fields: Record<string, string>): Promise<VerifyResul
     const res = await fetch("https://integrate.api.nvidia.com/v1/models", {
       headers: { Authorization: `Bearer ${key}` },
     });
-    if (res.ok) return { ok: true, message: "Anahtar geçerli - NVIDIA API'ye erişilebiliyor." };
-    return { ok: false, message: `Geçersiz (HTTP ${res.status}) - NGC "Legacy Key" değil, build.nvidia.com'dan alınan nvapi-... anahtarı gerekiyor.` };
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `Geçersiz (HTTP ${res.status}) - NGC "Legacy Key" değil, build.nvidia.com'dan alınan nvapi-... anahtarı gerekiyor.`,
+      };
+    }
+
+    const model = fields.nvidia_model?.trim();
+    const data = (await res.json().catch(() => null)) as { data?: Array<{ id?: unknown }> } | null;
+    const modelIds = (data?.data ?? [])
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === "string");
+
+    if (!model) {
+      return { ok: true, message: "Anahtar geçerli - NVIDIA API'ye erişilebiliyor (model adı boş, kaydedersen varsayılan kullanılır)." };
+    }
+    if (modelIds.length > 0 && !modelIds.includes(model)) {
+      const suggestions = modelIds.slice(0, 5).join(", ") || "(liste boş döndü)";
+      return {
+        ok: false,
+        message: `Anahtar geçerli AMA "${model}" modeli artık mevcut değil (kullanımdan kaldırılmış olabilir). Geçerli modellerden birkaçı: ${suggestions}`,
+      };
+    }
+    return { ok: true, message: `Anahtar ve model ("${model}") geçerli - NVIDIA API'ye erişilebiliyor.` };
   } catch (err) {
     return { ok: false, message: `Bağlantı hatası: ${String(err)}` };
   }

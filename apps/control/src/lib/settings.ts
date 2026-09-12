@@ -17,7 +17,21 @@ import { isVerifiable } from "./verify";
  * bilerek kabul ediyor - bkz. packages/db/schema.ts `settings` yorumu.
  */
 
-const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
+/**
+ * BİLİNEN ARIZA (çözüldü, bkz. CLAUDE.md "model end-of-life" notu):
+ * eski varsayılan `meta/llama-3.1-70b-instruct`, 2026-08-26'da NVIDIA
+ * tarafından kullanımdan kaldırıldı (`410 Gone`) - sistem AYLARCA
+ * sessizce fail-open'a düşmüş (hiçbir aday puanlanmadı/teklif AI ile
+ * yazılamadı ama hata da görünmüyordu), bu ancak Canlı Log sayfası
+ * eklenince fark edildi. Yeni varsayılan `meta/llama-3.3-70b-instruct`
+ * (3.1-70b'nin doğrudan halefi) - ama bu da GARANTİ DEĞİL, NVIDIA
+ * modelleri istediği an kaldırabiliyor. Ayarlar sayfasındaki "Doğrula"
+ * butonu artık sadece anahtarı değil, MODELİN de hâlâ var olup
+ * olmadığını kontrol ediyor (bkz. lib/verify.ts verifyNvidia) - bu
+ * aynı arıza bir daha sessizce yaşanmasın diye periyodik olarak
+ * (ör. ayda bir) Ayarlar'dan "Doğrula"ya basmak iyi bir alışkanlık.
+ */
+const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
 
 export const DEFAULT_PROPOSAL_TEMPLATE = [
   "Merhaba {{isim}},",

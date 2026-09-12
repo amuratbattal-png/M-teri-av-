@@ -766,6 +766,48 @@ Neden bu yapı:
       `apps/control` + `apps/dashboard` deploy edildikten sonra bir
       tarama tetiklenip Canlı Log sayfasında satırların gerçekten
       biriktiği ve sayfanın kendini tazelediği kontrol edilmeli.
+- [x] **Canlı Log CANLIDA DOĞRULANDI ve ilk gününde büyük, aylarca fark
+      edilmemiş bir arıza buldu: NVIDIA modeli kullanımdan kaldırılmış
+      (`model end-of-life`).** Migration uygulandı, sahibi LinkedIn
+      taramasını tekrar tetikledi, Canlı Log sayfası gerçekten çalıştı
+      (satırlar biriktirdi, kendini tazeledi) - AMA her satırda aynı
+      hata vardı: `status=410 ... "The model
+      'meta/llama-3.1-70b-instruct' has reached its end of life on
+      2026-08-26T09:00:00Z and is no longer available."`. Yani NVIDIA bu
+      modeli **26 Ağustos 2026'da** kaldırmış, sistem o tarihten beri
+      (haftalarca) hem lead puanlamayı hem teklif yazımını AYLARCA
+      sessizce başarısız kılıyormuş - FAIL-OPEN tasarımı sayesinde hiçbir
+      şey çökmedi (adaylar hep normal akışa girdi, teklifler şablona
+      düştü) ama AI'ın hiçbir katkısı olmuyordu ve bu Canlı Log
+      eklenene kadar GÖRÜNMÜYORDU. **Kök sebep + düzeltme:**
+      1. `apps/control/wrangler.toml`'daki `[vars]` `NVIDIA_MODEL =
+         "meta/llama-3.1-70b-instruct"` - bu, koddaki
+         `apps/control/src/lib/settings.ts` `DEFAULT_MODEL`'i EZİYORDU
+         (öncelik: D1 override > env var > kod varsayılanı), yani sadece
+         kod varsayılanını güncellemek yetmezdi. İkisi de
+         `meta/llama-3.3-70b-instruct`'a (3.1-70b'nin doğrudan halefi)
+         güncellendi - **ama bu da GARANTİ DEĞİL**, NVIDIA modelleri
+         istediği an kaldırabiliyor, bu yüzden 2. madde asıl kalıcı
+         çözüm.
+      2. `apps/control/src/lib/verify.ts` `verifyNvidia` artık SADECE
+         anahtarın geçerliliğini değil, formda yazılı `nvidia_model`
+         değerinin NVIDIA'nın döndüğü GÜNCEL model listesinde gerçekten
+         var olup olmadığını da kontrol ediyor - yoksa "model artık
+         mevcut değil" diyip listeden birkaç geçerli model önerisi
+         gösteriyor. Önceden "Doğrula" sadece anahtarı test ediyordu,
+         anahtar geçerliyken bile model ölü olabiliyordu ve bu hiç
+         yakalanmıyordu - bu sınıf arıza artık Ayarlar'dan tek tıkla
+         (periyodik "Doğrula" alışkanlığıyla) yakalanabilir.
+      **Ders (CLAUDE.md'ye tam da bunun için eklendi):** FAIL-OPEN
+      tasarımlar (burada, `settings.ts`'te NVIDIA_API_KEY yokken/proposal
+      hatasında) sistemi ayakta tutar ama AYNI ZAMANDA sessiz
+      bozulmaları saatlerce/haftalarca görünmez kılabilir - Canlı Log
+      gibi bir gözlemlenebilirlik katmanı olmadan bu tür arızalar
+      "her şey normal görünüyor ama AI aslında hiç çalışmıyor" şeklinde
+      fark edilmeden sürebilir. **Henüz yeni model canlıda doğrulanmadı**
+      - `apps/control` deploy edilip tekrar bir tarama tetiklendiğinde
+      Canlı Log'da artık `410` hatası yerine gerçek yıldız puanları
+      görünmesi beklenir.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
