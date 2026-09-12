@@ -25,6 +25,20 @@ function matchesQuery(name: string, query?: string): boolean {
   return name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"));
 }
 
+/**
+ * AI'ın 1-5 yıldız lead kalite puanını (bkz. apps/control/src/lib/relevance.ts)
+ * küçük bir rozet olarak gösterir. `null`/`undefined` = hiç puanlanmadı
+ * (AI atlandı/başarısız oldu) - hiçbir şey göstermez, "1 yıldız" ile
+ * KARIŞTIRILMAMALI.
+ */
+function scoreStars(score: number | null | undefined): string {
+  if (typeof score !== "number") return "";
+  const tone = score <= 2 ? "bad" : score >= 4 ? "ok" : "warn";
+  const filled = "★".repeat(score);
+  const empty = "☆".repeat(5 - score);
+  return `<span class="score-stars score-stars--${tone}" title="AI lead puanı: ${score}/5">${filled}${empty}</span>`;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -37,6 +51,7 @@ const STATUS_LABELS_TR: Record<string, string> = {
   discovered: "Keşfedildi",
   evaluated: "Değerlendirildi",
   proposal_drafted: "Teklif Hazırlandı",
+  on_hold: "Askıda",
   pending_approval: "Onay Bekliyor",
   approved: "Onaylandı",
   rejected: "Reddedildi",
@@ -50,6 +65,7 @@ const STATUS_TONE: Record<string, "warn" | "ok" | "bad" | "neutral"> = {
   discovered: "neutral",
   evaluated: "neutral",
   proposal_drafted: "neutral",
+  on_hold: "warn",
   pending_approval: "warn",
   approved: "ok",
   rejected: "bad",
@@ -128,6 +144,7 @@ const ICONS = {
 
 const TILE_ICON: Record<string, string> = {
   pending_approval: ICONS.clock,
+  on_hold: ICONS.clock,
   approved: ICONS.check,
   sent: ICONS.send,
   responded: ICONS.chat,
@@ -138,11 +155,19 @@ const TILE_ICON: Record<string, string> = {
 
 // --- Sol menü / sayfa iskeleti -------------------------------------------
 
-type NavKey = "onaylar" | "onaylananlar" | "gonderilenler" | "adaylar" | "rapor" | "ayarlar";
+type NavKey =
+  | "onaylar"
+  | "onaylananlar"
+  | "askida"
+  | "gonderilenler"
+  | "adaylar"
+  | "rapor"
+  | "ayarlar";
 
 function shell(opts: {
   active: NavKey;
   pendingCount: number;
+  onHoldCount?: number;
   title: string;
   subtitle: string;
   content: string;
@@ -184,6 +209,7 @@ function shell(opts: {
       <nav class="nav">
         ${navItem("/", ICONS.overview, "Onaylar", "onaylar", opts.pendingCount)}
         ${navItem("/onaylananlar", ICONS.check, "Onaylananlar", "onaylananlar")}
+        ${navItem("/askida", ICONS.clock, "Askıda", "askida", opts.onHoldCount)}
         ${navItem("/gonderilenler", ICONS.send, "Gönderilenler", "gonderilenler")}
         ${navItem("/adaylar", ICONS.candidates, "Tüm Adaylar", "adaylar")}
         ${navItem("/rapor", ICONS.chart, "Rapor", "rapor")}
@@ -323,6 +349,7 @@ function shell(opts: {
 function statTiles(counts: Record<string, number>): string {
   const order = [
     "pending_approval",
+    "on_hold",
     "approved",
     "sent",
     "responded",
@@ -426,6 +453,7 @@ function candidateCard(c: Candidate, redirectTo: string): string {
         <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
         ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
         <span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span>
+        ${scoreStars(c.aiScore)}
       </div>
       <div class="pills">${pills}</div>
       <button type="button" class="detail-link" onclick="event.stopPropagation(); document.getElementById('dlg-${c.id}').showModal()">Detayları gör</button>
@@ -434,7 +462,25 @@ function candidateCard(c: Candidate, redirectTo: string): string {
           ? `<div class="card-actions" onclick="event.stopPropagation()">${approveRejectForms(c.id, redirectTo)}</div>`
           : ""
       }
+      ${
+        c.status === "on_hold"
+          ? `<div class="card-actions" onclick="event.stopPropagation()">${onHoldForms(c.id, redirectTo)}</div>`
+          : ""
+      }
     </article>`;
+}
+
+/** Askıda sayfasındaki kart/popup aksiyonları - onaya gönder ya da kalıcı reddet. */
+function onHoldForms(id: string, redirectTo: string): string {
+  return `
+    <form method="post" action="/candidates/${id}/unhold">
+      <input type="hidden" name="redirect" value="${redirectTo}">
+      <button type="submit" class="btn btn--approve">✓ Onaya Gönder</button>
+    </form>
+    <form method="post" action="/reject/${id}">
+      <input type="hidden" name="redirect" value="${redirectTo}">
+      <button type="submit" class="btn btn--reject">✕ Kalıcı Reddet</button>
+    </form>`;
 }
 
 /**
@@ -464,9 +510,15 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
           <span class="badge badge--source">${escapeHtml(SOURCE_LABELS_TR[c.sourceChannel] ?? c.sourceChannel)}</span>
           ${cityLabel ? `<span class="badge badge--city">${escapeHtml(cityLabel)}</span>` : ""}
           <span class="status status--${tone}">${STATUS_LABELS_TR[c.status] ?? c.status}</span>
+          ${scoreStars(c.aiScore)}
         </div>
         <div class="pills">${pills}</div>
         <p class="contact">${contactLine(c)}</p>
+        ${
+          c.status === "on_hold" && c.evaluationNotes
+            ? `<p class="muted">${escapeHtml(c.evaluationNotes)}</p>`
+            : ""
+        }
 
         <form method="post" action="/candidates/${c.id}/proposal" class="proposal-edit" onclick="event.stopPropagation()">
           <input type="hidden" name="redirect" value="${redirectTo}">
@@ -509,6 +561,11 @@ function candidateDetailDialog(c: Candidate, redirectTo: string): string {
         ${
           c.status === "pending_approval"
             ? `<div class="card-actions" onclick="event.stopPropagation()">${approveRejectForms(c.id, redirectTo)}</div>`
+            : ""
+        }
+        ${
+          c.status === "on_hold"
+            ? `<div class="card-actions" onclick="event.stopPropagation()">${onHoldForms(c.id, redirectTo)}</div>`
             : ""
         }
         ${
@@ -600,6 +657,7 @@ export function renderApprovalsPage(
   return shell({
     active: "onaylar",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Genel Bakış",
     subtitle: "Hiçbir teklif senin onayın olmadan gönderilmez.",
     content,
@@ -678,11 +736,12 @@ export function renderAllCandidatesPage(
   selectedSource?: string,
   selectedQuery?: string,
 ): string {
-  // Onaylanmış adaylar artık kendi sayfasında (bkz. renderApprovedPage) -
-  // burada tekrar gösterilmiyor.
+  // Onaylanmış (renderApprovedPage) ve Askıda (renderOnHoldPage) adaylar
+  // artık kendi sayfalarında - burada tekrar gösterilmiyor.
   const filtered = all.filter(
     (c) =>
       c.status !== "approved" &&
+      c.status !== "on_hold" &&
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity) &&
@@ -707,8 +766,9 @@ export function renderAllCandidatesPage(
   return shell({
     active: "adaylar",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Tüm Adaylar",
-    subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları (onaylananlar hariç).",
+    subtitle: "Sistemin bugüne kadar bulduğu tüm adaylar ve durumları (onaylananlar ve askıda olanlar hariç).",
     content,
   });
 }
@@ -750,8 +810,68 @@ export function renderApprovedPage(
   return shell({
     active: "onaylananlar",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Onaylananlar",
     subtitle: "Onaylanıp gönderim kuyruğuna alınan adaylar - gönderim durumu için Gönderilenler sayfasına bak.",
+    content,
+  });
+}
+
+// --- Askıda sayfası ----------------------------------------------------------
+
+/**
+ * AI'ın 1-5 yıldız lead kalitesi düşük bulduğu (bkz.
+ * apps/control/src/lib/relevance.ts ON_HOLD_MAX_SCORE - özellikle
+ * LinkedIn'de sık görülen iş ilanı gürültüsü, bkz. CLAUDE.md) adaylar.
+ * Kaybolmuyorlar - sahibi burada AI'ın gerekçesini (evaluationNotes) ve
+ * puanını görüp isterse "Onaya Gönder" (pending_approval'a geri döner,
+ * teklif metni ilk kez burada üretilir) isterse "Kalıcı Reddet"
+ * (AI haklıymış, normal rejected'e gider) diyebiliyor.
+ */
+export function renderOnHoldPage(
+  counts: Record<string, number>,
+  onHold: Candidate[],
+  selectedSector?: string,
+  selectedCity?: string,
+  selectedSource?: string,
+  selectedQuery?: string,
+): string {
+  const filtered = onHold.filter(
+    (c) =>
+      matchesQuery(c.name, selectedQuery) &&
+      (!selectedSector || c.sectorSlug === selectedSector) &&
+      (!selectedCity || candidateCitySlug(c) === selectedCity) &&
+      (!selectedSource || c.sourceChannel === selectedSource),
+  );
+  const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
+  const list = candidateListOrEmpty(
+    sorted,
+    "/askida",
+    "⏸",
+    selectedSector || selectedCity || selectedSource || selectedQuery
+      ? "Bu filtreyle askıda aday yok."
+      : "Askıda aday yok - AI şu ana kadar her adayı yeterince alakalı buldu.",
+  );
+
+  const content = `
+    <div class="tiles">${statTiles(counts)}</div>
+    <h2 class="section-title">Askıda (${sorted.length})</h2>
+    <p class="muted" style="margin:-0.5rem 0 1rem;max-width:70ch">
+      AI'ın lead kalitesini düşük (2 yıldız ve altı) bulduğu adaylar -
+      genelde iş ilanı, CV ya da alakasız bir gönderi. Kaybolmazlar;
+      "Onaya Gönder" ile normal akışa geri döndürebilir, "Kalıcı Reddet"
+      ile AI'ı onaylayabilirsin.
+    </p>
+    ${filterBar({ action: "/askida", selectedSector, selectedCity, selectedSource, selectedQuery })}
+    ${list}
+  `;
+
+  return shell({
+    active: "askida",
+    pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
+    title: "Askıda",
+    subtitle: "AI'ın alakasız/düşük kaliteli bulduğu adaylar - onay bekleyenler listesini kirletmezler.",
     content,
   });
 }
@@ -859,6 +979,7 @@ export function renderSentPage(
   return shell({
     active: "gonderilenler",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Gönderilenler",
     subtitle: "E-posta ve WhatsApp üzerinden gönderilen tekliflerin iletim durumu.",
     content,
@@ -930,6 +1051,7 @@ export function renderReportPage(counts: Record<string, number>, report: ReportD
   return shell({
     active: "rapor",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Rapor",
     subtitle: "Sistemin bugüne kadar bulduğu tüm adayların sektör/şehir/kanal/durum kırılımı.",
     content,
@@ -1129,6 +1251,7 @@ export function renderSettingsPage(
   return shell({
     active: "ayarlar",
     pendingCount: counts.pending_approval ?? 0,
+    onHoldCount: counts.on_hold ?? 0,
     title: "Ayarlar",
     subtitle: "Sistemin şu anki yapılandırması - burada yaptığın değişiklikler hemen etkili olur.",
     content,
@@ -1449,6 +1572,11 @@ const STYLES = `
   .status--ok { color: var(--ok); background: var(--ok-soft); }
   .status--bad { color: var(--bad); background: var(--bad-soft); }
   .status--neutral { color: var(--text-muted); background: var(--surface-2); }
+
+  .score-stars { font-size: 0.85rem; letter-spacing: 0.05em; }
+  .score-stars--ok { color: var(--ok); }
+  .score-stars--warn { color: var(--warn); }
+  .score-stars--bad { color: var(--bad); }
 
   .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.85rem 0; }
   .pill {

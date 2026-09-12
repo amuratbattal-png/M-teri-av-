@@ -25,6 +25,8 @@ export const candidates = sqliteTable("candidates", {
   contactLinkedin: text("contact_linkedin"),
   discoveredAt: text("discovered_at").notNull(),
   status: text("status").notNull().default("discovered"),
+  /** AI'ın 1-5 yıldız lead kalite puanı (bkz. apps/control/src/lib/relevance.ts) - NULL = hiç puanlanmadı. */
+  aiScore: integer("ai_score"),
   evaluationNotes: text("evaluation_notes"),
   proposalDraft: text("proposal_draft"),
   approvedBy: text("approved_by"),

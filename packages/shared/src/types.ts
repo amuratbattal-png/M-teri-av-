@@ -18,6 +18,8 @@ export const CANDIDATE_STATUSES = [
   "discovered",
   "evaluated",
   "proposal_drafted",
+  /** AI'ın 1-5 yıldız puanlaması düşük çıktığı (bkz. packages/control/src/lib/relevance.ts ON_HOLD_MAX_SCORE) adaylar - kaybolmaz, "Askıda" sayfasında görülüp elle onaya gönderilebilir ya da kalıcı reddedilebilir. */
+  "on_hold",
   "pending_approval",
   "approved",
   "rejected",
@@ -47,6 +49,8 @@ export interface Candidate {
   contactLinkedin: string | null;
   discoveredAt: string; // ISO timestamp
   status: CandidateStatus;
+  /** AI'ın 1-5 yıldız lead kalite puanı - bkz. apps/control/src/lib/relevance.ts. `null` = hiç puanlanmadı (AI atlandı/başarısız oldu). */
+  aiScore: number | null;
   evaluationNotes: string | null;
   proposalDraft: string | null;
   approvedBy: string | null;

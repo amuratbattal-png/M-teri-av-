@@ -41,16 +41,18 @@ pnpm exec wrangler d1 execute musteri-avcisi-db --remote \
 ```
 
 **Sonradan eklenen her migration için de bunu tekrarla** (`packages/db/migrations/`
-klasöründeki dosya adı sırasına göre, en son `0002_settings.sql` var - Ayarlar
-sayfasının kullandığı `settings` tablosu). `apps/control`'ü deploy etmeden
-ÖNCE ilgili migration'ı uygulamamak, `schema.ts`'de olup D1'de olmayan bir
-sütun/tabloya erişilince "D1_ERROR: no such column/table" ile worker'ın
-tamamen çökmesine yol açar (bir kere başımıza geldi - bkz. CLAUDE.md
-"follow_up_date" notu):
+klasöründeki dosya adı sırasına göre, en son `0003_ai_score.sql` var -
+adayların AI lead kalite puanını tutan `ai_score` sütunu). `apps/control`'ü
+deploy etmeden ÖNCE ilgili migration'ı uygulamamak, `schema.ts`'de olup
+D1'de olmayan bir sütun/tabloya erişilince "D1_ERROR: no such column/table"
+ile worker'ın tamamen çökmesine yol açar (bir kere başımıza geldi - bkz.
+CLAUDE.md "follow_up_date" notu):
 
 ```bash
 pnpm exec wrangler d1 execute musteri-avcisi-db --remote \
   --file=../../packages/db/migrations/0002_settings.sql
+pnpm exec wrangler d1 execute musteri-avcisi-db --remote \
+  --file=../../packages/db/migrations/0003_ai_score.sql
 ```
 
 ## 2. Outreach kuyruğunu oluştur

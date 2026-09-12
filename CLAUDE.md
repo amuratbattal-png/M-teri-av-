@@ -666,6 +666,68 @@ Neden bu yapı:
       - `apps/control` deploy edilip LinkedIn taraması tekrar denendiğinde,
       iş ilanı sonuçlarının artık "Reddedildi" durumunda (Onay
       bekleyenlerde DEĞİL) çıkması beklenir.
+- [x] **Yukarıdaki alaka filtresi, binary (alakalı/alakasız) yerine 1-5
+      YILDIZ bir "lead kalite puanı"na çevrildi + ayrı bir "Askıda"
+      paneli eklendi.** Sahibi "linkedinde aramalar hep iş ilanı oluyor...
+      askıda diye bir panel oluştur, oraya atsın... 5 yıldız kesin
+      müşteri 1 yıldız zaman kaybetmeye değmez olsun" dedi - hem
+      alakasız adayların "Reddedildi" (manuel reddedilenlerle aynı
+      kovaya) gitmesini istemedi, hem de basit evet/hayır yerine
+      dereceli bir puan istedi. Değişenler:
+      - `apps/control/src/lib/relevance.ts`: `assessRelevance` (bool)
+        yerine `assessLeadQuality` (1-5 `score` + `reason`) - aynı
+        NVIDIA çağrısı, sadece prompt/şema değişti. `ON_HOLD_MAX_SCORE = 2`
+        sabiti - bu ve altındaki puanlar "Askıda"ya gider. FAIL-OPEN
+        aynı kaldı: AI puanlayamazsa `score: undefined` döner (bu "1
+        yıldız" DEMEK DEĞİL) - `handleScanResults` puansız bir adayı
+        asla Askıda'ya atmaz, normal akışa bırakır.
+      - Yeni D1 sütunu: `candidates.ai_score` (nullable INTEGER,
+        migration `packages/db/migrations/0003_ai_score.sql` -
+        **deploy'dan önce uygulanmalı**, bkz. `docs/deployment.md`).
+        `packages/shared/src/types.ts` `Candidate.aiScore` +
+        `CANDIDATE_STATUSES`'a yeni `"on_hold"` durumu eklendi.
+      - `apps/control/src/routes/candidates.ts` `handleScanResults`:
+        puan ≤2 ise aday `on_hold` durumunda kaydedilir (teklif metni
+        ÜRETİLMEZ, gereksiz AI çağrısından kaçınılır),
+        `evaluationNotes`'a `"AI: düşük puan (N/5) - <gerekçe>"`
+        yazılır; puan 3+ (ya da puansız) ise eskisi gibi
+        `pending_approval`'a gider, `aiScore` her durumda saklanır
+        (onay bekleyenlerde de yıldız görünsün diye - sadece eşik altı
+        değil, HER adayda gösteriliyor).
+      - Yeni `apps/control/src/routes/approvals.ts` `handleUnhold`
+        (`POST /candidates/:id/unhold`) - Askıda'daki bir adayı sahibi
+        "bu aslında ilgili" deyip geri gönderdiğinde çağrılır: BURADA
+        ilk kez teklif metni üretilir, durum `pending_approval`'a
+        döner. Kalıcı reddetmek için ayrı bir endpoint YOK - mevcut
+        `handleReject` (`/candidates/:id/reject`) her durumdan
+        çalıştığı için Askıda'dan da doğrudan kullanılıyor.
+      - `apps/dashboard`: yeni **Askıda** sayfası (`/askida`,
+        `renderOnHoldPage` - Onaylananlar ile aynı desen: kart+popup,
+        sektör/şehir/kaynak/isim filtresi) + sidebar'a yeni nav öğesi
+        (onay bekleyenler gibi bir sayaç rozetiyle). "Tüm Adaylar"
+        sayfasından (onaylananlar gibi) Askıda'dakiler de çıkarıldı -
+        artık kendi sayfaları var. Her aday kartında/popup'ında AI
+        puanı varsa küçük bir ★★★★★ rozeti gösteriliyor
+        (`scoreStars()`) - kırmızı (≤2), sarı (3), yeşil (≥4). Askıda
+        kartlarında iki aksiyon: **"Onaya Gönder"** (`/candidates/:id/unhold`)
+        ve **"Kalıcı Reddet"** (mevcut `/reject/:id` formu yeniden
+        kullanıldı).
+      - **Henüz canlıda doğrulanmadı** - migration uygulanıp
+        `apps/control` + `apps/dashboard` deploy edildikten sonra
+        LinkedIn taraması tekrar denenip iş ilanlarının bu sefer
+        "Askıda" sayfasında (Onay bekleyenlerde DEĞİL) çıkıp çıkmadığı
+        kontrol edilmeli.
+      - **Yapılmayan kısım (sahibiyle netleşmeli):** sahibi ayrıca
+        "Google Maps'te yorumları da incelesin, yıldız versin" istedi -
+        bu, Google Places API'den gerçek müşteri YORUMLARINI çekmeyi
+        gerektiriyor (`places.reviews` alanı) ki bu, şu an kullanılan
+        Text Search çağrısının ücretsiz/düşük maliyetli SKU'sunun
+        DIŞINDA, Google'ın "Pro"/daha üst bir ücretlendirme katmanına
+        giriyor - sahibi Brave Search'ün aylık $5'ini bile reddetmişti
+        (bkz. Google Custom Search notu), bu yüzden ek maliyeti
+        onaylamadan bu kısım YAPILMADI. Şu anki puanlama Google Maps
+        adayları için de çalışıyor (isim/sektör/ihtiyaç etiketine göre)
+        ama yorumları GÖRMÜYOR.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

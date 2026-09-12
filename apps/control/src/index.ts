@@ -10,6 +10,7 @@ import {
 import {
   handleApprove,
   handleReject,
+  handleUnhold,
   handleBulkApprove,
   handleUpdateProposal,
   handleRegenerateProposal,
@@ -93,6 +94,11 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
   const rejectMatch = pathname.match(/^\/candidates\/([^/]+)\/reject$/);
   if (rejectMatch && method === "POST") {
     return handleReject(env, rejectMatch[1]);
+  }
+
+  const unholdMatch = pathname.match(/^\/candidates\/([^/]+)\/unhold$/);
+  if (unholdMatch && method === "POST") {
+    return handleUnhold(env, unholdMatch[1]);
   }
 
   const proposalMatch = pathname.match(/^\/candidates\/([^/]+)\/proposal$/);

@@ -3,6 +3,7 @@ import {
   renderApprovalsPage,
   renderAllCandidatesPage,
   renderApprovedPage,
+  renderOnHoldPage,
   renderSentPage,
   renderReportPage,
   renderSettingsPage,
@@ -70,7 +71,7 @@ async function fetchSettings(env: Env): Promise<SettingsData> {
  * var. Açık yönlendirme (open redirect) riskine karşı sadece bilinen
  * sayfa yollarına izin verilir.
  */
-const ALLOWED_REDIRECTS = new Set(["/", "/onaylananlar", "/adaylar"]);
+const ALLOWED_REDIRECTS = new Set(["/", "/onaylananlar", "/askida", "/adaylar"]);
 function safeRedirect(origin: string, value: unknown): Response {
   const path = typeof value === "string" && ALLOWED_REDIRECTS.has(value) ? value : "/";
   return Response.redirect(origin + path, 303);
@@ -109,6 +110,20 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
         fetchCandidates(env, "approved"),
       ]);
       return new Response(renderApprovedPage(counts, approved, sector, city, source, q), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/askida" && request.method === "GET") {
+      const sector = url.searchParams.get("sector") || undefined;
+      const city = url.searchParams.get("city") || undefined;
+      const source = url.searchParams.get("source") || undefined;
+      const q = url.searchParams.get("q") || undefined;
+      const [counts, onHold] = await Promise.all([
+        fetchStats(env),
+        fetchCandidates(env, "on_hold"),
+      ]);
+      return new Response(renderOnHoldPage(counts, onHold, sector, city, source, q), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
@@ -242,6 +257,18 @@ async function handleRoute(request: Request, env: Env, url: URL): Promise<Respon
     if (rejectMatch && request.method === "POST") {
       const form = await request.formData();
       await env.CONTROL_WORKER.fetch(`https://internal/candidates/${rejectMatch[1]}/reject`, {
+        method: "POST",
+      });
+      return safeRedirect(url.origin, form.get("redirect"));
+    }
+
+    // Askıda sayfasındaki "Onaya Gönder" - aday pending_approval'a geri
+    // döner, teklif metni ilk kez burada üretilir (bkz.
+    // apps/control/src/routes/approvals.ts handleUnhold).
+    const unholdMatch = url.pathname.match(/^\/candidates\/([^/]+)\/unhold$/);
+    if (unholdMatch && request.method === "POST") {
+      const form = await request.formData();
+      await env.CONTROL_WORKER.fetch(`https://internal/candidates/${unholdMatch[1]}/unhold`, {
         method: "POST",
       });
       return safeRedirect(url.origin, form.get("redirect"));

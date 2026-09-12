@@ -61,6 +61,45 @@ export async function handleReject(env: Env, candidateId: string): Promise<Respo
 }
 
 /**
+ * "Askıda" (on_hold - AI'ın düşük puanladığı, bkz. routes/candidates.ts
+ * ON_HOLD_MAX_SCORE) bir adayı sahibi "hayır, bu aslında ilgili" deyip
+ * normal onay akışına geri gönderdiğinde çağrılır. Askıda'ya
+ * atandığında hiç teklif metni üretilmemişti (gereksiz AI çağrısından
+ * kaçınmak için) - burada ilk kez üretiliyor, sonra normal
+ * `pending_approval` durumuna geçiyor. Kalıcı olarak reddetmek için
+ * (AI haklıymış) mevcut `handleReject` zaten her durumdan çalışıyor,
+ * ayrı bir endpoint gerekmiyor.
+ */
+export async function handleUnhold(env: Env, candidateId: string): Promise<Response> {
+  const db = createDb(env.DB);
+  const rows = await db.select().from(candidates).where(eq(candidates.id, candidateId)).limit(1);
+  const candidate = rows[0];
+  if (!candidate) return json({ error: "candidate not found" }, 404);
+  if (candidate.status !== "on_hold") {
+    return json({ error: `candidate not on hold (status=${candidate.status})` }, 409);
+  }
+
+  const cityLabel = (candidate.rawMetadata as Record<string, unknown> | null)?.cityLabel;
+  const proposalSettings = await getEffectiveSettings(env);
+  const proposal = await draftProposal(
+    {
+      candidateName: candidate.name,
+      needTags: candidate.needTags as NeedTag[],
+      sectorLabel: sectorLabel(candidate.sectorSlug),
+      cityLabel: typeof cityLabel === "string" ? cityLabel : undefined,
+    },
+    proposalSettings,
+  );
+
+  await db
+    .update(candidates)
+    .set({ status: "pending_approval", proposalDraft: proposal.text })
+    .where(eq(candidates.id, candidateId));
+
+  return json({ ok: true, candidateId });
+}
+
+/**
  * Toplu onay - dashboard'daki "Seçilenleri Onayla" için. Her aday
  * tek tek handleApprove ile aynı kurala tabi (sadece pending_approval
  * durumundakiler onaylanır, diğerleri sessizce atlanır).

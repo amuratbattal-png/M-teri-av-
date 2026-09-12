@@ -8,7 +8,7 @@ import {
 } from "@musteri-avcisi/shared";
 import type { Env } from "../env";
 import { draftProposal } from "../lib/proposal";
-import { assessRelevance } from "../lib/relevance";
+import { assessLeadQuality, ON_HOLD_MAX_SCORE } from "../lib/relevance";
 import { getEffectiveSettings } from "../lib/settings";
 
 function json(data: unknown, status = 200): Response {
@@ -27,16 +27,18 @@ function sectorLabel(slug: string): string {
 /**
  * Tarama worker'larının bulduğu adayları merkezi tabloya yazar.
  * Basit bir eşleşme ile (isim + sektör + kaynak) aynı adayı tekrar
- * eklemeyi engeller. Kaydetmeden önce NVIDIA ile bir "alakalı mı"
- * kontrolü (bkz. lib/relevance.ts assessRelevance) yapılır - özellikle
- * LinkedIn'de anahtar kelime taramasının çoğunlukla iş ilanı döndürmesi
- * sorununa karşı (bkz. CLAUDE.md). Alakasız bulunursa aday yine de
- * kaydedilir (kaybolmaz, denetlenebilir) ama doğrudan `rejected`
- * durumuna geçer - onay bekleyenler listesini kirletmez, teklif metni de
- * boşuna üretilmez. Alakalı bulunursa (ya da AI atlandıysa/başarısız
- * olduysa - FAIL-OPEN, bkz. assessRelevance) her zamanki gibi
- * `pending_approval`'a kadar işlenir - AMA HİÇBİR ŞEY GÖNDERİLMEZ,
- * gönderim sadece `/candidates/:id/approve` çağrıldığında tetiklenir.
+ * eklemeyi engeller. Kaydetmeden önce NVIDIA ile 1-5 yıldız bir "lead
+ * kalitesi" puanlaması (bkz. lib/relevance.ts assessLeadQuality) yapılır
+ * - özellikle LinkedIn'de anahtar kelime taramasının çoğunlukla iş ilanı
+ * döndürmesi sorununa karşı (bkz. CLAUDE.md). Puan `ON_HOLD_MAX_SCORE`
+ * (2) ve altındaysa aday yine de kaydedilir (kaybolmaz, denetlenebilir)
+ * ama doğrudan `on_hold` ("Askıda") durumuna geçer - onay bekleyenler
+ * listesini kirletmez, teklif metni de boşuna üretilmez; sahibi Askıda
+ * sayfasından isterse onaya gönderebilir isterse kalıcı reddedebilir.
+ * Puan 3+ ise (ya da AI hiç puanlamadıysa - FAIL-OPEN, bkz.
+ * assessLeadQuality) her zamanki gibi `pending_approval`'a kadar işlenir
+ * - AMA HİÇBİR ŞEY GÖNDERİLMEZ, gönderim sadece `/candidates/:id/approve`
+ * çağrıldığında tetiklenir.
  */
 export async function handleScanResults(request: Request, env: Env): Promise<Response> {
   const auth = request.headers.get("x-scan-secret")?.trim();
@@ -72,7 +74,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
     const now = new Date().toISOString();
     const cityLabel = result.rawMetadata?.cityLabel;
 
-    const relevance = await assessRelevance(
+    const quality = await assessLeadQuality(
       {
         candidateName: result.name,
         sectorLabel: sectorLabel(result.sectorSlug),
@@ -82,15 +84,15 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       },
       proposalSettings,
     );
-    if (relevance.error) {
-      console.warn(`AI alaka kontrolü atlandı/başarısız (${result.name}): ${relevance.error}`);
+    if (quality.error) {
+      console.warn(`AI lead puanlaması atlandı/başarısız (${result.name}): ${quality.error}`);
     }
 
-    if (!relevance.relevant) {
-      // Alakasız (ör. iş ilanı) - kaydedilir ama doğrudan reddedilir,
-      // teklif metni boşuna üretilmez ve onay bekleyenler listesi
-      // kirlenmez. "Tüm Adaylar" sayfasında hâlâ görülüp geri
-      // alınabilir (kaybolmaz).
+    if (typeof quality.score === "number" && quality.score <= ON_HOLD_MAX_SCORE) {
+      // Düşük puan (ör. iş ilanı) - kaydedilir ama doğrudan "Askıda"ya
+      // gider, teklif metni boşuna üretilmez ve onay bekleyenler listesi
+      // kirlenmez. Askıda sayfasından hâlâ onaya gönderilebilir ya da
+      // kalıcı reddedilebilir (kaybolmaz).
       await db.insert(candidates).values({
         id,
         name: result.name,
@@ -104,8 +106,9 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
         contactWhatsapp: result.contactWhatsapp ?? null,
         contactLinkedin: result.contactLinkedin ?? null,
         discoveredAt: now,
-        status: "rejected",
-        evaluationNotes: `AI: alakasız görünüyor - ${relevance.reason || "gerekçe yok"}`,
+        status: "on_hold",
+        aiScore: quality.score,
+        evaluationNotes: `AI: düşük puan (${quality.score}/5) - ${quality.reason || "gerekçe yok"}`,
         rawMetadata: result.rawMetadata ?? null,
       });
       created.push(id);
@@ -139,6 +142,7 @@ export async function handleScanResults(request: Request, env: Env): Promise<Res
       contactLinkedin: result.contactLinkedin ?? null,
       discoveredAt: now,
       status: "pending_approval",
+      aiScore: quality.score ?? null,
       proposalDraft: proposal.text,
       rawMetadata: result.rawMetadata ?? null,
     });
