@@ -305,10 +305,57 @@ function sleep(ms: number): Promise<void> {
  *    olsun olmasın, kendiliğinden ilerliyor - buton hâlâ duruyor, anlık
  *    tetiklemek/ilerlemeyi izlemek için.
  */
+export interface RescoreStatus {
+  /** Puanlanmamış (ai_score IS NULL) `pending_approval` aday sayısı. */
+  unscored: number;
+  /** Toplam `pending_approval` aday sayısı - yeni taramalarla büyüyebilir. */
+  totalPendingApproval: number;
+  /** (total - unscored) / total * 100, yuvarlanmış. total=0 ise 100. */
+  percentComplete: number;
+}
+
+/**
+ * "Cronun %'lik değerini göreyim, ne kadar kaldığını bilmek için" -
+ * sahibinin isteği. Sadece OKUMA yapar (NVIDIA çağrısı/yazma YOK) - hem
+ * Ayarlar sayfası her açıldığında (buton basılmadan) mevcut ilerlemeyi
+ * göstermek için, hem de `rescoreUnscoredBatch`'in kendi dönüşünde
+ * (aynı hesaplama, kod tekrarı olmasın diye buradan çağrılıyor).
+ *
+ * NOT: payda (`totalPendingApproval`) sabit değil - yeni taramalar sürekli
+ * yeni (zaten puanlı) aday eklediği için zamanla büyüyebilir. Bu, yüzdenin
+ * "şu an pending_approval'daki adayların ne kadarı puanlı" anlamına
+ * geldiği, "başlangıçtaki sabit backlog'un ne kadarı bitti" anlamına
+ * GELMEDİĞİ anlamına gelir - ama pratikte ikisi de aynı yöne (yüzde
+ * artışına) işaret ediyor, sahibinin "ne kadar kaldı" sorusuna yeterli.
+ */
+export async function computeRescoreStatus(env: Env): Promise<RescoreStatus> {
+  const db = createDb(env.DB);
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(candidates)
+    .where(eq(candidates.status, "pending_approval"));
+  const [{ unscored }] = await db
+    .select({ unscored: sql<number>`count(*)` })
+    .from(candidates)
+    .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)));
+
+  const totalNum = Number(total);
+  const unscoredNum = Number(unscored);
+  const percentComplete =
+    totalNum === 0 ? 100 : Math.round(((totalNum - unscoredNum) / totalNum) * 100);
+
+  return { unscored: unscoredNum, totalPendingApproval: totalNum, percentComplete };
+}
+
+/** Sadece okuma - manuel butona basmadan/cron beklemeden mevcut ilerlemeyi görmek için (Ayarlar sayfası her açılışta bunu çağırır). */
+export async function handleRescoreStatus(env: Env): Promise<Response> {
+  return json(await computeRescoreStatus(env));
+}
+
 export async function rescoreUnscoredBatch(
   env: Env,
   batchSize: number,
-): Promise<{ processed: number; movedToOnHold: number; remaining: number }> {
+): Promise<{ processed: number; movedToOnHold: number; remaining: number; percentComplete: number }> {
   const db = createDb(env.DB);
   const settings = await getEffectiveSettings(env);
 
@@ -399,12 +446,14 @@ export async function rescoreUnscoredBatch(
       .where(eq(candidates.id, candidate.id));
   }
 
-  const [{ remaining }] = await db
-    .select({ remaining: sql<number>`count(*)` })
-    .from(candidates)
-    .where(and(eq(candidates.status, "pending_approval"), isNull(candidates.aiScore)));
+  const status = await computeRescoreStatus(env);
 
-  return { processed: batch.length, movedToOnHold, remaining: Number(remaining) };
+  return {
+    processed: batch.length,
+    movedToOnHold,
+    remaining: status.unscored,
+    percentComplete: status.percentComplete,
+  };
 }
 
 /** HTTP sarmalayıcı - bkz. rescoreUnscoredBatch. Ayarlar sayfasındaki manuel buton bunu çağırır. */

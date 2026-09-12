@@ -1150,6 +1150,65 @@ Neden bu yapı:
       deploy edildikten sonra Ayarlar sayfası hiç açılmasa bile ~5
       dakika içinde Canlı Log'da `[Zamanlı görev] ...` satırının
       kendiliğinden belirmesi beklenir.
+- [x] **İki küçük istek daha: (1) "sistem içine yıldızlarla alakalı
+      filtre ekle", (2) "cronun %'lik değerini göreyim, ne kadar
+      kaldığını bilmek için".**
+      1. **AI Puanı (yıldız) filtresi** - Onaylar (`/`), Tüm Adaylar
+         (`/adaylar`), Onaylananlar (`/onaylananlar`) ve Askıda
+         (`/askida`) sayfalarındaki ortak `filterBar()`'a Sektör/Şehir/
+         Kaynak'ın yanına dördüncü bir **"AI Puanı"** dropdown'u eklendi
+         (`apps/dashboard/src/render.ts` `SCORE_FILTER_OPTIONS` - 5'ten
+         1'e yıldızlar + "Puansız"). Query param: `?score=<1-5|none>`.
+         Her 4 `render*Page` fonksiyonuna `selectedScore` parametresi
+         eklendi, filtre listesine `matchesScore(c.aiScore, selectedScore)`
+         koşulu eklendi (yeni yardımcı fonksiyon - "none" = `aiScore ==
+         null`, "1".."5" = tam eşleşme). `apps/dashboard/src/index.ts`'teki
+         4 route bloğuna `url.searchParams.get("score")` okuma + render
+         fonksiyonuna yeni son argüman olarak geçirme eklendi.
+      2. **Yeniden puanlama ilerlemesi artık % olarak görünüyor - buton
+         basılmadan/cron beklemeden bile.** Yeni
+         `apps/control/src/routes/candidates.ts` `computeRescoreStatus(env)`
+         - `pending_approval` toplam sayısı + puansız (`ai_score IS NULL`)
+         sayısını okuyup `percentComplete = round((total-unscored)/total*100)`
+         hesaplıyor (payda `pending_approval` toplamı sabit değil, yeni
+         taramalar sürekli zaten-puanlı yeni aday eklediği için zamanla
+         büyüyebilir - bu, yüzdenin "backlog'un ne kadarı bitti" değil
+         "şu an pending_approval'daki adayların ne kadarı puanlı" anlamına
+         geldiği anlamına geliyor, ama pratikte ikisi de aynı yöne işaret
+         ediyor). Yeni salt-okunur `GET /candidates/rescore-status`
+         (`handleRescoreStatus`) - hiçbir NVIDIA çağrısı/yazma yapmıyor,
+         sadece okuyor. `rescoreUnscoredBatch`'in dönüşüne de
+         `percentComplete` eklendi (aynı `computeRescoreStatus`'u
+         kullanıyor - DRY). `apps/control/src/routes/settings.ts`
+         `handleGetSettings` artık `GET /settings` yanıtına
+         `rescoreStatus: { unscored, totalPendingApproval, percentComplete }`
+         ekliyor - yani Ayarlar sayfası HER AÇILDIĞINDA (buton basılmadan,
+         cron beklemeden) mevcut ilerlemeyi gösterebiliyor.
+         `apps/dashboard/src/render.ts` "Bakım" kartına mevcut
+         `.bar-row`/`.bar-track`/`.bar-fill`/`.bar-count` CSS deseni
+         (Rapor sayfasındaki çubuk grafiklerle aynı) kullanılarak bir
+         ilerleme çubuğu eklendi (`#rescore-bar-fill`/`#rescore-bar-count`/
+         `#rescore-detail`) - sayfa yüklenirken sunucu tarafında
+         (`settings.rescoreStatus`) dolduruluyor, manuel "Şimdi Puanla"
+         butonuna basılırsa da JS'teki `rescoreUnscored()` her adımda
+         `data.percentComplete`'i okuyup çubuğu CANLI güncelliyor. Kart
+         metni de güncellendi - artık cron'un arka planda otomatik
+         çalıştığını, butonun sadece "beklemeden anlık tetiklemek" için
+         olduğunu açıklıyor.
+         **Doğrulama notu (render.ts `<script>` kuralı, bkz. CLAUDE.md'nin
+         tekrar eden JS-escape dersi):** bu değişiklikte YENİ JS eklendi
+         (`rescoreUnscored`'a 4 satır) - kurala uyulup sadece tek tırnaklı
+         string birleştirme kullanıldı (çıplak kaçış dizisi/backtick YOK),
+         `tsc` ile transpile edilip gerçekçi verilerle (`rescoreStatus`
+         dahil) `renderSettingsPage` render edilip çıkan `<script>` bloğu
+         `node --check` ile doğrulandı (hatasız) - ayrıca yeni `score`
+         parametresiyle diğer 4 sayfa fonksiyonu da örnek verilerle
+         çağrılıp hata vermediği ve `score-filter` alanının HTML'de
+         gerçekten göründüğü teyit edildi.
+      **Henüz canlıda doğrulanmadı** - `apps/control` VE `apps/dashboard`
+      deploy edildikten sonra Ayarlar sayfasında ilerleme çubuğunun (ve
+      diğer sayfalarda "AI Puanı" dropdown'ının) göründüğü kontrol
+      edilmeli.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

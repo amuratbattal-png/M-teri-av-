@@ -7,6 +7,7 @@ import {
   handleStats,
   handleReport,
   handleRescoreUnscored,
+  handleRescoreStatus,
   rescoreUnscoredBatch,
 } from "./routes/candidates";
 import {
@@ -67,6 +68,13 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 
   if (pathname === "/candidates/rescore-unscored" && method === "POST") {
     return handleRescoreUnscored(env);
+  }
+
+  // Sadece okuma - "cronun %'lik değerini göreyim" isteği (bkz. CLAUDE.md):
+  // Ayarlar sayfası her açıldığında (buton basılmadan/cron beklemeden)
+  // mevcut ilerlemeyi göstermek için.
+  if (pathname === "/candidates/rescore-status" && method === "GET") {
+    return handleRescoreStatus(env);
   }
 
   if (pathname === "/settings" && method === "GET") {
@@ -275,7 +283,7 @@ export default {
               env,
               "info",
               "lead-quality",
-              `[Zamanlı görev] ${result.processed} aday yeniden puanlandı (${result.movedToOnHold} askıya alındı), ${result.remaining} kaldı.`,
+              `[Zamanlı görev] ${result.processed} aday yeniden puanlandı (${result.movedToOnHold} askıya alındı), ${result.remaining} kaldı (%${result.percentComplete} tamamlandı).`,
             );
           }
         } catch (err) {

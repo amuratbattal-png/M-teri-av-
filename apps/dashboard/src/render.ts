@@ -383,6 +383,9 @@ function shell(opts: {
     // bu yüzden "remaining > 0" kaldıkça tekrar tekrar çağırıyoruz.
     function rescoreUnscored(btn) {
       var statusEl = document.getElementById('rescore-status');
+      var barFillEl = document.getElementById('rescore-bar-fill');
+      var barCountEl = document.getElementById('rescore-bar-count');
+      var detailEl = document.getElementById('rescore-detail');
       var original = btn.textContent;
       btn.disabled = true;
       var totalProcessed = 0;
@@ -395,6 +398,13 @@ function shell(opts: {
             totalMoved += data.movedToOnHold || 0;
             if (statusEl) {
               statusEl.textContent = totalProcessed + ' aday yeniden puanlandı (' + totalMoved + ' askıda), kalan: ' + data.remaining;
+            }
+            // Cronun %'lik değeri - bkz. CLAUDE.md. Manuel buton her adımda
+            // aynı sayıyı üretiyor, sayfa açıkken canlı ilerleme görülsün diye.
+            if (typeof data.percentComplete === 'number') {
+              if (barFillEl) barFillEl.style.width = data.percentComplete + '%';
+              if (barCountEl) barCountEl.textContent = '%' + data.percentComplete;
+              if (detailEl) detailEl.textContent = data.remaining + ' puansız aday kaldı.';
             }
             if (data.remaining > 0 && data.processed > 0) {
               setTimeout(step, 500);
@@ -700,13 +710,15 @@ export function renderApprovalsPage(
   selectedCity?: string,
   selectedSource?: string,
   selectedQuery?: string,
+  selectedScore?: string,
 ): string {
   const filtered = pending.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity) &&
-      (!selectedSource || c.sourceChannel === selectedSource),
+      (!selectedSource || c.sourceChannel === selectedSource) &&
+      matchesScore(c.aiScore, selectedScore),
   );
   const sortedPending = [...filtered].sort((a, b) =>
     a.discoveredAt < b.discoveredAt ? 1 : a.discoveredAt > b.discoveredAt ? -1 : 0,
@@ -723,7 +735,7 @@ export function renderApprovalsPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onay bekleyenler</h2>
-    ${filterBar({ action: "/", selectedSector, selectedCity, selectedSource, selectedQuery })}
+    ${filterBar({ action: "/", selectedSector, selectedCity, selectedSource, selectedScore, selectedQuery })}
     ${bulkActionBar("/")}
     ${list}
   `;
@@ -741,13 +753,34 @@ export function renderApprovalsPage(
 // --- Tüm Adaylar sayfası --------------------------------------------------
 
 /** Sektör + şehir + kaynak kanalı + isim araması filtre çubuğu - "Tümü" + PARALLEL_TRACK + alfabetik SECTORS / 81 il / tüm tarama kanalları (google_maps, linkedin, yahoo_search, vb.). */
+/** AI puanı (1-5 yıldız) filtresi seçenekleri - bkz. filterBar `scoreOptions`. Sıra en yüksekten en düşüğe, en altta "Puansız" (aiScore null - model ölüyken kaydedilmiş eski adaylar, bkz. CLAUDE.md). */
+const SCORE_FILTER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "5", label: "★★★★★ (5)" },
+  { value: "4", label: "★★★★☆ (4)" },
+  { value: "3", label: "★★★☆☆ (3)" },
+  { value: "2", label: "★★☆☆☆ (2)" },
+  { value: "1", label: "★☆☆☆☆ (1)" },
+  { value: "none", label: "Puansız" },
+];
+
 function filterBar(opts: {
   action: string;
   selectedSector?: string;
   selectedCity?: string;
   selectedSource?: string;
+  selectedScore?: string;
   selectedQuery?: string;
 }): string {
+  const scoreOptions = [
+    `<option value=""${opts.selectedScore ? "" : " selected"}>Tüm puanlar</option>`,
+    ...SCORE_FILTER_OPTIONS.map(
+      (o) =>
+        `<option value="${o.value}"${
+          opts.selectedScore === o.value ? " selected" : ""
+        }>${o.label}</option>`,
+    ),
+  ].join("");
+
   const sourceOptions = [
     `<option value=""${opts.selectedSource ? "" : " selected"}>Tüm kaynaklar</option>`,
     ...SOURCE_CHANNELS.map(
@@ -798,8 +831,17 @@ function filterBar(opts: {
       <select id="city-filter" name="city" onchange="this.form.submit()">${cityOptions}</select>
       <label for="source-filter">Kaynak</label>
       <select id="source-filter" name="source" onchange="this.form.submit()">${sourceOptions}</select>
+      <label for="score-filter">AI Puanı</label>
+      <select id="score-filter" name="score" onchange="this.form.submit()">${scoreOptions}</select>
       <button type="submit" class="btn--filter">Ara</button>
     </form>`;
+}
+
+/** `?score=` query param'ını bir adayın aiScore'una karşı test eder - "none" = puansız (null), "1".."5" = tam eşleşme. */
+function matchesScore(aiScore: number | null | undefined, selectedScore?: string): boolean {
+  if (!selectedScore) return true;
+  if (selectedScore === "none") return aiScore == null;
+  return aiScore === Number(selectedScore);
 }
 
 export function renderAllCandidatesPage(
@@ -809,6 +851,7 @@ export function renderAllCandidatesPage(
   selectedCity?: string,
   selectedSource?: string,
   selectedQuery?: string,
+  selectedScore?: string,
 ): string {
   // Onaylanmış (renderApprovedPage) ve Askıda (renderOnHoldPage) adaylar
   // artık kendi sayfalarında - burada tekrar gösterilmiyor.
@@ -819,7 +862,8 @@ export function renderAllCandidatesPage(
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity) &&
-      (!selectedSource || c.sourceChannel === selectedSource),
+      (!selectedSource || c.sourceChannel === selectedSource) &&
+      matchesScore(c.aiScore, selectedScore),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
@@ -832,7 +876,7 @@ export function renderAllCandidatesPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Tüm adaylar (${sorted.length})</h2>
-    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedSource, selectedQuery })}
+    ${filterBar({ action: "/adaylar", selectedSector, selectedCity, selectedSource, selectedScore, selectedQuery })}
     ${bulkActionBar("/adaylar")}
     ${list}
   `;
@@ -856,13 +900,15 @@ export function renderApprovedPage(
   selectedCity?: string,
   selectedSource?: string,
   selectedQuery?: string,
+  selectedScore?: string,
 ): string {
   const filtered = approved.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity) &&
-      (!selectedSource || c.sourceChannel === selectedSource),
+      (!selectedSource || c.sourceChannel === selectedSource) &&
+      matchesScore(c.aiScore, selectedScore),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
@@ -877,7 +923,7 @@ export function renderApprovedPage(
   const content = `
     <div class="tiles">${statTiles(counts)}</div>
     <h2 class="section-title">Onaylananlar (${sorted.length})</h2>
-    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedSource, selectedQuery })}
+    ${filterBar({ action: "/onaylananlar", selectedSector, selectedCity, selectedSource, selectedScore, selectedQuery })}
     ${list}
   `;
 
@@ -909,13 +955,15 @@ export function renderOnHoldPage(
   selectedCity?: string,
   selectedSource?: string,
   selectedQuery?: string,
+  selectedScore?: string,
 ): string {
   const filtered = onHold.filter(
     (c) =>
       matchesQuery(c.name, selectedQuery) &&
       (!selectedSector || c.sectorSlug === selectedSector) &&
       (!selectedCity || candidateCitySlug(c) === selectedCity) &&
-      (!selectedSource || c.sourceChannel === selectedSource),
+      (!selectedSource || c.sourceChannel === selectedSource) &&
+      matchesScore(c.aiScore, selectedScore),
   );
   const sorted = [...filtered].sort((a, b) => (a.discoveredAt < b.discoveredAt ? 1 : -1));
   const list = candidateListOrEmpty(
@@ -936,7 +984,7 @@ export function renderOnHoldPage(
       "Onaya Gönder" ile normal akışa geri döndürebilir, "Kalıcı Reddet"
       ile AI'ı onaylayabilirsin.
     </p>
-    ${filterBar({ action: "/askida", selectedSector, selectedCity, selectedSource, selectedQuery })}
+    ${filterBar({ action: "/askida", selectedSector, selectedCity, selectedSource, selectedScore, selectedQuery })}
     ${list}
   `;
 
@@ -1247,6 +1295,8 @@ export interface SettingsData {
   proposalTemplate: string;
   aiSystemPrompt: string;
   catalog: CatalogFieldView[];
+  /** "Cronun %'lik değerini göreyim" isteği - bkz. CLAUDE.md. Sayfa her açıldığında (buton basılmadan) gösterilir. */
+  rescoreStatus: { unscored: number; totalPendingApproval: number; percentComplete: number };
 }
 
 /** Jenerik katalog alanı için tek input/textarea - form alanı adı `field__<key>` (bkz. dashboard index.ts POST /ayarlar). */
@@ -1431,8 +1481,14 @@ export function renderSettingsPage(
 
     <div class="report-card" style="margin-top:1.5rem">
       <h3 class="report-card-title">Bakım</h3>
-      <p class="muted">NVIDIA modeli bir süre kullanılamaz durumdaydı (bkz. CLAUDE.md "model end-of-life" olayı) - bu dönemde hiç puanlanmadan onay bekleyenlere eklenmiş adayları artık çalışan modelle yeniden puanlar (ve teklif metinlerini de yeniden yazdırır). Çok sayıda aday varsa birkaç saniye sürebilir, sayfadan ayrılma.</p>
-      <button type="button" class="btn--filter" onclick="rescoreUnscored(this)">Puanlanmamış Adayları Yeniden Puanla</button>
+      <p class="muted">NVIDIA modeli bir süre kullanılamaz durumdaydı (bkz. CLAUDE.md "model end-of-life" olayı) - bu dönemde hiç puanlanmadan onay bekleyenlere eklenmiş adaylar artık her 5 dakikada bir, bu sayfa kapalı olsa bile, arka planda (bir Cloudflare Cron Trigger ile) otomatik yeniden puanlanıyor. Aşağıdaki buton sadece beklemeden anlık tetiklemek içindir.</p>
+      <div class="bar-row" style="margin:0.75rem 0 1rem">
+        <span class="bar-label">İlerleme</span>
+        <span class="bar-track"><span id="rescore-bar-fill" class="bar-fill" style="width:${settings.rescoreStatus.percentComplete}%"></span></span>
+        <span id="rescore-bar-count" class="bar-count">%${settings.rescoreStatus.percentComplete}</span>
+      </div>
+      <p id="rescore-detail" class="muted" style="margin:0 0 1rem">${settings.rescoreStatus.unscored} puansız aday kaldı (${settings.rescoreStatus.totalPendingApproval} onay bekleyenden).</p>
+      <button type="button" class="btn--filter" onclick="rescoreUnscored(this)">Şimdi Puanla (Manuel)</button>
       <p id="rescore-status" class="muted" style="margin-top:0.5rem"></p>
     </div>
   `;
