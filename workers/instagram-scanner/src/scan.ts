@@ -93,6 +93,36 @@ interface InstagramMedia {
  *     çevriliyor; gerçek kullanıcıların kullandığı hashtag'lerle birebir
  *     eşleşeceğinin garantisi yok.
  */
+/**
+ * `Set-Cookie` yanıt header'larından `isim=değer` çiftlerini çıkarır
+ * (Path/Secure/HttpOnly/Expires gibi öznitelikleri ATAR). Cloudflare
+ * Workers'ın `Headers.getSetCookie()` metodu (Fetch spesifikasyonundaki
+ * standart yöntem) birden fazla Set-Cookie'yi AYRI stringler olarak
+ * döner - `get("set-cookie")`'nin aksine (o, hepsini virgülle birleştirip
+ * bozuyor).
+ */
+function extractSetCookiePairs(headers: Headers): Record<string, string> {
+  // `getSetCookie()` (Fetch spesifikasyonunda standart, birden fazla
+  // Set-Cookie'yi ayrı ayrı döner) Cloudflare Workers runtime'ında VAR
+  // ama bu repodaki `@cloudflare/workers-types` sürümünün tip
+  // tanımlarında henüz YOK - bu yüzden `unknown` üzerinden elle cast
+  // ediliyor (paketi güncellemek yerine, tek satırlık kırılgan bir tip
+  // boşluğu daha güvenli).
+  const headersWithGetSetCookie = headers as unknown as { getSetCookie?: () => string[] };
+  const raw =
+    typeof headersWithGetSetCookie.getSetCookie === "function"
+      ? headersWithGetSetCookie.getSetCookie()
+      : [];
+  const pairs: Record<string, string> = {};
+  for (const cookieStr of raw) {
+    const [nameValue] = cookieStr.split(";");
+    const eq = nameValue.indexOf("=");
+    if (eq === -1) continue;
+    pairs[nameValue.slice(0, eq).trim()] = nameValue.slice(eq + 1).trim();
+  }
+  return pairs;
+}
+
 async function searchInstagram(
   keyword: string,
   sessionCookie: string,
@@ -101,24 +131,50 @@ async function searchInstagram(
   const hashtag = toHashtag(keyword);
   const requestUrl = `${HASHTAG_INFO_URL}?tag_name=${encodeURIComponent(hashtag)}`;
 
-  const res = await fetch(requestUrl, {
-    // Çerez geçersiz/eksikse Instagram isteği /accounts/login/'a
-    // yönlendiriyor - ÖNCEDEN bu otomatik takip ediliyordu, Instagram'ın
-    // login sayfası da kendi içinde tekrar yönlendirdiği için sonsuz bir
-    // döngüye girip çirkin bir "Too many redirects" hatasına dönüşüyordu
-    // (canlı testte görüldü). `redirect: "manual"` ile ilk yönlendirmeyi
-    // KENDİMİZ yakalayıp net bir "oturum geçersiz" mesajına çeviriyoruz.
-    redirect: "manual",
-    headers: {
-      Cookie: `sessionid=${sessionCookie}; csrftoken=${csrfToken}`,
-      "x-csrftoken": csrfToken,
-      "x-ig-app-id": IG_APP_ID,
-      "x-requested-with": "XMLHttpRequest",
-      accept: "*/*",
-      referer: "https://www.instagram.com/",
-      "user-agent": BROWSER_USER_AGENT,
-    },
-  });
+  const baseCookies: Record<string, string> = { sessionid: sessionCookie, csrftoken: csrfToken };
+
+  const doFetch = (cookies: Record<string, string>) => {
+    const cookieHeader = Object.entries(cookies)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+    return fetch(requestUrl, {
+      // Çerez geçersiz/eksikse Instagram isteği /accounts/login/'a
+      // yönlendiriyor - ÖNCEDEN bu otomatik takip ediliyordu, Instagram'ın
+      // login sayfası da kendi içinde tekrar yönlendirdiği için sonsuz bir
+      // döngüye girip çirkin bir "Too many redirects" hatasına dönüşüyordu
+      // (canlı testte görüldü). `redirect: "manual"` ile yönlendirmeleri
+      // KENDİMİZ yakalıyoruz - aşağıda en fazla BİR kez elle takip
+      // ediyoruz (çerez tazeleme deseni için, bkz. aşağıdaki not).
+      redirect: "manual",
+      headers: {
+        Cookie: cookieHeader,
+        "x-csrftoken": cookies.csrftoken ?? csrfToken,
+        "x-ig-app-id": IG_APP_ID,
+        "x-requested-with": "XMLHttpRequest",
+        accept: "*/*",
+        referer: "https://www.instagram.com/",
+        "user-agent": BROWSER_USER_AGENT,
+      },
+    });
+  };
+
+  let res = await doFetch(baseCookies);
+  let retried = false;
+
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location") ?? "(location header yok)";
+    const freshCookies = extractSetCookiePairs(res.headers);
+    // CANLI TESTTE GÖRÜLEN DESEN: Instagram, hedefi İSTEĞİN KENDİSİYLE
+    // AYNI olan bir 302 dönüp birkaç Set-Cookie (csrftoken/mid/ig_did
+    // gibi tazelenmiş değerler) veriyor - bu "oturum geçersiz" değil,
+    // bir çerez tazeleme/bot kontrolü adımı; gerçek bir tarayıcı bu
+    // çerezleri alıp AYNI isteği otomatik tekrar atar. Biz de bunu
+    // TAM OLARAK bir kez (sonsuz döngüye girmeden) yapıyoruz.
+    if (location === requestUrl && Object.keys(freshCookies).length > 0) {
+      res = await doFetch({ ...baseCookies, ...freshCookies });
+      retried = true;
+    }
+  }
 
   if (res.status >= 300 && res.status < 400) {
     const location = res.headers.get("location") ?? "(location header yok)";
@@ -137,11 +193,13 @@ async function searchInstagram(
         hashtag,
         status: res.status,
         apiError:
-          `Instagram isteği yönlendirdi: ${location}. ` +
+          `Instagram isteği ${retried ? "çerez tazeleme denemesinden SONRA da " : ""}yönlendirdi: ${location}. ` +
           `Yanıt header'ları: ${headerNames} (Set-Cookie ${hasSetCookie ? "VAR" : "yok"}). ` +
-          (location === requestUrl
-            ? "Hedef isteğin kendisiyle AYNI - muhtemelen bir çerez tazeleme/bot kontrolü adımı, oturum kesin geçersiz demek olmayabilir."
-            : `sessionid/csrftoken değerlerini kontrol et (tırnaksız, eksiksiz kopyalandığından ve hâlâ Instagram'a giriş yapmış olduğundan emin ol).`),
+          (retried
+            ? "Çerez tazeleme denemesi de işe yaramadı - oturum muhtemelen gerçekten geçersiz, sessionid/csrftoken'ı yeniden al."
+            : location === requestUrl
+              ? "Hedef isteğin kendisiyle AYNI ama Set-Cookie yoktu, tekrar denenemedi."
+              : `sessionid/csrftoken değerlerini kontrol et (tırnaksız, eksiksiz kopyalandığından ve hâlâ Instagram'a giriş yapmış olduğundan emin ol).`),
         parsedCount: 0,
       },
     };

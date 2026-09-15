@@ -1791,12 +1791,42 @@ Neden bu yapı:
       oturumların geçersiz kılınıp yeniden giriş yapılması, ve bundan
       sonra çerezlerin SADECE Ayarlar panelindeki forma (chat'e değil)
       girilmesi söylendi.
-      **Henüz canlıda doğrulanmadı** - sahibi oturumları kapatıp yeni
-      `sessionid`/`csrftoken` alıp Ayarlar'a girecek, `instagram-scanner`
-      yukarıdaki `redirect: "manual"` düzeltmesiyle yeniden deploy
-      edilip `/run-now` tekrar denenecek - beklenen ya net bir "oturum
-      geçersiz" mesajı (yeni çerez de kabul edilmezse, LinkedIn'deki gibi
-      canlı iterasyon gerekir) ya da gerçek bulunan sonuçlar.
+      **`redirect: "manual"` düzeltmesi deploy edildi, CANLI TEST EDİLDİ -
+      artık gerçek bir Instagram sinyaline ulaşıldı, ama beklenenden
+      FARKLI bir desen çıktı: iki KEZ.** İlk canlı denemede (yeni
+      `sessionid`/`csrftoken` ile) "Too many redirects" yerine temiz bir
+      TEK 302 geldi - ama hedef (`location`), İSTEĞİN KENDİSİYLE
+      BİREBİR AYNI URL'ydi (login sayfasına değil). Yanıt header'larını
+      görmek için (`headerNames`/Set-Cookie var/yok) bir teşhis eklendi
+      (DEĞERLER değil, sadece İSİMLER - bir Set-Cookie değeri yeni bir
+      oturum jetonu taşıyabilir, bunu loglamak ikinci bir sızıntı riski
+      olurdu). İkinci canlı denemede bu teşhis şunu gösterdi: yanıtta
+      **4 ayrı `Set-Cookie`** header'ı vardı. **Yorum:** bu "oturum
+      geçersiz" değil, Instagram'ın bilinen bir bot/çerez kontrolü
+      deseni - yeni çerezler (muhtemelen tazelenmiş `csrftoken`/`mid`/
+      `ig_did`) verip istemcinin AYNI isteği bu çerezlerle tekrar
+      atmasını bekliyor; gerçek bir tarayıcı bunu otomatik yapar, biz
+      `redirect: "manual"` ile durduğumuz için yapmıyorduk.
+      **Düzeltme:** `searchInstagram` yeniden yapılandırıldı -
+      `extractSetCookiePairs()` (Cloudflare Workers'ın standart
+      `Headers.getSetCookie()` metodunu kullanıyor - bu repodaki
+      `@cloudflare/workers-types` sürümünde tip tanımı YOK, `unknown`
+      üzerinden elle cast edildi) ile Set-Cookie'lerden `isim=değer`
+      çiftleri çıkarılıyor; hedef isteğin kendisiyle AYNI VE en az bir
+      Set-Cookie varsa, bu yeni çerezlerle **TAM OLARAK BİR KEZ** (sonsuz
+      döngüye girmeden) aynı istek tekrar atılıyor. Tekrar denemeden
+      sonra hâlâ bir yönlendirme geliyorsa artık gerçekten "oturum
+      geçersiz" olarak net bir mesajla raporlanıyor. Node'da 3 senaryo
+      (retry ile başarı/2 fetch çağrısı, retry sonrası da başarısız/
+      TAM 2 çağrı-sonsuz döngü yok, login-redirect'te Set-Cookie yoksa
+      retry hiç denenmez/TAM 1 çağrı) sentetik `fetch()` mock'larıyla
+      test edildi, üçü de geçti - özellikle "tam 2 çağrı" kontrolü
+      sonsuz döngüye karşı bir güvence.
+      **Henüz canlıda doğrulanmadı** - bu düzeltme deploy edilip
+      `/run-now` tekrar denenecek; beklenen ya gerçek bulunan sonuçlar
+      (çerez tazeleme denemesi işe yararsa) ya da (işe yaramazsa) artık
+      GERÇEKTEN net bir "oturum geçersiz" mesajı - o durumda sahibinin
+      Instagram oturumunu tazelemesi (yeniden giriş) gerekecek.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
