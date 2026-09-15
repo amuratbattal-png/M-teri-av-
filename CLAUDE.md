@@ -1632,6 +1632,97 @@ Neden bu yapı:
       dokunmadan, o zaten çalışıyor); çalışmazsa tek kalan yol Google
       Cloud Destek'e bilet açmak. **Henüz denenmedi, sahibiyle bir
       sonraki oturumda devam edilmeli.**
+- [ ] **Bağımsız hesap testi YANLIŞLIKLA aynı hesapta tekrarlandı - gerçek
+      bağımsız test HÂLÂ yapılmadı.** Sahibi "test ettin mi?" diye sordu -
+      bu sandbox'ın Google API'lerine ağ erişimi olmadığı hatırlatıldı,
+      testin sahibi tarafından yapılması gerektiği netleştirildi. Sahibi
+      `403 PERMISSION_DENIED` hatasını tekrar paylaştı ama bir ekran
+      görüntüsü hâlâ "Musteri Avcisi Search" projesinin (`API key 1,
+      API key 2` filtresinden tanınıyor) Custom Search metrik sayfasını
+      gösteriyordu - yani bağımsız hesap testi DEĞİL, bilinen projenin
+      tekrar gözden geçirilmesiydi. Doğrudan soruldu, **sahibi "hala aynı
+      hesaptayım" dedi** - yukarıdaki "bağımsız/kişisel hesapla dene"
+      testi HENÜZ YAPILMADI. Adımlar (yeni hesap + yeni proje + yeni cx,
+      "No organization") tekrar netleştirildi. **Hâlâ bekleniyor.**
+- [x] **Instagram'ı LinkedIn'deki gibi bir KEŞİF kanalı yapma isteği
+      karşılandı - kod yazıldı, HENÜZ CANLI TEST EDİLMEDİ.** Sahibi
+      "konu sadece instagramı olanları kontrol et değil, ordan da müşteri
+      bul, LinkedIn'deki gibi" dedi - önceki "firmanın kendi sitesinde
+      link verdiği Instagram/Facebook/TikTok profilini oku" özelliği
+      (bkz. yukarıdaki not) bir ZENGİNLEŞTİRME'ydi, bu istek YENİ bir
+      KEŞİF kanalı. Üç platform için dürüst bir risk değerlendirmesi
+      yapılıp `AskUserQuestion` ile soruldu (Instagram: LinkedIn'deki
+      gibi iç API + oturum çerezi ama hesap kısıtlanma riski LinkedIn'den
+      YÜKSEK; TikTok: düz `fetch()` ile ÇALIŞMIYOR, imzalı parametreler
+      gerektiriyor - gerçekçi tek yol ücretli Cloudflare Browser
+      Rendering; Facebook: 2018'den beri pratik olarak kilitli, gerçekçi
+      bir yöntem yok) - **sahibi "Instagram (kendi hesap çerezinle)"yi
+      seçti**, TikTok/Facebook'a dokunulmadı.
+      `workers/instagram-scanner/src/scan.ts` tamamen yeniden yazıldı
+      (eski `INSTAGRAM_API_KEY`/Graph API TODO'su hiç gerçek koda
+      dönüşmemişti, doğrudan silinip yerine gerçek entegrasyon
+      yazıldı) - `linkedin-scanner`'daki AYNI desen:
+      - Instagram'ın da resmi bir arama API'si RASTGELE hashtag/kullanıcı
+        taramasına izin vermiyor (Meta Graph API sadece sahibinin
+        yönettiği hesap için) - bu yüzden Instagram'ın kendi web
+        arayüzünün kullandığı, dokümante EDİLMEMİŞ `tags/web_info` iç
+        API'sine, sahibinin `sessionid` oturum çerezi ile istek atılıyor
+        (açık kaynak Instagram istemcilerinden - ör. instagrapi - bilinen
+        bir desen, `x-ig-app-id: 936619743392459` de bu istemcilerde
+        bilinen sabit bir genel değer, gizli değil).
+      - **Önemli fark, LinkedIn'e göre:** LinkedIn serbest metin arama
+        yapıyor, Instagram SADECE hashtag arıyor - bu yüzden
+        `packages/shared/src/keywords.ts` `SOCIAL_KEYWORDS`'teki çok
+        kelimeli Türkçe ifadeler (`"yeni şirket"` gibi) yeni bir
+        `toHashtag()` fonksiyonuyla boşluksuz/Türkçe-karaktersiz bir
+        hashtag'e çevriliyor (`"yenisirket"`) - gerçek kullanıcıların
+        attığı hashtag'lerle birebir eşleşeceğinin GARANTİSİ yok, kaba
+        bir yaklaşım.
+      - Yanıt şekli (`data.recent.sections[].layout_content.medias[].media`,
+        `top.sections` yedek olarak) CANLI TEST EDİLMEDİ - açık kaynak
+        istemcilerden bilinen bir şekil, LinkedIn'deki gibi
+        `debug.rawSample` (parser sonuç bulamazsa ham yanıtın ilk
+        1200 karakteri) canlı iterasyon için hazır.
+      - Çerez geçersizse Instagram JSON yerine bir giriş (login) HTML
+        sayfası döndürüyor - bu `JSON.parse` hatasıyla yakalanıp net bir
+        "muhtemelen çerez geçersiz" mesajına çevriliyor.
+      - Aynı hashtag'de birden fazla gönderi paylaşmış bir kullanıcı
+        tekilleştiriliyor (kullanıcı adına göre).
+      - `linkedin-scanner` ile AYNI desen: `/run-now` (manuel tetikleme),
+        sessiz arıza bildirimi (3 art arda hata → uyarı e-postası, mesaj
+        metninde "hesap kısıtlandı" ihtimali de LinkedIn'den farklı
+        olarak açıkça anılıyor), `withSettingOverrides` ile Ayarlar
+        panelinden `instagram_session_cookie`/`instagram_csrf_token`
+        okuma (`apps/control/src/lib/settings-catalog.ts` - eski,
+        hiç gerçek koda bağlanmamış `instagram_api_key` alanı bu
+        ikisiyle DEĞİŞTİRİLDİ, geriye dönük uyumluluk için ayrı
+        bırakılmadı çünkü zaten hiçbir yerden okunmuyordu).
+      - `wrangler.toml`: `INSTAGRAM_SESSION_COOKIE`/`INSTAGRAM_CSRF_TOKEN`
+        da LinkedIn'deki gibi `wrangler secret put` İLE DEĞİL, Ayarlar
+        panelinden (D1) girilecek şekilde tasarlandı.
+      **Doğrulama:** `pnpm --filter @musteri-avcisi/shared` ve
+      `@musteri-avcisi/worker-instagram-scanner` ve `@musteri-avcisi/control`
+      typecheck temiz; her iki worker/app `wrangler deploy --dry-run` ile
+      bundle edildi; `scanNextKeyword` gerçekçi bir sentetik `tags/web_info`
+      yanıtıyla (node'da, stub'lanmış `@musteri-avcisi/shared` ile
+      transpile edilip) test edildi - hashtag dönüşümü, header'lar
+      (Cookie/x-ig-app-id/x-csrftoken), parse + tekilleştirme, `full_name`
+      yoksa `username`'e düşme, eksik çerez durumu, HTML/login sayfası
+      (JSON parse hatası) durumu, ve HTTP hata (429) durumu - hepsi
+      beklenen şekilde çalıştı.
+      **Bilerek yapılmayan kısım:** `packages/shared/src/config.ts`
+      `activeSourceChannels`'e "instagram" HENÜZ eklenmedi - LinkedIn/
+      google_maps ile aynı prensip, önce canlı doğrulama gerekiyor
+      (sahibi çerezi girip `/run-now`'ı deneyip sonucu/hatayı
+      paylaşacak, ona göre `parseInstagramResults` ayarlanacak). Ayrıca
+      `lib/verify.ts`'e bir doğrulayıcı EKLENMEDİ - LinkedIn'de de yok,
+      aynı gerekçe (test edilecek basit bir "anahtar geçerli mi" uç
+      noktası değil, gerçek entegrasyon canlı doğrulanmadan uydurma bir
+      sonuç göstermek yanıltıcı olur).
+      **Henüz canlıda doğrulanmadı** - sahibi Ayarlar panelinden
+      Instagram `sessionid`/`csrftoken` girip `instagram-scanner`'ı
+      deploy ettikten sonra `/run-now`'ı deneyip sonucu (ya da hatayı)
+      paylaşmalı.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

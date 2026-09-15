@@ -84,10 +84,18 @@ export const SETTINGS_CATALOG: SettingFieldDef[] = [
     kind: "secret",
   },
   {
-    key: "instagram_api_key",
-    label: "Instagram API anahtarı",
+    key: "instagram_session_cookie",
+    label: "Instagram oturum çerezi (sessionid)",
     group: "Sosyal medya (pasif)",
     kind: "secret",
+    help: "Tarayıcıda Instagram'a giriş yapıp F12 → Application → Cookies'den 'sessionid' değerini kopyala. LinkedIn'e göre hesap kısıtlanma riski DAHA YÜKSEK kabul edildi (bkz. CLAUDE.md). Birkaç haftada bir geçersiz olur, yeniden girmen gerekir.",
+  },
+  {
+    key: "instagram_csrf_token",
+    label: "Instagram CSRF token (csrftoken)",
+    group: "Sosyal medya (pasif)",
+    kind: "secret",
+    help: "Aynı çerez listesinden 'csrftoken' değeri - sessionid ile birlikte gerekiyor.",
   },
 
   // --- İhale / Freelancer (PASİF) ---
