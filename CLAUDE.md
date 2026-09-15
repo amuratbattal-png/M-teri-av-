@@ -1827,6 +1827,22 @@ Neden bu yapı:
       (çerez tazeleme denemesi işe yararsa) ya da (işe yaramazsa) artık
       GERÇEKTEN net bir "oturum geçersiz" mesajı - o durumda sahibinin
       Instagram oturumunu tazelemesi (yeniden giriş) gerekecek.
+      **Ayrı bir geri bildirim geldi (kod düzeltmesiyle karşılandı):**
+      sahibi "instagram arayışını değiştir, yeni iş arayışlarını
+      listelemişsin" dedi - `SOCIAL_KEYWORDS` listesindeki `"iş
+      arıyorum"` ve `"freelance çalışıyorum"` kelimeleri İŞ ARAYAN
+      (istihdam edilmek isteyen) KİŞİLERİ hedefliyor, bu ise MÜŞTERİ
+      (web sitesi/logo/kurumsal kimlik isteyen) arayan bir sistem için
+      TAM TERS kitle - LinkedIn'de bu ayrım AI'ın lead kalite
+      puanlamasına bırakılmıştı (bkz. `relevance.ts`, iş ilanları
+      "Askıda"ya düşüyor) ama Instagram'da baştan hiç taramamak daha
+      temiz. Yeni `INSTAGRAM_KEYWORDS` sabiti eklendi - `SOCIAL_KEYWORDS`'ün
+      bu iki kelime ÇIKARILMIŞ bir filtrelenmiş kopyası (`SOCIAL_KEYWORDS`'ün
+      KENDİSİ değiştirilmedi - LinkedIn/TikTok hâlâ tam 10 kelimelik
+      listeyi kullanıyor). `scanNextKeyword` artık bu 8 kelimelik
+      listede dönüyor. Node'da sentetik testle doğrulandı: 8 turluk bir
+      döngüde `"iş arıyorum"`/`"freelance çalışıyorum"` hiç görünmüyor,
+      cursor tam 8 turda başa dönüyor.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest

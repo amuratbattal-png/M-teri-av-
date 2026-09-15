@@ -29,9 +29,24 @@ const KEYWORD_NEED_TAGS: Record<string, NeedTag[]> = {
   "logo tasarımı": ["logo"],
   "kurumsal kimlik": ["corporate_identity"],
   "yeni ofisimiz": ["visual_identity", "poster_design"],
-  "iş arıyorum": ["website_new"],
-  "freelance çalışıyorum": ["website_new", "social_media_management"],
 };
+
+/**
+ * `SOCIAL_KEYWORDS`'ün Instagram'a özel bir alt kümesi - "iş arıyorum" ve
+ * "freelance çalışıyorum" KASITLI olarak DIŞLANDI. Bu sistemin hedefi
+ * MÜŞTERİ bulmak (web sitesi/logo/kurumsal kimlik isteyen kişi/firma);
+ * bu iki hashtag ise İŞ ARAYAN (istihdam edilmek isteyen) kişileri
+ * hedefliyor - tam ters kitle. LinkedIn'de bu ayrım AI'ın lead kalite
+ * puanlamasına (bkz. apps/control/src/lib/relevance.ts) bırakılmıştı
+ * (iş ilanları/alakasız sonuçlar puanlanıp "Askıda"ya düşüyor), ama
+ * Instagram'da bunu baştan taramamak daha temiz - hem gereksiz
+ * tarama/AI-puanlama maliyeti olmaz hem de sahibinin "bunlar yanlış
+ * kitle" geri bildirimi doğrudan karşılanmış olur. (`SOCIAL_KEYWORDS`
+ * kendisi DEĞİŞTİRİLMEDİ - LinkedIn/TikTok hâlâ tam listeyi kullanıyor.)
+ */
+const INSTAGRAM_KEYWORDS = SOCIAL_KEYWORDS.filter(
+  (k) => k !== "iş arıyorum" && k !== "freelance çalışıyorum",
+);
 
 const HASHTAG_INFO_URL = "https://www.instagram.com/api/v1/tags/web_info/";
 const BROWSER_USER_AGENT =
@@ -309,8 +324,8 @@ export async function scanNextKeyword(
   cursorIndex: number,
   env: ScanEnv,
 ): Promise<{ results: ScanResult[]; nextCursorIndex: number; debug?: ScanDebugInfo }> {
-  const keyword = SOCIAL_KEYWORDS[cursorIndex % SOCIAL_KEYWORDS.length];
-  const nextCursorIndex = (cursorIndex + 1) % SOCIAL_KEYWORDS.length;
+  const keyword = INSTAGRAM_KEYWORDS[cursorIndex % INSTAGRAM_KEYWORDS.length];
+  const nextCursorIndex = (cursorIndex + 1) % INSTAGRAM_KEYWORDS.length;
 
   if (!env.INSTAGRAM_SESSION_COOKIE || !env.INSTAGRAM_CSRF_TOKEN) {
     const missing = [
