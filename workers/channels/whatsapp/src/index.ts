@@ -1,0 +1,74 @@
+export interface Env {
+  WHATSAPP_TOKEN?: string;
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  /** control -> bu worker arası paylaşılan sır (bkz. apps/control/src/env.ts). */
+  OUTREACH_SHARED_SECRET: string;
+}
+
+interface SendRequest {
+  to: string | null;
+  content: string | null;
+  /** control'ün Ayarlar sayfasından okuduğu override - bkz. workers/channels/email için aynı desen. */
+  tokenOverride?: string | null;
+  phoneNumberIdOverride?: string | null;
+}
+
+/**
+ * `apps/control` bu worker'ı SADECE onaylanmış bir aday için, kuyruk
+ * üzerinden çağırır (bkz. apps/control/src/index.ts `queue()`).
+ * Burada ek bir onay kontrolü yoktur - onay control tarafında yapılır.
+ * `OUTREACH_SHARED_SECRET` sadece bu isteğin gerçekten control'den
+ * geldiğini doğrular (rastgele biri genel URL'yi bulup gönderim
+ * tetikleyemesin diye).
+ */
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname !== "/send" || request.method !== "POST") {
+      return new Response("not found", { status: 404 });
+    }
+
+    if (request.headers.get("x-outreach-secret")?.trim() !== env.OUTREACH_SHARED_SECRET?.trim()) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const body = (await request.json()) as SendRequest;
+    if (!body.to) {
+      return new Response(JSON.stringify({ error: "no whatsapp contact" }), { status: 400 });
+    }
+
+    const token = body.tokenOverride || env.WHATSAPP_TOKEN;
+    const phoneNumberId = body.phoneNumberIdOverride || env.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (!token || !phoneNumberId) {
+      console.warn("WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID tanımlı değil - gönderim atlandı.");
+      return new Response(JSON.stringify({ ok: false, reason: "not_configured" }), {
+        status: 501,
+      });
+    }
+
+    // TODO: gerçek WhatsApp Business Cloud API çağrısı.
+    // https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: body.to,
+          type: "text",
+          text: { body: body.content ?? "" },
+        }),
+      },
+    );
+
+    return new Response(JSON.stringify({ ok: res.ok }), { status: res.ok ? 200 : 502 });
+  },
+};

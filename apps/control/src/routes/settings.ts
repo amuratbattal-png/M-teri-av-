@@ -1,0 +1,133 @@
+import { DEFAULT_FEATURE_FLAGS } from "@musteri-avcisi/shared";
+import type { Env } from "../env";
+import {
+  getEffectiveSettings,
+  updateSettings,
+  clearNvidiaApiKey,
+  clearNvidiaModel,
+  getCatalogView,
+  updateCatalogFields,
+  readSettingsMap,
+} from "../lib/settings";
+import { runVerifier } from "../lib/verify";
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
+ * "Ayarlar" sayfası için sistem bilgisi + düzenlenebilir alanların şu anki
+ * değeri. NVIDIA_API_KEY'in KENDİSİ hiçbir zaman döndürülmez - sadece
+ * tanımlı olup olmadığı (`nvidiaApiKeyConfigured`) ve kaynağı
+ * ("panel"den mi yoksa Cloudflare secret'tan mı geliyor). Aynı kural
+ * `catalog`'daki tüm `secret` alanlar için de geçerli - bkz.
+ * lib/settings.ts getCatalogView.
+ */
+export async function handleGetSettings(env: Env): Promise<Response> {
+  const s = await getEffectiveSettings(env);
+  const catalog = await getCatalogView(env);
+  return json({
+    activeSourceChannels: DEFAULT_FEATURE_FLAGS.activeSourceChannels,
+    voiceCallEnabled: DEFAULT_FEATURE_FLAGS.voiceCallEnabled,
+    nvidiaModel: s.nvidiaModel,
+    nvidiaModelSource: s.nvidiaModelSource,
+    nvidiaApiKeyConfigured: s.nvidiaApiKeyConfigured,
+    nvidiaApiKeySource: s.nvidiaApiKeySource,
+    alertEmail: s.alertEmail,
+    proposalTemplate: s.proposalTemplate,
+    aiSystemPrompt: s.aiSystemPrompt,
+    catalog,
+  });
+}
+
+/**
+ * Ayarlar sayfasındaki formdan gelen güncelleme - bkz. lib/settings.ts
+ * updateSettings için alan bazlı kurallar (nvidiaApiKey boşsa dokunulmaz,
+ * diğerleri boşsa varsayılana döner). `{ clearNvidiaApiKey: true }`
+ * gönderilirse panelden kaydedilmiş anahtar silinir (Cloudflare secret'a
+ * geri dönülür); `{ clearNvidiaModel: true }` aynısını model adı için
+ * yapar (wrangler.toml/kod varsayılanına döner) - bkz. CLAUDE.md "model
+ * end-of-life" olayı. `fields`, sistemdeki diğer tüm API anahtarları/
+ * değerleri için jenerik katalog patch'i (bkz. lib/settings.ts
+ * settings-catalog.ts).
+ */
+export async function handlePostSettings(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    nvidiaApiKey?: string;
+    nvidiaModel?: string;
+    alertEmail?: string;
+    proposalTemplate?: string;
+    aiSystemPrompt?: string;
+    clearNvidiaApiKey?: boolean;
+    clearNvidiaModel?: boolean;
+    fields?: Record<string, string>;
+  };
+
+  if (body.clearNvidiaApiKey) {
+    await clearNvidiaApiKey(env);
+  }
+
+  // NOT: model alanı formda hep O ANKİ etkin değerle dolu geliyor (ör.
+  // sadece LinkedIn çerezini kaydetmek için formu gönderdiğinde bile) -
+  // "sil" isteniyorsa updateSettings'e bu alanı HİÇ vermiyoruz, yoksa
+  // formdaki eski değer clearNvidiaModel'in hemen ardından geri yazılırdı
+  // (bkz. CLAUDE.md "model end-of-life" olayı - bu yüzden sil butonu SONRA
+  // çağrılıyor, updateSettings'ten sonra değil).
+  await updateSettings(env, {
+    nvidiaApiKey: body.nvidiaApiKey,
+    nvidiaModel: body.clearNvidiaModel ? undefined : body.nvidiaModel,
+    alertEmail: body.alertEmail,
+    proposalTemplate: body.proposalTemplate,
+    aiSystemPrompt: body.aiSystemPrompt,
+  });
+
+  if (body.clearNvidiaModel) {
+    await clearNvidiaModel(env);
+  }
+
+  if (body.fields && typeof body.fields === "object") {
+    await updateCatalogFields(env, body.fields);
+  }
+
+  return json({ ok: true });
+}
+
+/**
+ * Ayarlar sayfasındaki "Doğrula" butonu - formda O AN yazılı olan değeri
+ * (kaydedilmiş olması gerekmiyor) gerçek sağlayıcıya karşı test eder.
+ * Sadece gerçekten yazılmış entegrasyonlar için anlamlı bir sonuç döner
+ * (bkz. lib/verify.ts) - diğerlerinde "bu kanalın entegrasyonu henüz
+ * yazılmadı" mesajı döner, sahte bir "doğru/yanlış" uydurmaz.
+ */
+export async function handleVerifySetting(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    key?: string;
+    fields?: Record<string, string>;
+  };
+  if (!body.key) {
+    return json({ ok: false, message: "Eksik istek: key gerekli." }, 400);
+  }
+  const result = await runVerifier(body.key, body.fields ?? {});
+  return json(result);
+}
+
+/**
+ * Worker'ların (google-search-scanner, company-formation-tracker,
+ * channels/email vb.) panelden ayarlanmış override'ları okuması için -
+ * bkz. packages/shared/src/settings-client.ts fetchSettingsOverrides.
+ * `/scan-results` ile aynı auth deseni (SCAN_SHARED_SECRET) - dışarıya
+ * açık değil, sadece worker-worker service binding üzerinden çağrılıyor.
+ * Ham D1 map'ini döner (NVIDIA gibi zaten ayrı bir yoldan yönetilenler
+ * dahil hepsi) - worker'lar sadece kendi ilgilendikleri anahtarı okur.
+ */
+export async function handleInternalSettings(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get("x-scan-secret")?.trim();
+  if (!auth || auth !== env.SCAN_SHARED_SECRET?.trim()) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const settings = await readSettingsMap(env);
+  return json({ settings });
+}

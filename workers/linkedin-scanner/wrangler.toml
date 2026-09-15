@@ -1,0 +1,33 @@
+name = "musteri-avcisi-linkedin-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# BAŞLANGIÇTA PASİF - packages/shared/src/config.ts activeSourceChannels
+# listesine eklenene kadar bu worker devreye alınmayacak (bkz. CLAUDE.md).
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "4f69d46db2a54d7daf35819407b3989b"
+
+# Control'e servis binding'i ile bağlanır (workers.dev üzerinden düz
+# fetch() ile worker-to-worker istek Cloudflare tarafından engelleniyor -
+# "error 1042" - bu yüzden CONTROL_API_URL yerine service binding kullanılır).
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
+
+# Karar verildi: LinkedIn'in resmi API'si bu kullanım senaryosunu
+# kapsamıyor, bu yüzden oturum tabanlı erişim (LINKEDIN_SESSION_COOKIE +
+# LINKEDIN_CSRF_TOKEN, dokümante edilmemiş "Voyager" iç API'si) kullanılıyor
+# - kullanım şartlarına aykırı olabilir, hesap askıya alınma riski var;
+# sahibi bu riski bilerek kabul etti (bkz. CLAUDE.md). Bu iki değer
+# `wrangler secret put` İLE DEĞİL, Ayarlar panelinden (Cloudflare secret
+# yerine D1'de) girilecek şekilde tasarlandı - bkz.
+# apps/control/src/lib/settings-catalog.ts.

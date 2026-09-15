@@ -1,0 +1,18 @@
+{
+  "name": "@musteri-avcisi/worker-instagram-scanner",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@musteri-avcisi/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "wrangler": "^3.90.0",
+    "@cloudflare/workers-types": "^4.20241127.0"
+  }
+}

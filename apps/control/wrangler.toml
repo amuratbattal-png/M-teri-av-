@@ -1,0 +1,75 @@
+name = "musteri-avcisi-control"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Merkezi veritabani - gercek Cloudflare hesabinda `wrangler d1 create`
+# ile olusturulup asagidaki database_id doldurulmali.
+[[d1_databases]]
+binding = "DB"
+database_name = "musteri-avcisi-db"
+database_id = "a66a7c79-aa21-4346-8ec0-550241d27849"
+
+# Onaylanan adaylarin gonderim kanallarina dispatch edilmesi icin kuyruk.
+[[queues.producers]]
+binding = "OUTREACH_QUEUE"
+queue = "musteri-avcisi-outreach"
+
+[[queues.consumers]]
+queue = "musteri-avcisi-outreach"
+max_batch_size = 10
+max_retries = 3
+
+# Gonderim kanali worker'larina servis baglantilari (whatsapp/email).
+# Once workers/channels/* deploy edilmeli, sonra bu binding'ler aktif olur.
+[[services]]
+binding = "WHATSAPP_WORKER"
+service = "musteri-avcisi-channel-whatsapp"
+
+[[services]]
+binding = "EMAIL_WORKER"
+service = "musteri-avcisi-channel-email"
+
+# Tarama worker'larinin control API'ye yazarken kullandigi paylasilan sir.
+# Repoda PLAINTEXT tutulmaz - `wrangler secret put SCAN_SHARED_SECRET` ile
+# ayarlanmali (ayni deger her tarama worker'inda da secret olarak set edilmeli).
+
+# Teklif metinlerini kisisellestirmek icin NVIDIA API (integrate.api.nvidia.com).
+# Tanimli degilse basit sablon metne dusulur, hata vermez.
+# `wrangler secret put NVIDIA_API_KEY` ile eklenmeli.
+#
+# Istege bagli: NVIDIA_MODEL (var, secret degil) - build.nvidia.com'daki
+# model kimligi, tanimli degilse "nvidia/nemotron-3.5-lightning-30b-a3b"
+# kullanilir (bkz. apps/control/src/lib/settings.ts DEFAULT_MODEL).
+#
+# BILINEN ARIZA (cozuldu, bkz. CLAUDE.md "model end-of-life" notu) -
+# UC MODEL DENENDI: 1) "meta/llama-3.1-70b-instruct" 2026-08-26'da
+# NVIDIA tarafindan kullanimdan kaldirilmis (410 Gone). 2) "halef"
+# tahmini "meta/llama-3.3-70b-instruct" DE ayni hatayi verdi - NVIDIA
+# muhtemelen tum meta/llama-3.x-70b-instruct ailesini emekliye ayirdi.
+# 3) sahibin getirdigi gercek kod ornegi "deepseek-ai/deepseek-v4-pro-0813"
+# ise 401 Unauthorized verdi - hem partner-barindirmali (DeepSeek AI,
+# GMI Cloud/Together AI uzerinden - ek erisim izni gerektirebilir) hem
+# de 2026-09-13'te (ertesi gun) kullanimdan kaldirilacakti. Bu yuzden
+# NVIDIA'nin KENDI (first-party) modeline gecildi:
+# "nvidia/nemotron-3.5-lightning-30b-a3b" - Ayarlar sayfasindan
+# "Dogrula" butonuyla (artik modelin GERCEKTEN var olup olmadigini da
+# kontrol ediyor - bkz. lib/verify.ts) periyodik kontrol onerilir - bu
+# ucuncu olaydan sonra ozellikle onemli.
+#
+# ALERT_EMAIL: tarama/gonderim worker'lari sessiz ariza bildirirse
+# (bkz. routes/alerts.ts) bu adrese e-posta gider. Gizli degil, sadece
+# bir hedef adres - EMAIL_WORKER binding'i uzerinden gonderiliyor.
+[vars]
+NVIDIA_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+ALERT_EMAIL = "info@ajansim.net"
+
+# "Ayarlar sayfasını yenileyince puanlama başa dönüyor, bu cron bir
+# sistem olsun" (sahibi, bkz. CLAUDE.md). Puansız kalmış adayları
+# (bkz. src/index.ts scheduled(), src/routes/candidates.ts
+# rescoreUnscoredBatch) artık Ayarlar sayfası açık olmasa da her 10
+# dakikada bir arka planda otomatik yeniden puanlıyor - manuel buton
+# hâlâ duruyor ama artık ona bağımlı değil. (İlk denemede 5 dakika/15
+# batch idi - "429 tekrar" olayından sonra 10 dakika/5 batch'e
+# düşürüldü, bkz. CLAUDE.md.)
+[triggers]
+crons = ["*/10 * * * *"]

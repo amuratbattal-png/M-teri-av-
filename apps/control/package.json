@@ -1,0 +1,20 @@
+{
+  "name": "@musteri-avcisi/control",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@musteri-avcisi/db": "workspace:*",
+    "@musteri-avcisi/shared": "workspace:*",
+    "drizzle-orm": "^0.36.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "wrangler": "^3.90.0",
+    "@cloudflare/workers-types": "^4.20241127.0"
+  }
+}

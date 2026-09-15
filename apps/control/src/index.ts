@@ -1,0 +1,339 @@
+import { eq } from "drizzle-orm";
+import { createDb, candidates, communicationLog } from "@musteri-avcisi/db";
+import type { Env, OutreachJob } from "./env";
+import {
+  handleScanResults,
+  handleListCandidates,
+  handleStats,
+  handleReport,
+  handleRescoreUnscored,
+  handleRescoreStatus,
+  handleSetRescoreCron,
+  handleResetAndRescore,
+  rescoreUnscoredBatch,
+} from "./routes/candidates";
+import {
+  handleApprove,
+  handleReject,
+  handleUnhold,
+  handleBulkApprove,
+  handleUpdateProposal,
+  handleRegenerateProposal,
+  handleUpdateNotes,
+  handleMarkSent,
+} from "./routes/approvals";
+import { handleListCommunications } from "./routes/communications";
+import { handleAlert } from "./routes/alerts";
+import {
+  handleGetSettings,
+  handlePostSettings,
+  handleInternalSettings,
+  handleVerifySetting,
+} from "./routes/settings";
+import { handleGetActivity, logActivity } from "./lib/activity-log";
+import { getEffectiveSettings } from "./lib/settings";
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+async function handleFetch(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const { pathname } = url;
+  const method = request.method;
+
+  if (pathname === "/health") {
+    return json({ ok: true, service: "musteri-avcisi-control" });
+  }
+
+  if (pathname === "/scan-results" && method === "POST") {
+    return handleScanResults(request, env);
+  }
+
+  if (pathname === "/candidates" && method === "GET") {
+    return handleListCandidates(request, env);
+  }
+
+  if (pathname === "/stats" && method === "GET") {
+    return handleStats(env);
+  }
+
+  if (pathname === "/report" && method === "GET") {
+    return handleReport(env);
+  }
+
+  if (pathname === "/activity" && method === "GET") {
+    return handleGetActivity(env);
+  }
+
+  if (pathname === "/candidates/rescore-unscored" && method === "POST") {
+    return handleRescoreUnscored(env);
+  }
+
+  // Sadece okuma - "cronun %'lik değerini göreyim" isteği (bkz. CLAUDE.md):
+  // Rapor sayfası her açıldığında (buton basılmadan/cron beklemeden)
+  // mevcut ilerlemeyi göstermek için.
+  if (pathname === "/candidates/rescore-status" && method === "GET") {
+    return handleRescoreStatus(env);
+  }
+
+  // "Cronu Durdur"/"Cronu Devam Ettir" (Rapor sayfası) - bkz. CLAUDE.md.
+  if (pathname === "/candidates/rescore-cron/pause" && method === "POST") {
+    return handleSetRescoreCron(env, false);
+  }
+  if (pathname === "/candidates/rescore-cron/resume" && method === "POST") {
+    return handleSetRescoreCron(env, true);
+  }
+
+  // "Firmaları Yeniden Puanla" (Rapor sayfası) - bkz. CLAUDE.md, tüm
+  // pending_approval/on_hold adaylarının puanını sıfırlar.
+  if (pathname === "/candidates/reset-and-rescore" && method === "POST") {
+    return handleResetAndRescore(env);
+  }
+
+  if (pathname === "/settings" && method === "GET") {
+    return handleGetSettings(env);
+  }
+
+  if (pathname === "/settings" && method === "POST") {
+    return handlePostSettings(request, env);
+  }
+
+  if (pathname === "/internal-settings" && method === "GET") {
+    return handleInternalSettings(request, env);
+  }
+
+  if (pathname === "/settings/verify" && method === "POST") {
+    return handleVerifySetting(request, env);
+  }
+
+  if (pathname === "/communications" && method === "GET") {
+    return handleListCommunications(env);
+  }
+
+  if (pathname === "/alerts" && method === "POST") {
+    return handleAlert(request, env);
+  }
+
+  if (pathname === "/candidates/bulk-approve" && method === "POST") {
+    return handleBulkApprove(request, env);
+  }
+
+  const approveMatch = pathname.match(/^\/candidates\/([^/]+)\/approve$/);
+  if (approveMatch && method === "POST") {
+    return handleApprove(request, env, approveMatch[1]);
+  }
+
+  const rejectMatch = pathname.match(/^\/candidates\/([^/]+)\/reject$/);
+  if (rejectMatch && method === "POST") {
+    return handleReject(env, rejectMatch[1]);
+  }
+
+  const unholdMatch = pathname.match(/^\/candidates\/([^/]+)\/unhold$/);
+  if (unholdMatch && method === "POST") {
+    return handleUnhold(env, unholdMatch[1]);
+  }
+
+  const proposalMatch = pathname.match(/^\/candidates\/([^/]+)\/proposal$/);
+  if (proposalMatch && method === "POST") {
+    return handleUpdateProposal(request, env, proposalMatch[1]);
+  }
+
+  const regenerateMatch = pathname.match(/^\/candidates\/([^/]+)\/regenerate-proposal$/);
+  if (regenerateMatch && method === "POST") {
+    return handleRegenerateProposal(env, regenerateMatch[1]);
+  }
+
+  const notesMatch = pathname.match(/^\/candidates\/([^/]+)\/notes$/);
+  if (notesMatch && method === "POST") {
+    return handleUpdateNotes(request, env, notesMatch[1]);
+  }
+
+  const markSentMatch = pathname.match(/^\/candidates\/([^/]+)\/mark-sent$/);
+  if (markSentMatch && method === "POST") {
+    return handleMarkSent(request, env, markSentMatch[1]);
+  }
+
+  return json({ error: "not found" }, 404);
+}
+
+/**
+ * ESKİ otomatik dispatch yolu - artık HİÇBİR ŞEY buraya mesaj koymuyor
+ * (bkz. routes/approvals.ts handleApprove, gönderim artık otomatik değil -
+ * sahibi WhatsApp/e-postayı kendi hesabından manuel gönderiyor, bkz.
+ * handleMarkSent). Bu handler sadece wrangler.toml'daki
+ * `[[queues.consumers]]` tanımının geçerli kalması için (bir consumer
+ * queue'su, karşılık gelen bir queue() export'u olmadan deploy edilemiyor)
+ * kaldırılmadan bırakıldı - pratikte artık hiç tetiklenmez.
+ */
+async function handleQueue(batch: MessageBatch<OutreachJob>, env: Env): Promise<void> {
+  const db = createDb(env.DB);
+
+  for (const message of batch.messages) {
+    const { candidateId, channel } = message.body;
+
+    const rows = await db
+      .select()
+      .from(candidates)
+      .where(eq(candidates.id, candidateId))
+      .limit(1);
+    const candidate = rows[0];
+    if (!candidate) {
+      message.ack();
+      continue;
+    }
+
+    const worker = channel === "whatsapp" ? env.WHATSAPP_WORKER : env.EMAIL_WORKER;
+    if (!worker) {
+      // Kanal worker'ı henüz deploy edilmemiş olabilir (bkz. CLAUDE.md
+      // sonraki adımlar) - mesajı retry'a bırak.
+      message.retry();
+      continue;
+    }
+
+    try {
+      const res = await worker.fetch("https://internal/send", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-outreach-secret": env.OUTREACH_SHARED_SECRET?.trim() ?? "",
+        },
+        body: JSON.stringify({
+          to: channel === "whatsapp" ? candidate.contactWhatsapp : candidate.contactEmail,
+          content: candidate.proposalDraft,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`channel worker responded ${res.status}`);
+
+      const now = new Date().toISOString();
+      await db
+        .update(candidates)
+        .set({ status: "sent", sentAt: now, lastContactChannel: channel })
+        .where(eq(candidates.id, candidateId));
+
+      await db.insert(communicationLog).values({
+        id: crypto.randomUUID(),
+        candidateId,
+        channel,
+        direction: "outbound",
+        content: candidate.proposalDraft ?? "",
+        status: "sent",
+        createdAt: now,
+      });
+
+      message.ack();
+    } catch (err) {
+      console.error("outreach dispatch failed", err);
+
+      // Başarısız her deneme de loglanır - dashboard'daki "Gönderilenler"
+      // sayfası iletim durumunu (sent/failed) buradan okur. Cloudflare
+      // Queues bu mesajı otomatik retry edecek; başarılı olursa yukarıdaki
+      // "sent" satırı da eklenecek, aynı adayın geçmişinde ikisi de durur.
+      await db.insert(communicationLog).values({
+        id: crypto.randomUUID(),
+        candidateId,
+        channel,
+        direction: "outbound",
+        content: candidate.proposalDraft ?? "",
+        status: "failed",
+        createdAt: new Date().toISOString(),
+      });
+
+      message.retry();
+    }
+  }
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handleFetch(request, env);
+    } catch (err) {
+      // Daha önce ("follow_up_date" olayı, bkz. CLAUDE.md) böyle bir hata
+      // hiçbir iz bırakmadan Cloudflare Error 1101 olarak görünüyordu -
+      // sahibi ne olduğunu göremiyordu (ve dashboard, service binding
+      // üzerinden bu fırlatılan hatayı yakalayamadığı için KENDİSİ de
+      // 1101 veriyordu - "Ayarları Kaydet" hatası muhtemelen buydu).
+      // Artık gerçek hata mesajı JSON olarak dönüyor - dashboard bunu
+      // okuyup ilgili sayfada gösterebiliyor, `wrangler tail`e bakmaya
+      // gerek kalmadan.
+      console.error("control isteği başarısız", err);
+      return json(
+        { error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+        500,
+      );
+    }
+  },
+
+  async queue(batch: MessageBatch<OutreachJob>, env: Env): Promise<void> {
+    return handleQueue(batch, env);
+  },
+
+  /**
+   * "Ayarlar sayfasını yenileyince puanlama başa dönüyor, bu cron bir
+   * sistem olsun" (sahibi, bkz. CLAUDE.md). Önceden "Puanlanmamış
+   * Adayları Yeniden Puanla" SADECE Ayarlar sayfası açıkken (tarayıcıdaki
+   * JS `setTimeout` döngüsü) ilerliyordu - sayfadan çıkılırsa/yenilenirse
+   * döngü durur, ilerleme sadece görünürde sıfırlanmış gibi görünürdü
+   * (aslında DB'deki puanlar kalıcıydı, ama sahibi bunu fark edemedi çünkü
+   * "kaç kaldı" sayacı sayfa her açıldığında yeniden 0'dan başlıyordu).
+   * Artık `wrangler.toml`'daki `[triggers] crons` sayesinde bu, sayfa
+   * açık olsun olmasın, arka planda kendiliğinden ilerliyor - manuel
+   * buton hâlâ duruyor (anlık tetiklemek için), ama artık ona bağımlı
+   * değil. `rescoreUnscoredBatch` ile AYNI mantığı kullanıyor (DRY) -
+   * `handleRescoreUnscored`'un HTTP sarmalayıcısı gibi, sadece burada
+   * Response'a değil `logActivity`'ye yazılıyor.
+   *
+   * Aralık 5 dakikadan 10 dakikaya çıkarıldı (bkz. CLAUDE.md "429 tekrar"
+   * olayı) - `fetchNvidiaChat`'in yeni, çok daha sabırlı üstel bekleme
+   * mantığı (5 deneme, en kötü ihtimalle ~45s/aday) yüzünden küçük bir
+   * batch bile bir sonraki tetiklenmeden BİTMEYİP üst üste binebilirdi -
+   * 10 dakika + 5'lik (öncesi 15) daha küçük batch bu riski azaltıyor.
+   *
+   * "Cronu Durdur" (Rapor sayfası, bkz. CLAUDE.md) - `rescoreCronEnabled`
+   * false ise (sahibi bilinçli olarak durdurmuşsa) hiçbir şey yapmadan
+   * çıkar. Özellikle "Firmaları Yeniden Puanla" (bkz. handleResetAndRescore)
+   * gibi büyük, manuel bir işlem sırasında cron'un araya girip aynı
+   * adaylar üzerinde yarışmasını (çift NVIDIA çağrısı, 429 riski) önlemek
+   * için düşünüldü - sahibi büyük bir toplu işlem başlatmadan önce
+   * cron'u durdurabiliyor.
+   */
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const { rescoreCronEnabled } = await getEffectiveSettings(env);
+          if (!rescoreCronEnabled) return;
+
+          // 15'ten 5'e düşürüldü (bkz. CLAUDE.md "429 tekrar" olayı) -
+          // artık her NVIDIA çağrısı en kötü ihtimalle ~45 saniyeye kadar
+          // (5 deneme, üstel bekleme) uzayabiliyor; büyük bir batch, bir
+          // sonraki cron tetiklenmeden bitmeyip üst üste binebilirdi.
+          const result = await rescoreUnscoredBatch(env, 5);
+          // Yapılacak bir şey yoksa (backlog bitmiş) sessiz kal - her 10
+          // dakikada bir "0 işlendi" satırıyla Canlı Log'u kirletmeyelim.
+          if (result.processed > 0) {
+            await logActivity(
+              env,
+              "info",
+              "lead-quality",
+              `[Zamanlı görev] ${result.processed} aday yeniden puanlandı (${result.movedToOnHold} askıya alındı), ${result.remaining} kaldı (%${result.percentComplete} tamamlandı).`,
+            );
+          }
+        } catch (err) {
+          console.error("scheduled rescore başarısız", err);
+          await logActivity(
+            env,
+            "error",
+            "lead-quality",
+            `[Zamanlı görev] yeniden puanlama başarısız - ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })(),
+    );
+  },
+};

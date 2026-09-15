@@ -1,0 +1,17 @@
+name = "musteri-avcisi-wordpress-agent"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# BAŞLANGIÇTA PASİF: sahibinin "WordPress sitelerine tamamıyla müdahale
+# edebilecek bir yapay zeka; kendisi hiçbir şey yapmayacak, sadece yeni
+# müşterileri ve sonuçları görecek" isteğinin iskeleti. Kapsam henüz
+# netleşmedi (hangi siteler, hangi işlemler) - bkz. CLAUDE.md "sonraki
+# adımlar". SEO puanlama motorunun kendisi bu repo'da DEĞİL, ayrı bir
+# proje (ajansimiz.net).
+[vars]
+WORDPRESS_AGENT_ENABLED = "false"
+
+# Her site için WordPress Application Password (Kullanıcılar > Uygulama
+# Şifreleri) ile REST API erişimi kullanılması planlanıyor.
+# `wrangler secret put WORDPRESS_SITES_JSON` ile [{"url","username","appPassword"}]
+# formatında bir liste eklenmeli.

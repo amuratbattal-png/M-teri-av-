@@ -1,0 +1,24 @@
+name = "musteri-avcisi-company-formation-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Alfabetik sektor taramasindan BAGIMSIZ, paralel calisan iş kolu.
+# Sık calisir cunku "yeni kurulan sirket" sinyali zamana duyarli.
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Control'e servis binding'i ile bağlanır (workers.dev üzerinden düz
+# fetch() ile worker-to-worker istek Cloudflare tarafından engelleniyor -
+# "error 1042" - bu yüzden CONTROL_API_URL yerine service binding kullanılır).
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
+
+# TODO: Ticaret Sicili Gazetesi / benzeri resmi yeni sirket kuruluş
+# ilanlari kaynagi, ve is arama sitelerindeki "is ariyorum / girisimci"
+# sinyalleri icin API anahtarlari.

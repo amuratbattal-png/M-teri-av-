@@ -1,0 +1,34 @@
+name = "musteri-avcisi-yahoo-search-scanner"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Kod artık gerçek (bkz. src/scan.ts - Yahoo'nun resmi bir arama API'si
+# olmadığı için search.yahoo.com'un sonuç sayfası doğrudan fetch() ile
+# kazınıyor, bkz. CLAUDE.md "Yahoo kazıma" notu) ama HENÜZ CANLI TEST
+# EDİLMEDİ - bu yüzden packages/shared/src/config.ts activeSourceChannels
+# listesine "yahoo_search" henüz eklenmedi (LinkedIn'de olduğu gibi önce
+# canlı doğrulama gerekiyor). google-search-scanner ile aynı sektör
+# listesini, ayrı bir cursor ile tarar.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[kv_namespaces]]
+binding = "SCAN_STATE"
+id = "fd3fd138629647e0ae85690947cb8a5f"
+
+# Control'e servis binding'i ile bağlanır (workers.dev üzerinden düz
+# fetch() ile worker-to-worker istek Cloudflare tarafından engelleniyor -
+# "error 1042" - bu yüzden CONTROL_API_URL yerine service binding kullanılır).
+[[services]]
+binding = "CONTROL_WORKER"
+service = "musteri-avcisi-control"
+
+[vars]
+# SCAN_SHARED_SECRET repoda PLAINTEXT tutulmaz -
+# `wrangler secret put SCAN_SHARED_SECRET` ile ayarlanmalı (apps/control
+# ile AYNI değer).
+
+# NOT: Eskiden burada YAHOO_SEARCH_API_KEY isteniyordu - artık gerekmiyor
+# (Yahoo'nun resmi bir arama API'si yok, HTML kazıma kimlik bilgisi
+# istemiyor). Ayarlar panelindeki "Yahoo Arama API anahtarı" alanı hâlâ
+# duruyor ama artık hiçbir yerde okunmuyor/kullanılmıyor.

@@ -1,0 +1,19 @@
+{
+  "name": "musteri-avcisi-sistemi",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Otonom musteri bulma ve teklif sistemi - Cloudflare Workers monorepo",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "pnpm -r --if-present run lint",
+    "test": "pnpm -r --if-present run test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@cloudflare/workers-types": "^4.20241127.0"
+  }
+}
