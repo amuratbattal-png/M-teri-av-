@@ -102,15 +102,39 @@ async function searchInstagram(
   const requestUrl = `${HASHTAG_INFO_URL}?tag_name=${encodeURIComponent(hashtag)}`;
 
   const res = await fetch(requestUrl, {
+    // Çerez geçersiz/eksikse Instagram isteği /accounts/login/'a
+    // yönlendiriyor - ÖNCEDEN bu otomatik takip ediliyordu, Instagram'ın
+    // login sayfası da kendi içinde tekrar yönlendirdiği için sonsuz bir
+    // döngüye girip çirkin bir "Too many redirects" hatasına dönüşüyordu
+    // (canlı testte görüldü). `redirect: "manual"` ile ilk yönlendirmeyi
+    // KENDİMİZ yakalayıp net bir "oturum geçersiz" mesajına çeviriyoruz.
+    redirect: "manual",
     headers: {
       Cookie: `sessionid=${sessionCookie}; csrftoken=${csrfToken}`,
       "x-csrftoken": csrfToken,
       "x-ig-app-id": IG_APP_ID,
       "x-requested-with": "XMLHttpRequest",
       accept: "*/*",
+      referer: "https://www.instagram.com/",
       "user-agent": BROWSER_USER_AGENT,
     },
   });
+
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location") ?? "(location header yok)";
+    return {
+      results: [],
+      debug: {
+        keyword,
+        hashtag,
+        status: res.status,
+        apiError:
+          `Instagram isteği yönlendirdi (muhtemelen oturum geçersiz/eksik - "giriş yap" sayfasına gönderildi): ${location}. ` +
+          `sessionid/csrftoken değerlerini kontrol et (tırnaksız, eksiksiz kopyalandığından ve hâlâ Instagram'a giriş yapmış olduğundan emin ol).`,
+        parsedCount: 0,
+      },
+    };
+  }
 
   if (!res.ok) {
     const text = await res.text();

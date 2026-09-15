@@ -1723,6 +1723,80 @@ Neden bu yapı:
       Instagram `sessionid`/`csrftoken` girip `instagram-scanner`'ı
       deploy ettikten sonra `/run-now`'ı deneyip sonucu (ya da hatayı)
       paylaşmalı.
+- [ ] **Instagram canlı deploy denemesi başladı - önce ÜÇ ayrı "deploy
+      zinciri" sorunu bulunup düzeltildi, sonra gerçek bir Instagram
+      hatasına ulaşıldı (oturum geçersiz), bu da düzeltildi - HÂLÂ
+      sonuç bekleniyor.**
+      1. **`instagram-scanner` deploy edilince eski kod çalışmaya devam
+         etti** (`/run-now` sadece `{ok:true,service:...}` döndü, YENİ
+         `/run-now` route'u hiç yoktu). Kök sebep: sahibinin yerel git
+         checkout'u `claude/musteri-avcisi-sistemi-a94is2` DEĞİL,
+         `claude/sistemi-yeniden-ac-88sip7` adında BAŞKA bir branch'teydi
+         (bu oturumun/deponun parçası değil, muhtemelen eski bir
+         deneme) - `git pull` commit'leri indiriyordu (remote-tracking
+         ref güncelleniyordu) ama çalışma dizinine hiç YANSIMIYORDU.
+         Düzeltme: `git checkout claude/musteri-avcisi-sistemi-a94is2`
+         + tekrar `wrangler deploy` - upload boyutu (11.07 KiB, benim
+         kendi `--dry-run` testimle BİREBİR eşleşti) doğru kodun
+         deploy edildiğini doğruladı. **Ders:** bir worker'da "yeni
+         kod çalışmıyor" şüphesi varsa, deploy komutunun ÇIKTISINDAKİ
+         upload boyutunu kendi `--dry-run` testinle karşılaştırmak
+         (ya da basitçe hangi branch'te olunduğunu `git branch`'le
+         kontrol etmek) hızlı bir teşhis yöntemi.
+      2. **`/run-now` sürekli `401 unauthorized` verdi.** Sahibi
+         `SCAN_SHARED_SECRET`'ı hatırlamıyordu (Cloudflare secret'lar
+         geri okunamaz) - yeni bir değer üretilip (`node -e
+         "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+         - Windows'ta `openssl` kurulu değildi) `instagram-scanner`'a
+         girildi. İlk deneme interaktif yapıştırmayla YİNE bozuldu
+         (CLAUDE.md'de zaten bilinen risk) - `$deger = "..."; $deger |
+         wrangler secret put` yöntemiyle düzeltildi.
+      3. **Secret düzeltildikten SONRA bile Ayarlar panelinden girilen
+         Instagram çerezleri worker'a ULAŞMIYORDU** (`/run-now` hâlâ
+         "Eksik: INSTAGRAM_SESSION_COOKIE..." diyordu, kutular Ayarlar'da
+         dolu görünmesine rağmen). Kök sebep: `apps/control`'ün KENDİ
+         `SCAN_SHARED_SECRET`'ı hâlâ ESKİ değerdeydi -
+         `instagram-scanner`'ın `fetchSettingsOverrides` çağrısı (D1'deki
+         çerezleri okumak için) control tarafından 401 ile reddediliyordu,
+         `fetchSettingsOverrides`'ın "HATA TOLERANSLI" tasarımı bunu
+         SESSİZCE yutup boş obje dönüyordu - worker da kendi tanımsız
+         env'ine düşüyordu. `apps/control`'e de AYNI yeni secret girilince
+         (aynı `$deger | wrangler secret put` yöntemiyle) düzeldi.
+         **Ders:** `SCAN_SHARED_SECRET`'ı değiştirirken SADECE bir
+         worker'da değil, control'DE DAHİL, o worker'ın gerçekten
+         konuştuğu HER uç noktada aynı anda güncellenmesi gerekiyor -
+         aksi halde hata SESSİZCE yutulduğu için (kasıtlı fail-safe
+         tasarım) "çerezler neden ulaşmıyor" gibi yanıltıcı bir
+         semptomla ortaya çıkıyor.
+      4. **Bunlardan sonra İLK GERÇEK Instagram yanıtı geldi:**
+         `TypeError: Too many redirects` - Instagram isteği
+         `/accounts/login/?next=...`'a yönlendirip `fetch()`'in bunu
+         otomatik takip ede ede sonsuz döngüye girmesine sebep oluyordu.
+         Bu, oturumun (o anki `sessionid`) GEÇERSİZ/eksik görüldüğü
+         anlamına geliyor - LinkedIn/Google'daki gibi "sistem
+         tasarlandığı gibi davrandı, çökmedi" durumu, ama çirkin bir
+         hata mesajıyla. Düzeltme: `searchInstagram`'a `redirect:
+         "manual"` eklendi - artık ilk yönlendirmeyi KENDİMİZ yakalayıp
+         net bir "oturum geçersiz/eksik, sessionid'i kontrol et" mesajına
+         çeviriyoruz (Cloudflare Workers'ın `fetch()`'i, tarayıcıların
+         aksine, `redirect: "manual"` ile gerçek 3xx status + `Location`
+         header'ını opak olmadan veriyor). Ayrıca eksik olabilecek bir
+         `Referer: https://www.instagram.com/` header'ı eklendi. Node'da
+         sentetik bir 302 yanıtıyla test edildi, doğru çalıştı.
+      **GÜVENLİK OLAYI:** bu debug turu sırasında sahibi CHAT'E gerçek,
+      canlı bir Instagram `sessionid` değeri yapıştırdı
+      (`53585264937%3A...` ile başlayan). Kendisine hemen bunun artık
+      kompromize kabul edilmesi gerektiği, Instagram → Güvenlik →
+      "Oturum açılan yerler" → "Tüm oturumları kapat" ile bu dahil TÜM
+      oturumların geçersiz kılınıp yeniden giriş yapılması, ve bundan
+      sonra çerezlerin SADECE Ayarlar panelindeki forma (chat'e değil)
+      girilmesi söylendi.
+      **Henüz canlıda doğrulanmadı** - sahibi oturumları kapatıp yeni
+      `sessionid`/`csrftoken` alıp Ayarlar'a girecek, `instagram-scanner`
+      yukarıdaki `redirect: "manual"` düzeltmesiyle yeniden deploy
+      edilip `/run-now` tekrar denenecek - beklenen ya net bir "oturum
+      geçersiz" mesajı (yeni çerez de kabul edilmezse, LinkedIn'deki gibi
+      canlı iterasyon gerekir) ya da gerçek bulunan sonuçlar.
 - [ ] **Sahibinin verdiği büyük özellik listesi (~20 fikir) - HİÇBİRİ
       henüz yapılmadı**, sadece not edildi, önceliklendirme bekliyor:
       aday zaman çizelgesi/geçmiş sekmesi popup'ta; serbest
