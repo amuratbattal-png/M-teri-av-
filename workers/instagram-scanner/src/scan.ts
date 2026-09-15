@@ -122,6 +122,14 @@ async function searchInstagram(
 
   if (res.status >= 300 && res.status < 400) {
     const location = res.headers.get("location") ?? "(location header yok)";
+    // Header İSİMLERİ teşhis için faydalı (ör. bir Set-Cookie varsa
+    // Instagram muhtemelen çerez tazeliyor/bot kontrolü yapıyor) ama
+    // DEĞERLERİ asla loglanmamalı - bir Set-Cookie değeri yeni bir
+    // oturum jetonu taşıyabilir, bunu Canlı Log/panele yazmak ikinci
+    // bir sızıntı riski yaratır (bkz. CLAUDE.md - sahibinin chat'e
+    // yapıştırdığı sessionid olayı).
+    const headerNames = [...res.headers.keys()].sort().join(", ");
+    const hasSetCookie = res.headers.has("set-cookie");
     return {
       results: [],
       debug: {
@@ -129,8 +137,11 @@ async function searchInstagram(
         hashtag,
         status: res.status,
         apiError:
-          `Instagram isteği yönlendirdi (muhtemelen oturum geçersiz/eksik - "giriş yap" sayfasına gönderildi): ${location}. ` +
-          `sessionid/csrftoken değerlerini kontrol et (tırnaksız, eksiksiz kopyalandığından ve hâlâ Instagram'a giriş yapmış olduğundan emin ol).`,
+          `Instagram isteği yönlendirdi: ${location}. ` +
+          `Yanıt header'ları: ${headerNames} (Set-Cookie ${hasSetCookie ? "VAR" : "yok"}). ` +
+          (location === requestUrl
+            ? "Hedef isteğin kendisiyle AYNI - muhtemelen bir çerez tazeleme/bot kontrolü adımı, oturum kesin geçersiz demek olmayabilir."
+            : `sessionid/csrftoken değerlerini kontrol et (tırnaksız, eksiksiz kopyalandığından ve hâlâ Instagram'a giriş yapmış olduğundan emin ol).`),
         parsedCount: 0,
       },
     };
