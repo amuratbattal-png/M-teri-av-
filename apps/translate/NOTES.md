@@ -142,16 +142,43 @@ apps/translate/
 
 1. `wrangler d1 create canli-ceviri-db` - dönen `database_id`'yi
    `apps/translate/wrangler.toml`'daki `PLACEHOLDER-...` yerine yaz.
-2. `wrangler d1 execute canli-ceviri-db --file=migrations/0001_init.sql`
-   (uzak veritabanına uygulamak için `--remote` eklenmeli).
-3. `wrangler secret put ADMIN_PASSWORD` (yönetim paneli şifresi).
-4. `wrangler secret put NVIDIA_API_KEY` - bu repodaki `apps/control`
-   için zaten alınmış olan AYNI NVIDIA anahtarı burada da kullanılabilir
-   (ek bir hesap/anahtar gerekmiyor).
+2. `wrangler d1 execute canli-ceviri-db --remote --file=migrations/0001_init.sql`
+   VE `wrangler d1 execute canli-ceviri-db --remote --file=migrations/0002_settings.sql`
+   (ikisi de - `0002` olmadan /admin/settings sayfası D1 hatası verir).
+3. `wrangler secret put ADMIN_PASSWORD` (yönetim paneli şifresi - bu,
+   panelin KENDİSİNİ koruduğu için panelden ayarlanamıyor, tek istisna).
+4. NVIDIA anahtarı için İKİ yol var, biri yeterli:
+   - **(a) Panelden** (`AskUserQuestion` sonrası sahibinin seçtiği yol -
+     "herşeyi yap, ben sadece apileri panelden eklerim"): deploy'dan
+     sonra `/admin/settings` sayfasını aç, anahtarı yapıştır, kaydet.
+     `wrangler secret put` hiç çalıştırmaya gerek YOK.
+   - **(b) `wrangler secret put NVIDIA_API_KEY`** ile Cloudflare
+     secret olarak (bu repodaki `apps/control` için zaten alınmış olan
+     AYNI anahtar kullanılabilir) - panelde bir değer yoksa buna düşülür.
 5. `pnpm --filter @musteri-avcisi/translate deploy` (ya da
    `apps/translate` içinde `wrangler deploy`).
 6. `https://<worker-domenin>/admin` adresine git, bir konuşmacı ekle,
    bir oturum aç, QR kodu/linkleri test et.
+
+### Panelden API anahtarı ekleme (`/admin/settings`)
+
+"Herşeyi yap ben sadece apileri panelden eklicem" isteğiyle eklendi -
+`apps/control`'deki Ayarlar sayfasının AYNI deseni (öncelik: panel (D1)
+> Cloudflare secret/değişken > sabit varsayılan, bkz.
+`src/lib/settings.ts` `getEffectiveNvidiaSettings`). Şu an sadece
+NVIDIA API anahtarı/modeli kapsıyor - bu sistemde başka bir dış API
+YOK (STT/TTS tarayıcıda, QR sunucuda üretiliyor - bkz. yukarıdaki
+mimari bölümü), yani panelden eklenebilecek "API" tek bu.
+**Bilinen ödünleşim (apps/control'de de aynı, bilerek tekrarlandı):**
+Model alanı normal bir metin kutusu olduğu için (API anahtarı gibi hep
+boş render edilmiyor) her "Ayarları Kaydet" o anki model değerini de
+D1'e yazar ("pinler") - zararsız çünkü kutu hep GEÇERLİ bir değerle
+doluyor (panel > secret/var > varsayılan), ama NVIDIA ileride bu modeli
+kullanımdan kaldırırsa `wrangler.toml`'daki güncellemeyi D1'deki eski
+pinlenmiş değer ezer; "Panel model ayarını sil" butonuyla geri
+dönülebilir (bkz. kök `CLAUDE.md`'deki "model D1'de PİNLENMİŞ" olayı -
+aynı sınıf davranış, orada da aynı şekilde ele alınmıştı).
+**Henüz canlıda doğrulanmadı.**
 
 ## Sonraki adımlar (henüz yapılmadı, sahibiyle netleşmeli)
 

@@ -10,6 +10,8 @@ import {
   type SpeakerRow,
   type SessionListItem,
 } from "../render/admin";
+import { renderSettingsPage } from "../render/settings";
+import { getEffectiveNvidiaSettings, updateNvidiaSettings } from "../lib/settings";
 
 function html(body: string, status = 200): Response {
   return new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
@@ -170,4 +172,32 @@ export async function handleSessionStatus(env: Env, sessionId: string): Promise<
   return new Response(JSON.stringify(status), {
     headers: { "content-type": "application/json" },
   });
+}
+
+export async function handleSettingsPage(
+  env: Env,
+  saved?: boolean,
+  error?: string,
+): Promise<Response> {
+  const effective = await getEffectiveNvidiaSettings(env);
+  return html(renderSettingsPage(effective, saved, error));
+}
+
+export async function handlePostSettings(request: Request, env: Env): Promise<Response> {
+  const form = await request.formData();
+  const origin = new URL(request.url).origin;
+
+  try {
+    await updateNvidiaSettings(env, {
+      apiKey: String(form.get("nvidiaApiKey") ?? "").trim() || undefined,
+      model: String(form.get("nvidiaModel") ?? "").trim() || undefined,
+      clearApiKey: form.get("clearApiKey") === "1",
+      clearModel: form.get("clearModel") === "1",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.redirect(origin + "/admin/settings?error=" + encodeURIComponent(message), 303);
+  }
+
+  return Response.redirect(origin + "/admin/settings?saved=1", 303);
 }

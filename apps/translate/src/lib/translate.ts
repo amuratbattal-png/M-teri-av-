@@ -1,8 +1,8 @@
 import type { Env } from "../env";
 import { languageLabel } from "./languages";
+import { getEffectiveNvidiaSettings } from "./settings";
 
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,16 +13,18 @@ function sleep(ms: number): Promise<void> {
  * öğrenilen AYNI ders burada baştan uygulanıyor: 429 (hız sınırı) gelirse
  * üstel bekleme ile en fazla 5 kez tekrar denenir (bkz. CLAUDE.md "429
  * tekrar" olayı - orada bu olmadan tek bir toplu işlem tüm çevirileri
- * başarısız kılmıştı).
+ * başarısız kılmıştı). Anahtar/model artık /admin/settings panelinden
+ * (D1) ya da Cloudflare secret/var'dan gelebiliyor - bkz.
+ * getEffectiveNvidiaSettings.
  */
 async function fetchNvidiaChat(
   env: Env,
   messages: { role: string; content: string }[],
 ): Promise<string> {
-  if (!env.NVIDIA_API_KEY) {
-    throw new Error("NVIDIA_API_KEY tanımlı değil");
+  const { apiKey, model } = await getEffectiveNvidiaSettings(env);
+  if (!apiKey) {
+    throw new Error("NVIDIA API anahtarı tanımlı değil (panel veya secret)");
   }
-  const model = env.NVIDIA_MODEL || DEFAULT_MODEL;
 
   let lastError: unknown;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -30,7 +32,7 @@ async function fetchNvidiaChat(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${env.NVIDIA_API_KEY}`,
+        authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,

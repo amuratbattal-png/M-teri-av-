@@ -89,6 +89,7 @@ export function adminPage(activeNav: string, title: string, bodyHtml: string): s
   <nav>
     ${navItem("/admin/sessions", "sessions", "Oturumlar")}
     ${navItem("/admin/speakers", "speakers", "Konuşmacılar")}
+    ${navItem("/admin/settings", "settings", "Ayarlar")}
   </nav>
 </header>
 <main>

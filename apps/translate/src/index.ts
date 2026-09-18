@@ -10,6 +10,8 @@ import {
   handleSessionDetailPage,
   handleEndSession,
   handleSessionStatus,
+  handleSettingsPage,
+  handlePostSettings,
 } from "./routes/admin";
 import { handleJoinPage, handleSpeakPage } from "./routes/public";
 
@@ -106,6 +108,17 @@ async function handleAdminRoute(request: Request, env: Env, url: URL): Promise<R
   const detailMatch = pathname.match(/^\/admin\/sessions\/([^/]+)$/);
   if (detailMatch && method === "GET") {
     return handleSessionDetailPage(env, url.origin, detailMatch[1]);
+  }
+
+  if (pathname === "/admin/settings" && method === "GET") {
+    return handleSettingsPage(
+      env,
+      url.searchParams.get("saved") === "1",
+      url.searchParams.get("error") || undefined,
+    );
+  }
+  if (pathname === "/admin/settings" && method === "POST") {
+    return handlePostSettings(request, env);
   }
 
   return json({ error: "not found" }, 404);

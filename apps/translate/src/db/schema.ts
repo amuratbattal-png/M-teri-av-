@@ -43,3 +43,15 @@ export const transcriptEntries = sqliteTable("transcript_entries", {
     .$type<Record<string, string>>(),
   createdAt: text("created_at").notNull(),
 });
+
+/**
+ * /admin/settings panelinden girilen değerler (NVIDIA API anahtarı/model) -
+ * kök repodaki apps/control'ün AYNI deseni (bkz. packages/db/schema.ts
+ * settings). Bir satırın olmaması "wrangler secret/var'a düş" demek
+ * (bkz. lib/settings.ts getEffectiveNvidiaSettings).
+ */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: text("updated_at").notNull(),
+});
