@@ -50,8 +50,11 @@ gerekmez.**
 
 ```
 php-translate/
-  schema.sql              MySQL/SQLite uyumlu şema
-  config.example.php      config.php'ye kopyalanıp doldurulacak örnek
+  setup.php               Web tabanlı kurulum sihirbazı - TEK adımda DB
+                          bağlantısını test eder, şemayı uygular, config.php'yi
+                          kendisi yazar (phpMyAdmin'e girmeye GEREK YOK)
+  schema.sql              MySQL/SQLite uyumlu şema (setup.php bunu kullanır)
+  config.example.php      setup.php kullanmak istemezseniz elle doldurulacak örnek
   vendor/                 chillerlan/php-qrcode (QR SVG üretimi) - VENDORED,
                           composer çalıştırmaya GEREK YOK, FTP ile olduğu gibi
                           yüklenebilir
@@ -68,16 +71,27 @@ php-translate/
    hosting'inizdeki bir klasöre yükleyin (ör. `public_html/ceviri/` ya
    da kendi alt alan adınız `ceviri.ajansim.net` için ayrılmış klasör).
 2. cPanel'den bir **MySQL veritabanı ve kullanıcı** oluşturun (cPanel
-   "MySQL Databases" bölümü).
-3. **phpMyAdmin**'den bu veritabanına `schema.sql` dosyasını içe
-   aktarın (Import sekmesi) - 6 tablo oluşturacak.
-4. `config.example.php` dosyasını **`config.php` olarak kopyalayın**
-   (aynı klasörde) ve gerçek değerleri girin: MySQL bilgileri, panel
-   şifresi, NVIDIA API anahtarı (isterseniz boş bırakıp panelden de
-   girebilirsiniz - bkz. aşağıda).
+   "MySQL Databases" bölümü) - veritabanı adını/kullanıcı adını/şifresini
+   not edin, bir sonraki adımda gerekecek.
+3. `https://sizin-alan-adiniz/ceviri/setup.php` adresine gidin. Açılan
+   formda MySQL bilgilerinizi, yönetim paneli için istediğiniz kullanıcı
+   adı/şifreyi (isteğe bağlı olarak NVIDIA API anahtarınızı da) girip
+   **"Kurulumu Tamamla"**ya basın - sihirbaz bağlantıyı test eder,
+   tabloları oluşturur ve `config.php`'yi kendisi yazar.
+4. **Kurulum bittiğinde `setup.php` dosyasını FTP ile sunucudan silin**
+   (sayfanın kendisi de bunu hatırlatıyor) - açık kalırsa, siteyi bulan
+   biri `config.php`'yi silip kurulumu yeniden çalıştırarak paneli ele
+   geçirebilir. `setup.php`, `config.php` zaten varsa kendini otomatik
+   olarak devre dışı bırakıyor (yeniden çalıştırılamıyor) ama silmek yine
+   de en güvenlisi.
 5. `https://sizin-alan-adiniz/ceviri/admin/sessions.php` adresine gidin
-   (Basic Auth ile giriş isteyecek - kullanıcı adı/şifre `config.php`de
-   belirlediğiniz), bir konuşmacı ekleyin, bir oturum açın.
+   (Basic Auth ile giriş isteyecek - 3. adımda belirlediğiniz kullanıcı
+   adı/şifre), bir konuşmacı ekleyin, bir oturum açın.
+
+`setup.php` kullanmak istemezseniz (ör. sunucunuzda dosya yazma izni
+kısıtlıysa) eski yöntem hâlâ geçerli: `config.example.php`'yi elle
+`config.php` olarak kopyalayıp doldurun, `schema.sql`'i phpMyAdmin'den
+içe aktarın.
 
 **ÖNEMLİ - HTTPS:** Basic Auth şifresi şifrelenmeden (düz metin)
 gönderilir, bu yüzden hosting'inizde **mutlaka HTTPS/SSL aktif olmalı**
@@ -144,6 +158,17 @@ SQLite üzerinden uçtan uca test edildi:
   `public_page()` artık `$title` parametresini KENDİ İÇİNDE escape
   ediyor (tek merkezi yer - gelecekte yeni bir sayfa eklenirken aynı
   hatanın tekrarlanma riski azaltılıyor).
+- **`setup.php` (web kurulum sihirbazı) da aynı şekilde uçtan uca
+  çalıştırıldı:** SQLite ile tam bir kurulum (form doldur → DB
+  bağlantısı test edilir → şema uygulanır → `config.php` yazılır →
+  panel girişi hemen çalışır) doğrulandı; ardından `config.php` varken
+  sihirbazın kendini otomatik kapattığı, zorunlu alanlar boş
+  bırakıldığında `config.php` YAZILMADAN hata gösterdiği, ve MySQL
+  bağlantı hatasında (bu sandbox'ta MySQL sunucusu yok, doğal olarak
+  başarısız oldu) yine `config.php` yazılmadan net bir hata
+  gösterildiği test edildi. Form yeniden gösterilirken kullanıcı
+  girdisinin (ör. sunucu adı alanına yazılmış bir `<script>`) escape
+  edildiği ayrıca doğrulandı.
 
 ## Bilinen sınırlamalar (dürüst liste)
 
