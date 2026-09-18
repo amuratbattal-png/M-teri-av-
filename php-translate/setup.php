@@ -95,7 +95,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dbUser = null;
     $dbPass = null;
 
-    if ($values['db_type'] === 'mysql') {
+    // Doğrulama zaten başarısızsa (ör. şifre boş) burada hiçbir yan etki
+    // (klasör oluşturma, bağlantı denemesi) YAPILMAMALI - önceki sürümde
+    // SQLite dalı $errors'a bakmadan 'data' klasörünü oluşturuyordu,
+    // geçersiz bir form gönderiminde bile boş bir klasör kalıyordu.
+    if (!$errors && $values['db_type'] === 'mysql') {
         if ($values['db_host'] === '' || $values['db_name'] === '' || $values['db_user'] === '') {
             $errors[] = 'MySQL sunucu adresi, veritabanı adı ve kullanıcı adı gerekli.';
         } else {
@@ -103,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dbUser = $values['db_user'];
             $dbPass = $values['db_pass'];
         }
-    } else {
+    } elseif (!$errors) {
         $dataDir = __DIR__ . '/data';
         if (!is_dir($dataDir) && !mkdir($dataDir, 0775, true) && !is_dir($dataDir)) {
             $errors[] = "'data' klasörü oluşturulamadı - dosya izinlerini kontrol edin.";
