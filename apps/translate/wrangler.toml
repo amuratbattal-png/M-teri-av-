@@ -1,0 +1,46 @@
+name = "canli-ceviri"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Bu sistem, bu repodaki "Müşteri Avcısı Sistemi"yle İLGİSİZ, tamamen
+# bağımsız bir ürün (anlık konferans çevirisi) - bkz. apps/translate/NOTES.md.
+# Kendi D1 veritabanı, kendi Durable Object'i var; hiçbir tablo/worker
+# customer-hunter tarafıyla paylaşılmıyor.
+
+# Gerçek Cloudflare hesabında `wrangler d1 create canli-ceviri-db` ile
+# oluşturulup aşağıdaki database_id doldurulmalı, sonra
+# `wrangler d1 execute canli-ceviri-db --file=migrations/0001_init.sql`
+# ile şema uygulanmalı (bkz. NOTES.md "Deploy adımları").
+[[d1_databases]]
+binding = "DB"
+database_name = "canli-ceviri-db"
+database_id = "PLACEHOLDER-WRANGLER-D1-CREATE-SONRASI-DOLDURULACAK"
+
+# Oturum başına bir SessionRoom Durable Object örneği - WebSocket
+# Hibernation API kullanıyor (bkz. src/durable-object.ts) - "katılımcı
+# sınırı olmayacak" isteğine karşılık, bağlantıları hafızada canlı
+# tutmak yerine Cloudflare'in hazırda bekletme (hibernation) mekanizmasına
+# bırakıyor; pratikte binlerce eşzamanlı bağlantıya ölçeklenmesi beklenir
+# ama gerçek bir üst sınır Cloudflare hesap/plan kotasına bağlıdır -
+# "sınırsız" garantisi verilemez, sadece pratik olarak çok yüksek bir
+# tavan hedeflenir.
+[[durable_objects.bindings]]
+name = "SESSION_ROOM"
+class_name = "SessionRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionRoom"]
+
+[vars]
+# Yönetim paneli (/admin) Basic Auth kullanıcı adı - şifre PLAINTEXT
+# tutulmaz, `wrangler secret put ADMIN_PASSWORD` ile ayarlanmalı.
+ADMIN_USERNAME = "admin"
+
+# Çeviri için NVIDIA API (integrate.api.nvidia.com) - bu repodaki
+# apps/control'ün kullandığı AYNI ücretsiz yöntem (ayrı bir anahtar/hesap
+# gerekmiyor, aynı NVIDIA_API_KEY buraya da secret olarak eklenebilir).
+# Tanımlı değilse çeviri yapılamaz - katılımcı orijinal metni
+# "[çeviri yapılamadı]" notuyla görür, sistem çökmez.
+# `wrangler secret put NVIDIA_API_KEY` ile eklenmeli.
+NVIDIA_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"

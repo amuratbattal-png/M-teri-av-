@@ -5,6 +5,14 @@
 > ve mimari burada tutuluyor — böylece "önceki konuşmayı hatırlamıyorum" sorunu
 > bir daha yaşanmaz. Yeni kararlar alındıkça bu dosya güncellenmeli.
 
+> **NOT:** Bu repo ayrıca, bu sistemle **hiçbir ilgisi olmayan, tamamen
+> bağımsız ikinci bir ürün** barındırıyor: `apps/translate/` - bir anlık
+> konferans çeviri sistemi (QR ile katılım, konuşmacı ekranı, çok dilli
+> canlı altyazı+seslendirme). Kendi D1 veritabanı, kendi Durable
+> Object'i, kendi yönetim paneli var - hiçbir tablo/worker bu sayfada
+> anlatılan müşteri avcısı sistemiyle paylaşılmıyor. O sistemle ilgili
+> her şey için bu dosyayı DEĞİL, `apps/translate/NOTES.md`'yi oku.
+
 ## Projenin özü
 
 Otonom müşteri bulma ve SEO otomasyon sistemi. Google, LinkedIn, TikTok,
