@@ -57,12 +57,25 @@ CREATE TABLE IF NOT EXISTS event_speakers (
   -- (TR/EN) değiştirdiğinde hangisi gösterilecek buna göre seçiliyor.
   topic_tr VARCHAR(255) NOT NULL DEFAULT '',
   topic_en VARCHAR(255) NOT NULL DEFAULT '',
+  -- Konuşmacı fotoğrafı - admin panelinden yüklenir, uploads/speakers/
+  -- altına kaydedilir, katılımcı ekranında aktifken adı/konusuyla
+  -- birlikte gösterilir. NULL = henüz fotoğraf yüklenmedi.
+  photo VARCHAR(255) NULL,
   is_active INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL
 );
 
 CREATE INDEX idx_event_speakers_event ON event_speakers(event_id);
+
+-- "photo" sütunu sonradan eklendi - CREATE TABLE IF NOT EXISTS zaten var
+-- olan bir tabloyu ASLA güncellemez, bu yüzden daha önce kurulmuş
+-- (sütun olmadan oluşturulmuş) bir event_speakers tablosuna sütunu
+-- burada AYRICA ekliyoruz. Sıfırdan bir kurulumda CREATE TABLE zaten
+-- sütunu içerdiği için bu ALTER "duplicate column" hatası verir - bu,
+-- setup.php'nin (ve elle phpMyAdmin'den çalıştıranların) tolere ettiği
+-- ZARARSIZ bir durumdur (bkz. setup.php'deki $alreadyExists kontrolü).
+ALTER TABLE event_speakers ADD COLUMN photo VARCHAR(255) NULL;
 
 -- Konuşmacının söylediği her bitmiş (final) cümle. speaker_id, o cümle
 -- söylendiği ANDA hangi konuşmacının "aktif" olduğunu tutar (NULL =

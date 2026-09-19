@@ -27,6 +27,7 @@ body { display:flex; align-items:center; justify-content:center; padding: 1.25re
 main { width: 100%; max-width: 640px; }
 #interim { min-height: 2.4rem; text-align:center; font-size:1.15rem; }
 #transcript { max-height: 220px; overflow-y:auto; }
+#speaker-questions { max-height: 220px; overflow-y:auto; }
 #log { max-height: 100px; overflow-y:auto; font-size:.78rem; }
 </style>';
 
@@ -63,6 +64,12 @@ $body = <<<HTML
 
   <h2 class="h6">Yakalanan cümleler</h2>
   <div id="transcript" class="card card-body mb-3"></div>
+
+  <h2 class="h6">Gelen Sorular</h2>
+  <p class="text-secondary small mb-1">Siz aktifken katılımcıların sorduğu sorular burada görünür.</p>
+  <div id="speaker-questions" class="card card-body mb-3">
+    <span class="text-secondary small">Henüz soru yok.</span>
+  </div>
 
   <div class="card card-body d-flex flex-row justify-content-between align-items-center">
     <span class="text-secondary small">Etkinlik bitince sonlandırabilirsiniz.</span>
@@ -127,6 +134,46 @@ function pollStatus() {
 }
 setInterval(pollStatus, 4000);
 pollStatus();
+
+function pollQuestions() {
+  fetch('/api/speaker_questions.php?event_id=' + encodeURIComponent(eventId) + '&token=' + encodeURIComponent(speakerToken))
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      var box = document.getElementById('speaker-questions');
+      if (data.error || !data.questions || data.questions.length === 0) {
+        box.textContent = '';
+        var empty = document.createElement('span');
+        empty.className = 'text-secondary small';
+        empty.textContent = 'Henüz soru yok.';
+        box.appendChild(empty);
+        return;
+      }
+      var wasNear = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.textContent = '';
+      data.questions.forEach(function (q) {
+        var row = document.createElement('div');
+        row.className = 'border-bottom py-1';
+        var head = document.createElement('div');
+        head.className = 'd-flex justify-content-between';
+        var name = document.createElement('strong');
+        name.textContent = q.asker_name;
+        var time = document.createElement('span');
+        time.className = 'text-secondary small';
+        time.textContent = q.created_at;
+        head.appendChild(name);
+        head.appendChild(time);
+        var msg = document.createElement('div');
+        msg.textContent = q.message;
+        row.appendChild(head);
+        row.appendChild(msg);
+        box.appendChild(row);
+      });
+      if (wasNear) box.scrollTop = box.scrollHeight;
+    })
+    .catch(function () {});
+}
+setInterval(pollQuestions, 5000);
+pollQuestions();
 
 function updateMicButton() {
   var btn = document.getElementById('mic-btn');

@@ -57,13 +57,22 @@ $langOptions = language_options_html($event['source_lang'], $uiLang);
 // başlık (aktif konuşmacı/placeholder) sunucu tarafında da hesaplanıyor -
 // ilk poll() çağrısı zaten anında tetiklenip bunu tazeleyecek.
 if ($activeSpeaker) {
-    $headerInitial = '<div class="h5 mb-1">' . esc($activeSpeaker['name']) . '</div><div class="text-secondary">' .
+    $speakerPhotoHtml = !empty($activeSpeaker['photo'])
+        ? '<img src="' . esc('/' . $activeSpeaker['photo']) . '" class="rounded-circle mb-2" width="88" height="88" style="object-fit:cover" alt="">'
+        : '';
+    $headerInitial = $speakerPhotoHtml . '<div class="h5 mb-1">' . esc($activeSpeaker['name']) . '</div><div class="text-secondary">' .
         esc($uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr']) . '</div>';
 } elseif (!empty($event['placeholder_image'])) {
     $headerInitial = '<img src="' . esc('/' . $event['placeholder_image']) . '" alt="">';
 } else {
     $headerInitial = '<span class="text-secondary">' . esc(t('no_speaker', $uiLang)) . '</span>';
 }
+
+// "Hiçbir konuşmacı aktif değilken sadece görsel görünsün" isteği - katılım
+// (dil seçimi) ve oturum (transkript) panelleri, bir konuşmacı aktif OLMADIĞI
+// sürece hiç gösterilmiyor; JS'teki updateHeader() de her anket (poll)
+// sonucuna göre bu iki paneli aynı kuralla açıp kapatıyor.
+$joinPanelInitialDisplay = $activeSpeaker ? 'block' : 'none';
 
 $bcp47Map = [];
 foreach (LANGUAGES as $l) {
@@ -105,7 +114,7 @@ $body = <<<HTML
     <div class="card-body text-center placeholder-screen py-4" id="speaker-header-body">{$headerInitial}</div>
   </div>
 
-  <div id="join-panel" class="card mb-3">
+  <div id="join-panel" class="card mb-3" style="display:{$joinPanelInitialDisplay}">
     <div class="card-body">
       <label for="lang-select" class="form-label">{$langLabel}</label>
       <select id="lang-select" class="form-select mb-3">{$langOptions}</select>
@@ -219,6 +228,16 @@ function speakIfEnabled(entry) {
 function updateHeader(data) {
   headerBody.textContent = '';
   if (data.active_speaker) {
+    if (data.active_speaker.photo) {
+      var photo = document.createElement('img');
+      photo.src = data.active_speaker.photo;
+      photo.alt = '';
+      photo.className = 'rounded-circle mb-2';
+      photo.width = 88;
+      photo.height = 88;
+      photo.style.objectFit = 'cover';
+      headerBody.appendChild(photo);
+    }
     var h = document.createElement('div');
     h.className = 'h5 mb-1';
     h.textContent = data.active_speaker.name;
@@ -238,11 +257,31 @@ function updateHeader(data) {
     span.textContent = config.strings.no_speaker;
     headerBody.appendChild(span);
   }
+
+  // Hiçbir konuşmacı aktif değilken SADECE yukarıdaki görsel/metin görünsün -
+  // katılım/oturum panelleri tamamen gizlenir (zaten katılmış biri için de
+  // geçerli: konuşmacı ortasında pasif olursa oturum ekranı da kaybolur).
+  var hasActiveSpeaker = !!data.active_speaker;
+  lastHasActiveSpeaker = hasActiveSpeaker;
+  var joinPanelEl = document.getElementById('join-panel');
+  var sessionPanelEl = document.getElementById('session-panel');
+  if (!hasActiveSpeaker) {
+    joinPanelEl.style.display = 'none';
+    sessionPanelEl.style.display = 'none';
+  } else if (joined) {
+    sessionPanelEl.style.display = 'block';
+    joinPanelEl.style.display = 'none';
+  } else {
+    joinPanelEl.style.display = 'block';
+    sessionPanelEl.style.display = 'none';
+  }
+
   qaEnabled = !!data.qa_enabled;
   askBtn.style.display = qaEnabled ? 'inline-block' : 'none';
 }
 
 var firstPollAfterJoin = false;
+var lastHasActiveSpeaker = false;
 
 function poll() {
   var url = '/api/participant_poll.php?event_id=' + encodeURIComponent(config.eventId) +
@@ -312,7 +351,7 @@ document.getElementById('tts-toggle').addEventListener('click', function (event)
 document.getElementById('leave-btn').addEventListener('click', function () {
   joined = false;
   document.getElementById('session-panel').style.display = 'none';
-  document.getElementById('join-panel').style.display = 'block';
+  document.getElementById('join-panel').style.display = lastHasActiveSpeaker ? 'block' : 'none';
 });
 
 document.getElementById('question-send-btn').addEventListener('click', function () {

@@ -60,6 +60,7 @@ function handle_participant_poll(): void
             'id' => $activeSpeaker['id'],
             'name' => $activeSpeaker['name'],
             'topic' => $uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr'],
+            'photo' => !empty($activeSpeaker['photo']) ? ('/' . $activeSpeaker['photo']) : null,
         ];
     }
 

@@ -11,11 +11,13 @@
 
 Admin (PC'den ya da telefondan) bir **Etkinlik** (Event) açar - tüm
 katılımcılara verilecek TEK bir QR kod/link buradan üretilir. Etkinlik
-içine **birden çok konuşmacı** (Ad Soyad + Konu) eklenebilir; admin
-panelinden aynı anda sadece BİR konuşmacı **Aktif** yapılır (bir
+içine **birden çok konuşmacı** (Ad Soyad + Konu + fotoğraf) eklenebilir;
+admin panelinden aynı anda sadece BİR konuşmacı **Aktif** yapılır (bir
 konuşmacıyı aktif yapmak diğerlerini otomatik pasif yapar - iki adımlı
-bir işlem gerekmez). Hiçbir konuşmacı aktif değilken katılımcı ekranında
-admin'in yüklediği bir **görsel** (boş ekran yerine) gösterilir.
+bir işlem gerekmez). **Hiçbir konuşmacı aktif değilken katılımcı
+ekranında SADECE admin'in yüklediği görsel gösterilir** - dil seçimi/
+katılım/altyazı panelleri tamamen gizlenir, bir konuşmacı aktif olur
+olmaz geri gelir.
 
 Katılımcı, QR kodu okutup - giriş/şifre gerekmeden - katılır:
 - Önce (bir kere) **arayüz dili** (TR/EN) seçer - bu, sadece buton/
@@ -25,16 +27,21 @@ Katılımcı, QR kodu okutup - giriş/şifre gerekmeden - katılır:
 - Sonra **takip etmek istediği dili** (yaklaşık 20 dilden biri) seçip
   katılır - konuşmanın çevrileceği dil budur. Konuşma hem yazılı
   (altyazı, geçmişiyle birlikte) hem sesli (kendi cihazının
-  seslendirmesiyle) takip edilir.
+  seslendirmesiyle) takip edilir. Aktif konuşmacının **fotoğrafı**
+  (yüklendiyse) adı/konusuyla birlikte üstte gösterilir.
 - Admin "soru sormayı" açtıysa katılımcı bir buton üzerinden **ad soyad
   + mesaj** ile soru gönderebilir (ikisi de zorunlu - sunucu tarafında
-  da doğrulanır). Sorular admin ekranında canlı listelenir, admin
-  istediği dile tek tıkla çevirebilir.
+  da doğrulanır). Soru, o an aktif olan konuşmacıya bağlı kaydedilir.
 
-Konuşmacının kendisi ayrı bir link (`speak.php?event=...&token=...`)
+Konuşmacının kendisi ayrı bir link/**QR kod** (`speak.php?event=...&token=...`)
 üzerinden mikrofonunu açık tutar - bu link etkinlik boyunca tek bir
-cihazda (ör. podyumdaki laptop) açık kalır, hangi konuşmacının aktif
-olduğu admin panelinden değiştirilir.
+cihazda (ör. podyumdaki laptop ya da konuşmacının kendi telefonu) açık
+kalır, hangi konuşmacının aktif olduğu admin panelinden değiştirilir.
+**Kendisi aktifken sorulan sorular kendi ekranında canlı olarak
+görünür** - admin panelinde ise TÜM sorular hangi konuşmacıya
+sorulduğuna göre gruplanmış halde listelenir ("Ahmet Yılmaz", "Ayşe
+Kaya" gibi başlıklar altında), admin istediği soruyu istediği dile tek
+tıkla çevirebilir.
 
 Tüm arayüz (admin girişi dahil) **Bootstrap 5** ile responsive - telefon/
 tablet/PC'de sorunsuz çalışır.
@@ -87,22 +94,29 @@ php-translate/
   includes/               Ortak fonksiyonlar:
                             auth.php      oturum tabanlı admin girişi (session)
                             layout.php    Bootstrap 5 sayfa kabukları (admin/katılımcı)
+                                          + konuşmacıya göre gruplu soru listesi HTML'i
                             i18n.php      katılımcı arayüz dili (TR/EN) metinleri
                             languages.php çeviri hedef dili listesi (~20 dil)
                             repo.php      events/event_speakers/questions sorguları
+                            uploads.php   görsel yükleme doğrulaması (etkinlik
+                                          görseli VE konuşmacı fotoğrafı ORTAK)
                             db.php, settings.php, translate.php, qrcode.php
   admin/                  Yönetim paneli:
                             login.php / logout.php   Bootstrap giriş formu (oturum)
                             events.php                etkinlik listesi + oluşturma
-                            event.php                 tek etkinlik: roster, aktif/
-                                                       pasif, görsel, QA, sorular
+                            event.php                 tek etkinlik: roster (+ fotoğraf
+                                                       yükle/kaldır), aktif/pasif, boş
+                                                       ekran görseli, konuşmacı QR'ı,
+                                                       QA, konuşmacıya göre gruplu sorular
                             questions_feed.php         canlı soru listesi (JS poller)
                             translate_question.php     tek bir soruyu çevir (JSON)
                             settings.php                NVIDIA API anahtarı/model
   api/                    speak_post.php, participant_poll.php, status.php,
-                          ask_question.php
+                          ask_question.php, speaker_questions.php (konuşmacının
+                          kendi ekranı için, token ile korunan, aktifken sorulan
+                          soruları döner)
   join.php                Katılımcı sayfası (?code=XXXXXX)
-  speak.php               Konuşmacı mikrofon ekranı (?event=...&token=...)
+  speak.php               Konuşmacı mikrofon ekranı + gelen sorular (?event=...&token=...)
 ```
 
 ## Kurulum (paylaşımlı/cPanel hosting için)
@@ -239,6 +253,77 @@ Event/çok-konuşmacı/Q&A modeliyle GÜNCELLENEREK tekrarlandı):
   bırakıldığında `config.php` YAZILMADAN hata gösterdiği doğrulandı.
   Form yeniden gösterilirken kullanıcı girdisinin escape edildiği ayrıca
   doğrulandı.
+
+### İkinci tur: konuşmacı fotoğrafı, konuşmacı bazlı sorular, konuşmacı QR'ı, "sadece görsel" ekranı
+
+Canlı ortamda `events` tablosunun eksik olduğu (MySQL şeması hiç
+uygulanmamış) bir kurulum hatası çözüldükten sonra sahibi dört yeni
+istek iletti - hepsi aynı şekilde `php -S` + SQLite ile uçtan uca test
+edildi:
+
+- **Konuşmacı fotoğrafı** - `event_speakers.photo` sütunu eklendi.
+  ÖNEMLİ: `CREATE TABLE IF NOT EXISTS` var olan bir tabloya yeni sütun
+  eklemediği için (aynı sınıf sorun bu projede daha önce de yaşanmıştı,
+  bkz. yukarıdaki `follow_up_date`/`settings.updated_at` tarzı notlar -
+  o örnekler başka bir projeden ama ders aynı), `schema.sql`'e ayrıca
+  bir `ALTER TABLE event_speakers ADD COLUMN photo ...` eklendi ve
+  `setup.php`'nin "zaten var" toleransına MySQL 1060/SQLite "duplicate
+  column" hatası da eklendi - hem sıfırdan kurulumda (ALTER zararsızca
+  "zaten var" der) hem var olan bir kurulumu yükseltirken (ALTER gerçekten
+  sütunu ekler) aynı `schema.sql` çalışıyor. Bu iki senaryo da (temiz
+  kurulum VE eski tablo üzerine yükseltme) ayrı ayrı SQLite ile simüle
+  edilip doğrulandı. Admin panelinde her konuşmacı satırına küçük bir
+  fotoğraf yükleme/kaldırma formu eklendi (event görseliyle aynı
+  doğrulama mantığını paylaşan yeni `includes/uploads.php`), gerçek bir
+  PNG ile yükleme/kaldırma/silinen konuşmacının fotoğraf dosyasının da
+  silinmesi test edildi. Katılımcı tarafında aktif konuşmacının fotoğrafı
+  (varsa) adı/konusunun üstünde gösteriliyor - hem `join.php`'nin ilk
+  render'ında hem `participant_poll.php`'nin döndürdüğü veriyle canlı
+  güncellenen JS'te doğrulandı.
+- **Sorular artık konuşmacıya bağlı** - "sorular konuşmacının
+  oturumunda olduğu için konuşmacının ekranına düşecek, adminde hangi
+  konuşmacıya hangi sorular gelmiş görecek" isteği. Yeni
+  `list_questions_grouped()` (repo.php) sorguları roster sırasına göre
+  gruplu döndürüyor; `render_question_list_html()` artık önceden
+  hazırlanmış bir dizi değil doğrudan `eventId` alıp bu grupları HTML'e
+  döküyor - admin ekranında her konuşmacının adı bir başlık, altında
+  SADECE o konuşmacı aktifken sorulmuş sorular listeleniyor. Roster'dan
+  silinmiş bir konuşmacıya ait sorular "Silinmiş konuşmacı", hiçbir
+  konuşmacı aktif değilken sorulmuş (teorik olarak artık imkânsız ama
+  eski kayıtlar için) sorular "Konuşmacı aktif değilken soruldu" ayrı
+  gruplarında kaybolmadan gösteriliyor - ikisi de gerçek verilerle
+  test edildi. Konuşmacının kendi mikrofon ekranı (`speak.php`) için
+  YENİ, token ile korunan (admin girişi DEĞİL) bir `api/speaker_questions.php`
+  eklendi - sadece O AN aktif olan konuşmacıya sorulmuş soruları döner;
+  iki konuşmacı arasında aktif/pasif geçiş yapılıp her birinin kendi
+  ekranının SADECE kendine sorulan soruyu gösterdiği (diğerininkini
+  değil) doğrulandı. Yanlış token'la 401 döndüğü ayrıca test edildi.
+- **Konuşmacı mikrofon linkine QR kod eklendi** - "konuşmacının qr kodu
+  yok" - `admin/event.php`'deki "Konuşmacı Mikrofon Ekranı" kartına,
+  katılım QR'ıyla aynı şekilde `render_qr_data_uri()` ile üretilen bir
+  QR görseli eklendi (artık konuşmacı da kendi telefonuyla bu kodu
+  okutup mikrofon ekranını doğrudan açabiliyor).
+- **Hiçbir konuşmacı aktif değilken SADECE görsel** - önceden katılım
+  paneli (dil seçimi + Katıl butonu) konuşmacı aktif olsun olmasın her
+  zaman görünüyordu, görselin yanında fazladan bir form duruyordu.
+  `join.php`'de hem ilk PHP render'ında (`$joinPanelInitialDisplay`) hem
+  her anket (`poll()`) sonrasında çalışan JS'teki `updateHeader()`'da bir
+  kural eklendi: aktif konuşmacı yoksa katılım VE oturum (transkript)
+  panellerinin İKİSİ DE gizleniyor, sadece üstteki görsel/metin kalıyor;
+  bir konuşmacı aktif olur olmaz (2 saniye içinde) ilgili panel (daha
+  katılmadıysa katılım formu, katılmışsa oturum ekranı) geri geliyor.
+  Bir katılımcı oturumdayken konuşmacı pasif olursa oturum ekranının da
+  gizlenip sadece görsele döndüğü test edildi ("Ayrıl" butonunun bu
+  durumda katılım formunu YANLIŞLIKLA tekrar göstermemesi için ayrı bir
+  `lastHasActiveSpeaker` bayrağı eklendi). Görsel yokken (admin henüz
+  yüklemediyse) eski "Şu anda aktif bir konuşmacı yok" metni yedek
+  olarak kalıyor - tamamen boş bir ekran yerine.
+
+Bu turda da render.ts/heredoc-escape dersinin PHP karşılığı tekrar
+uygulandı: her değişen `<script>` bloğu (`join.php`, `speak.php`,
+`admin/event.php`) `node --check` ile ayrıca doğrulandı, tüm yeni/
+değişen `{$degisken}` heredoc interpolasyonları elle karşı kontrol
+edildi (hepsi tanımlı).
 
 ## Bilinen sınırlamalar (dürüst liste)
 

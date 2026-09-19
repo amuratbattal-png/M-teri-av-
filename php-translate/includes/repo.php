@@ -96,3 +96,57 @@ function list_questions(string $eventId, int $limit = 100): array
     $stmt->execute();
     return $stmt->fetchAll();
 }
+
+/** Belirli bir konuşmacıya (o an aktifken) sorulmuş sorular - konuşmacının kendi mikrofon ekranında gösterilir. */
+function list_questions_for_speaker(string $eventId, string $speakerId): array
+{
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare(
+        'SELECT * FROM questions WHERE event_id = ? AND speaker_id = ? ORDER BY created_at ASC',
+    );
+    $stmt->execute([$eventId, $speakerId]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Admin ekranındaki soru listesini "hangi konuşmacıya soruldu" bazında
+ * gruplar - "adminde hangi konuşmacıya hangi sorular gelmiş görecek"
+ * isteği üzerine. Roster sırasına göre (aktif/pasif fark etmeksizin)
+ * gruplanır; silinmiş bir konuşmacıya ait ya da hiçbir konuşmacı aktif
+ * değilken sorulmuş sorular ayrı, etiketli gruplarda listeye eklenir -
+ * hiçbir soru bu yüzden kaybolmaz.
+ *
+ * @return array<int, array{speaker: ?array, label: ?string, questions: array}>
+ */
+function list_questions_grouped(string $eventId): array
+{
+    $speakers = list_event_speakers($eventId);
+    $questions = list_questions($eventId);
+
+    $bySpeaker = [];
+    $unassigned = [];
+    foreach ($questions as $q) {
+        $speakerId = $q['speaker_id'] ?? null;
+        if ($speakerId === null || $speakerId === '') {
+            $unassigned[] = $q;
+            continue;
+        }
+        $bySpeaker[$speakerId][] = $q;
+    }
+
+    $groups = [];
+    foreach ($speakers as $speaker) {
+        if (!empty($bySpeaker[$speaker['id']])) {
+            $groups[] = ['speaker' => $speaker, 'label' => null, 'questions' => $bySpeaker[$speaker['id']]];
+            unset($bySpeaker[$speaker['id']]);
+        }
+    }
+    // Roster'da artık olmayan (silinmiş) bir konuşmacıya ait sorular varsa.
+    foreach ($bySpeaker as $leftoverQuestions) {
+        $groups[] = ['speaker' => null, 'label' => 'Silinmiş konuşmacı', 'questions' => $leftoverQuestions];
+    }
+    if ($unassigned) {
+        $groups[] = ['speaker' => null, 'label' => 'Konuşmacı aktif değilken soruldu', 'questions' => $unassigned];
+    }
+    return $groups;
+}

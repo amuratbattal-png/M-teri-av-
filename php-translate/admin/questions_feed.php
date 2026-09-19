@@ -12,4 +12,4 @@ if (!$event) {
     exit;
 }
 
-echo render_question_list_html(list_questions($eventId), $event['source_lang']);
+echo render_question_list_html($eventId, $event['source_lang']);

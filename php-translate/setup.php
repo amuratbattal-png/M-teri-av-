@@ -186,17 +186,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->exec($statement);
                 } catch (PDOException $e) {
                     // "CREATE TABLE IF NOT EXISTS" tekrar çalıştırmaya
-                    // dayanıklı ama "CREATE INDEX"in bir "IF NOT EXISTS"i
-                    // yok (eski MySQL sürümleriyle uyumluluk için bilerek
-                    // kullanılmadı, bkz. schema.sql yorumu) - sihirbaz daha
-                    // önce (belki config.php yazılamadan) kısmen
-                    // çalıştıysa tablolar/indeksler zaten var olabilir.
-                    // MySQL 1050 (tablo zaten var) / 1061 (indeks adı
-                    // zaten var) burada GERÇEK bir hata değil, "şema
-                    // zaten hazır" demek - atlanıp devam ediliyor.
+                    // dayanıklı ama "CREATE INDEX"in ve "ALTER TABLE ...
+                    // ADD COLUMN"ın bir "IF NOT EXISTS"i yok (eski MySQL
+                    // sürümleriyle uyumluluk için bilerek kullanılmadı,
+                    // bkz. schema.sql yorumu) - sihirbaz daha önce (belki
+                    // config.php yazılamadan) kısmen çalıştıysa ya da
+                    // schema.sql sonradan yeni bir sütun eklediyse (ör.
+                    // event_speakers.photo) tablolar/indeksler/sütunlar
+                    // zaten var olabilir. MySQL 1050 (tablo zaten var) /
+                    // 1061 (indeks adı zaten var) / 1060 (sütun zaten var)
+                    // burada GERÇEK bir hata değil, "şema zaten hazır"
+                    // demek - atlanıp devam ediliyor.
                     $driverCode = (int) ($e->errorInfo[1] ?? 0);
-                    $alreadyExists = in_array($driverCode, [1050, 1061], true)
-                        || stripos($e->getMessage(), 'already exists') !== false;
+                    $alreadyExists = in_array($driverCode, [1050, 1060, 1061], true)
+                        || stripos($e->getMessage(), 'already exists') !== false
+                        || stripos($e->getMessage(), 'duplicate column') !== false;
                     if (!$alreadyExists) {
                         throw $e;
                     }

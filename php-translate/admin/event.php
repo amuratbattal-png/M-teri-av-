@@ -5,13 +5,8 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/qrcode.php';
 require_admin_auth();
 
-const UPLOAD_DIR = __DIR__ . '/../uploads/events';
-const ALLOWED_IMAGE_TYPES = [
-    IMAGETYPE_JPEG => 'jpg',
-    IMAGETYPE_PNG => 'png',
-    IMAGETYPE_GIF => 'gif',
-    IMAGETYPE_WEBP => 'webp',
-];
+const EVENT_UPLOAD_DIR = __DIR__ . '/../uploads/events';
+const SPEAKER_UPLOAD_DIR = __DIR__ . '/../uploads/speakers';
 
 $id = (string) ($_GET['id'] ?? '');
 $event = $id !== '' ? find_event($id) : null;
@@ -55,8 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/event.php?id=' . rawurlencode($id));
         exit;
     } elseif ($action === 'delete_speaker') {
+        $speakerId = (string) ($_POST['speaker_id'] ?? '');
+        $speakerToDelete = find_event_speaker($speakerId);
+        if ($speakerToDelete && !empty($speakerToDelete['photo'])) {
+            @unlink(__DIR__ . '/../' . $speakerToDelete['photo']);
+        }
         $stmt = $pdo->prepare('DELETE FROM event_speakers WHERE id = ? AND event_id = ?');
-        $stmt->execute([(string) ($_POST['speaker_id'] ?? ''), $id]);
+        $stmt->execute([$speakerId, $id]);
         header('Location: /admin/event.php?id=' . rawurlencode($id));
         exit;
     } elseif ($action === 'toggle_qa') {
@@ -79,46 +79,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/event.php?id=' . rawurlencode($id));
         exit;
     } elseif ($action === 'upload_placeholder') {
-        $file = $_FILES['placeholder'] ?? null;
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            $formError = 'Görsel yüklenemedi - bir dosya seçtiğinizden emin olun.';
+        $validated = validate_uploaded_image($_FILES['placeholder'] ?? null);
+        if (!$validated['ok']) {
+            $formError = $validated['error'];
         } else {
-            $imageInfo = @getimagesize($file['tmp_name']);
-            $ext = $imageInfo ? (ALLOWED_IMAGE_TYPES[$imageInfo[2]] ?? null) : null;
-            if (!$imageInfo || !$ext) {
-                $formError = 'Sadece JPG, PNG, GIF veya WEBP görsel dosyaları kabul ediliyor.';
-            } elseif ($file['size'] > 8 * 1024 * 1024) {
-                $formError = 'Görsel çok büyük (en fazla 8 MB).';
-            } else {
-                if (!is_dir(UPLOAD_DIR)) {
-                    mkdir(UPLOAD_DIR, 0775, true);
-                }
-                if (!empty($event['placeholder_image'])) {
-                    @unlink(__DIR__ . '/../' . $event['placeholder_image']);
-                }
-                $relativePath = 'uploads/events/' . $id . '.' . $ext;
-                if (move_uploaded_file($file['tmp_name'], __DIR__ . '/../' . $relativePath)) {
-                    $stmt = $pdo->prepare('UPDATE events SET placeholder_image = ? WHERE id = ?');
-                    $stmt->execute([$relativePath, $id]);
-                    header('Location: /admin/event.php?id=' . rawurlencode($id));
-                    exit;
-                }
-                $formError = 'Görsel kaydedilemedi - klasör yazma izinlerini kontrol edin.';
+            if (!is_dir(EVENT_UPLOAD_DIR)) {
+                mkdir(EVENT_UPLOAD_DIR, 0775, true);
             }
+            if (!empty($event['placeholder_image'])) {
+                @unlink(__DIR__ . '/../' . $event['placeholder_image']);
+            }
+            $relativePath = 'uploads/events/' . $id . '.' . $validated['ext'];
+            if (move_uploaded_file($_FILES['placeholder']['tmp_name'], __DIR__ . '/../' . $relativePath)) {
+                $stmt = $pdo->prepare('UPDATE events SET placeholder_image = ? WHERE id = ?');
+                $stmt->execute([$relativePath, $id]);
+                header('Location: /admin/event.php?id=' . rawurlencode($id));
+                exit;
+            }
+            $formError = 'Görsel kaydedilemedi - klasör yazma izinlerini kontrol edin.';
         }
+    } elseif ($action === 'upload_speaker_photo') {
+        $speakerId = (string) ($_POST['speaker_id'] ?? '');
+        $speaker = find_event_speaker($speakerId);
+        $validated = validate_uploaded_image($_FILES['photo'] ?? null);
+        if (!$speaker || $speaker['event_id'] !== $id) {
+            $formError = 'Konuşmacı bulunamadı.';
+        } elseif (!$validated['ok']) {
+            $formError = $validated['error'];
+        } else {
+            if (!is_dir(SPEAKER_UPLOAD_DIR)) {
+                mkdir(SPEAKER_UPLOAD_DIR, 0775, true);
+            }
+            if (!empty($speaker['photo'])) {
+                @unlink(__DIR__ . '/../' . $speaker['photo']);
+            }
+            $relativePath = 'uploads/speakers/' . $speakerId . '.' . $validated['ext'];
+            if (move_uploaded_file($_FILES['photo']['tmp_name'], __DIR__ . '/../' . $relativePath)) {
+                $stmt = $pdo->prepare('UPDATE event_speakers SET photo = ? WHERE id = ?');
+                $stmt->execute([$relativePath, $speakerId]);
+                header('Location: /admin/event.php?id=' . rawurlencode($id));
+                exit;
+            }
+            $formError = 'Fotoğraf kaydedilemedi - klasör yazma izinlerini kontrol edin.';
+        }
+    } elseif ($action === 'remove_speaker_photo') {
+        $speakerId = (string) ($_POST['speaker_id'] ?? '');
+        $speaker = find_event_speaker($speakerId);
+        if ($speaker && $speaker['event_id'] === $id && !empty($speaker['photo'])) {
+            @unlink(__DIR__ . '/../' . $speaker['photo']);
+            $stmt = $pdo->prepare('UPDATE event_speakers SET photo = NULL WHERE id = ?');
+            $stmt->execute([$speakerId]);
+        }
+        header('Location: /admin/event.php?id=' . rawurlencode($id));
+        exit;
     }
 
     $event = find_event($id) ?? $event;
 }
 
 $speakers = list_event_speakers($id);
-$questions = list_questions($id);
 
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $origin = $scheme . '://' . $_SERVER['HTTP_HOST'];
 $joinUrl = $origin . '/join.php?code=' . rawurlencode($event['join_code']);
 $speakUrl = $origin . '/speak.php?event=' . rawurlencode($event['id']) . '&token=' . rawurlencode($event['speaker_token']);
 $qrDataUri = render_qr_data_uri($joinUrl);
+$speakQrDataUri = render_qr_data_uri($speakUrl);
 $participantCount = count_active_participants($id);
 
 $statusBadge = $event['status'] === 'active'
@@ -141,7 +167,19 @@ foreach ($speakers as $s) {
         ? '<form method="post" class="d-inline"><input type="hidden" name="action" value="deactivate_speaker"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-outline-warning">Pasif Yap</button></form>'
         : '<form method="post" class="d-inline"><input type="hidden" name="action" value="activate_speaker"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-success">Aktif Yap</button></form>';
 
+    $photoCell = !empty($s['photo'])
+        ? '<img src="' . esc('/' . $s['photo'] . '?t=' . time()) . '" width="40" height="40" class="rounded-circle object-fit-cover" alt="">' .
+          '<form method="post" class="d-inline" onsubmit="return confirm(\'Fotoğrafı kaldırmak istediğinize emin misiniz?\');"><input type="hidden" name="action" value="remove_speaker_photo"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-1">Kaldır</button></form>'
+        : '<span class="text-secondary small">Yok</span>';
+    $photoUploadForm = '<form method="post" enctype="multipart/form-data" class="d-flex gap-1 mt-1">
+            <input type="hidden" name="action" value="upload_speaker_photo">
+            <input type="hidden" name="speaker_id" value="' . esc($s['id']) . '">
+            <input type="file" class="form-control form-control-sm" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" style="max-width:150px">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Yükle</button>
+          </form>';
+
     $speakerRows .= '<tr>
+        <td>' . $photoCell . $photoUploadForm . '</td>
         <td>' . esc($s['name']) . $activeBadge . '</td>
         <td class="text-secondary small">' . esc($s['topic_tr']) . '</td>
         <td class="text-secondary small">' . esc($s['topic_en']) . '</td>
@@ -157,7 +195,7 @@ foreach ($speakers as $s) {
 }
 $speakersTable = count($speakers) === 0
     ? '<p class="text-secondary">Henüz konuşmacı eklenmedi.</p>'
-    : '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Ad Soyad</th><th>Konu (TR)</th><th>Konu (EN)</th><th></th></tr></thead><tbody>' . $speakerRows . '</tbody></table></div>';
+    : '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Fotoğraf</th><th>Ad Soyad</th><th>Konu (TR)</th><th>Konu (EN)</th><th></th></tr></thead><tbody>' . $speakerRows . '</tbody></table></div>';
 
 // --- Placeholder görsel ---
 $placeholderCard = '';
@@ -176,7 +214,7 @@ $qaStatusBadge = $event['qa_enabled']
     ? '<span class="badge text-bg-success">Soru sorma AÇIK</span>'
     : '<span class="badge text-bg-secondary">Soru sorma KAPALI</span>';
 
-$questionsList = render_question_list_html($questions, $event['source_lang']);
+$questionsList = render_question_list_html($id, $event['source_lang']);
 
 $body = <<<HTML
 <p><a href="/admin/events.php">&larr; Etkinlikler</a></p>
@@ -207,12 +245,17 @@ $body = <<<HTML
     <div class="card mb-4">
       <div class="card-body">
         <h2 class="h5 card-title">Konuşmacı Mikrofon Ekranı</h2>
-        <p class="text-secondary small">Bu tek link, etkinlik boyunca konuşmayı yakalayan cihazda (ör. podyumdaki laptop) açık kalır - hangi konuşmacının aktif olduğunu aşağıdaki listeden siz değiştirirsiniz.</p>
-        <div class="input-group input-group-sm mb-2">
-          <input type="text" class="form-control" id="speak-url" value="{$speakUrlEsc}" readonly>
-          <button class="btn btn-outline-secondary" type="button" onclick="copyField('speak-url')">Kopyala</button>
+        <p class="text-secondary small">Bu tek link/QR, etkinlik boyunca konuşmayı yakalayan cihazda (ör. podyumdaki laptop veya konuşmacının telefonu) açık kalır - hangi konuşmacının aktif olduğunu aşağıdaki listeden siz değiştirirsiniz.</p>
+        <div class="d-flex gap-3 flex-wrap align-items-start">
+          <div class="bg-white p-2 rounded"><img src="{$speakQrDataUri}" width="140" height="140" alt="Mikrofon ekranı QR kodu"></div>
+          <div class="flex-grow-1">
+            <div class="input-group input-group-sm mb-2">
+              <input type="text" class="form-control" id="speak-url" value="{$speakUrlEsc}" readonly>
+              <button class="btn btn-outline-secondary" type="button" onclick="copyField('speak-url')">Kopyala</button>
+            </div>
+            <a href="{$speakUrlEsc}" target="_blank" rel="noopener" class="btn btn-sm btn-primary">Mikrofon ekranını aç &rarr;</a>
+          </div>
         </div>
-        <a href="{$speakUrlEsc}" target="_blank" rel="noopener" class="btn btn-sm btn-primary">Mikrofon ekranını aç &rarr;</a>
       </div>
     </div>
 

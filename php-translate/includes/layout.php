@@ -112,16 +112,25 @@ function notice(string $kind, string $html): string
 /**
  * admin/event.php (ilk yüklemede) VE admin/questions_feed.php (canlı
  * tazeleme) TARAFINDAN paylaşılıyor - ikisi de AYNI HTML'i üretsin diye
- * (DRY) tek bir yerde.
+ * (DRY) tek bir yerde. Sorular artık HANGİ KONUŞMACIYA sorulduğuna göre
+ * gruplanıp ayrı başlıklar altında listeleniyor ("adminde hangi
+ * konuşmacıya hangi sorular gelmiş görecek" isteği) - veri toplama
+ * `list_questions_grouped()` (repo.php) içinde, HTML üretimi burada.
  */
-function render_question_list_html(array $questions, string $defaultLang): string
+function render_question_list_html(string $eventId, string $defaultLang): string
 {
-    if (count($questions) === 0) {
+    $groups = list_questions_grouped($eventId);
+    if (count($groups) === 0) {
         return '<p class="text-secondary" id="no-questions-msg">Henüz soru gelmedi.</p>';
     }
-    $rows = '';
-    foreach ($questions as $q) {
-        $rows .= '<div class="border-bottom py-2" data-question-id="' . esc($q['id']) . '">
+
+    $html = '';
+    foreach ($groups as $group) {
+        $groupLabel = $group['speaker'] ? $group['speaker']['name'] : ($group['label'] ?? 'Konuşmacı atanmamamış');
+        $html .= '<div class="mb-3"><div class="fw-semibold small text-info text-uppercase border-bottom pb-1 mb-2">' .
+            esc($groupLabel) . '</div>';
+        foreach ($group['questions'] as $q) {
+            $html .= '<div class="border-bottom py-2" data-question-id="' . esc($q['id']) . '">
         <div class="d-flex justify-content-between">
           <strong>' . esc($q['asker_name']) . '</strong>
           <span class="text-secondary small">' . esc($q['created_at']) . '</span>
@@ -133,8 +142,10 @@ function render_question_list_html(array $questions, string $defaultLang): strin
           <span class="question-translation small text-info"></span>
         </div>
       </div>';
+        }
+        $html .= '</div>';
     }
-    return $rows;
+    return $html;
 }
 
 function render_fatal_error_page(string $message): string
