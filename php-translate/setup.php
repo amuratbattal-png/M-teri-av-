@@ -181,7 +181,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($withoutComments === '') {
                     continue;
                 }
-                $pdo->exec($statement);
+                try {
+                    $pdo->exec($statement);
+                } catch (PDOException $e) {
+                    // "CREATE TABLE IF NOT EXISTS" tekrar çalıştırmaya
+                    // dayanıklı ama "CREATE INDEX"in bir "IF NOT EXISTS"i
+                    // yok (eski MySQL sürümleriyle uyumluluk için bilerek
+                    // kullanılmadı, bkz. schema.sql yorumu) - sihirbaz daha
+                    // önce (belki config.php yazılamadan) kısmen
+                    // çalıştıysa tablolar/indeksler zaten var olabilir.
+                    // MySQL 1050 (tablo zaten var) / 1061 (indeks adı
+                    // zaten var) burada GERÇEK bir hata değil, "şema
+                    // zaten hazır" demek - atlanıp devam ediliyor.
+                    $driverCode = (int) ($e->errorInfo[1] ?? 0);
+                    $alreadyExists = in_array($driverCode, [1050, 1061], true)
+                        || stripos($e->getMessage(), 'already exists') !== false;
+                    if (!$alreadyExists) {
+                        throw $e;
+                    }
+                }
             }
         } catch (Throwable $e) {
             $errors[] = 'Veritabanı şeması uygulanamadı: ' . $e->getMessage();
