@@ -48,9 +48,31 @@ main { max-width: 640px; }
 HTML;
 }
 
+/**
+ * Bu kurulum sayfası, karanlık mod zorlayan tarayıcı eklentileri
+ * (Dark Reader vb.) yüzünden sayfanın KENDİ koyu temasıyla çakışıp
+ * hata metninin görünmez hâle geldiği (sahibinin canlıda yaşadığı
+ * gerçek bir olay) bir durumla karşılaşıldı - CSS sınıfına güvenmek
+ * yerine, buradaki bildirimler her zaman AÇIK renkli, satır-içi
+ * (inline) stille basılıyor; bu tür eklentiler genelde zaten açık
+ * renkli kutulara dokunmuyor/ters çevirmiyor, en kötü ihtimalle
+ * ters çevirseler bile okunabilir kalıyor (siyah-beyaz yerine
+ * beyaz-siyah).
+ */
+function render_notice(string $kind, string $html): string
+{
+    $styles = [
+        'bad' => 'background:#fee2e2;color:#7f1d1d;border:2px solid #dc2626;',
+        'good' => 'background:#dcfce7;color:#14532d;border:2px solid #16a34a;',
+        'info' => 'background:#fef9c3;color:#713f12;border:2px solid #ca8a04;',
+    ];
+    $style = $styles[$kind] ?? $styles['info'];
+    return '<div style="' . $style . 'padding:0.85rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.92rem;font-weight:600;line-height:1.5">' . $html . '</div>';
+}
+
 if (file_exists(CONFIG_PATH)) {
     echo render_setup_page(
-        '<div class="banner banner--good">Kurulum zaten tamamlanmış görünüyor - <code>config.php</code> mevcut.</div>' .
+        render_notice('good', 'Kurulum zaten tamamlanmış görünüyor - <code>config.php</code> mevcut.') .
         '<p>Yeniden kurmak isterseniz önce sunucudaki <code>config.php</code> dosyasını silin, sonra bu sayfayı tekrar açın.</p>' .
         '<p><strong>Güvenlik için bu dosyayı (setup.php) şimdi sunucudan silmenizi öneririz</strong> - açık kalırsa, siteyi bulan biri config.php\'yi silip paneli yeniden kurarak ele geçirebilir.</p>' .
         '<p><a class="btn primary" href="/admin/sessions.php">Yönetim paneline git &rarr;</a></p>',
@@ -59,6 +81,7 @@ if (file_exists(CONFIG_PATH)) {
 }
 
 $errors = [];
+$hostNotes = [];
 $values = [
     'db_type' => 'mysql',
     'db_host' => 'localhost',
@@ -99,6 +122,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // (klasör oluşturma, bağlantı denemesi) YAPILMAMALI - önceki sürümde
     // SQLite dalı $errors'a bakmadan 'data' klasörünü oluşturuyordu,
     // geçersiz bir form gönderiminde bile boş bir klasör kalıyordu.
+    // Sık yapılan bir hata: "Sunucu adresi" kutusuna localhost yerine
+    // sitenin klasör yolu (ör. "localhost/site2", tarayıcı adres
+    // çubuğundan kopyalanmış) ya da "http://" öneki yazılması - MySQL
+    // host'u bunların hiçbirini kabul etmez, "getaddrinfo" hatasıyla
+    // anlaşılması güç bir şekilde patlar. Burada otomatik temizleniyor.
+    if ($values['db_type'] === 'mysql' && $values['db_host'] !== '') {
+        $cleanedHost = preg_replace('#^https?://#i', '', $values['db_host']);
+        $slashPos = strpos($cleanedHost, '/');
+        if ($slashPos !== false) {
+            $cleanedHost = substr($cleanedHost, 0, $slashPos);
+        }
+        if ($cleanedHost !== $values['db_host']) {
+            $hostNotes[] = 'Not: "Sunucu adresi" alanına yazdığınız "' . $values['db_host'] .
+                '" bir web sitesi adresine benziyor (klasör yolu ve/veya "http://" içeriyor) - ' .
+                'MySQL sunucu adresleri bunları içermez, "' . $cleanedHost . '" olarak otomatik düzeltildi.';
+            $values['db_host'] = $cleanedHost;
+        }
+    }
+
     if (!$errors && $values['db_type'] === 'mysql') {
         if ($values['db_host'] === '' || $values['db_name'] === '' || $values['db_user'] === '') {
             $errors[] = 'MySQL sunucu adresi, veritabanı adı ve kullanıcı adı gerekli.';
@@ -165,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         echo render_setup_page(
-            '<div class="banner banner--good">Kurulum tamamlandı! Veritabanı hazır, <code>config.php</code> oluşturuldu.</div>' .
+            render_notice('good', 'Kurulum tamamlandı! Veritabanı hazır, <code>config.php</code> oluşturuldu.') .
             '<p><strong>Şimdi güvenlik için bu dosyayı (setup.php) sunucudan silin</strong> - açık kalırsa, siteyi bulan biri config.php\'yi silip kurulumu tekrar çalıştırarak paneli ele geçirebilir.</p>' .
             '<p><a class="btn primary" href="/admin/sessions.php">Yönetim paneline git &rarr;</a></p>',
         );
@@ -174,7 +216,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $errorBanner = $errors
-    ? '<div class="banner banner--bad">' . implode('<br>', array_map('esc', $errors)) . '</div>'
+    ? render_notice('bad', '&#9888; ' . implode('<br>&#9888; ', array_map('esc', $errors)))
+    : '';
+$hostNoteBanner = $hostNotes
+    ? render_notice('info', implode('<br>', array_map('esc', $hostNotes)))
     : '';
 
 $mysqlChecked = $values['db_type'] === 'mysql' ? ' checked' : '';
@@ -191,6 +236,7 @@ $nvidiaModelEsc = esc($values['nvidia_model']);
 
 $body = <<<HTML
 {$errorBanner}
+{$hostNoteBanner}
 <p class="muted">Bu sihirbaz veritabanı bağlantınızı test eder, tabloları oluşturur ve <code>config.php</code>'yi sizin için yazar - phpMyAdmin'e girmenize gerek kalmaz.</p>
 
 <form method="post">
@@ -208,6 +254,7 @@ $body = <<<HTML
       <div class="field">
         <label for="db_host">Sunucu adresi</label>
         <input type="text" id="db_host" name="db_host" value="{$dbHostEsc}" placeholder="localhost">
+        <p class="muted" style="margin-top:0.3rem">Genelde sadece <code>localhost</code>. Tarayıcı adres çubuğundaki site klasör adını (ör. <code>/site2</code>) veya <code>http://</code> önekini BURAYA yazmayın.</p>
       </div>
       <div class="field">
         <label for="db_name">Veritabanı adı</label>
