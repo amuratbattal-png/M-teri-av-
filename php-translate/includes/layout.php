@@ -1,119 +1,145 @@
 <?php
 declare(strict_types=1);
 
-const SHARED_STYLE = <<<CSS
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: #0b0e17; color: #e7e9f5; min-height: 100vh;
-  }
-  a { color: #5eead4; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  header.topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.9rem 1.25rem; border-bottom: 1px solid #1f2436; background: #10131f;
-  }
-  header.topbar .brand { font-weight: 700; font-size: 1.05rem; }
-  header.topbar nav a { margin-left: 1rem; color: #9ba3c9; font-size: 0.92rem; }
-  header.topbar nav a.active { color: #5eead4; }
-  main { max-width: 880px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
-  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
-  h2 { font-size: 1.05rem; margin: 2rem 0 0.75rem; color: #c7cbe8; }
-  .card {
-    border: 1px solid #232842; border-radius: 12px;
-    padding: 1.1rem 1.25rem; margin-bottom: 1rem; background: #10131fb0;
-  }
-  .row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
-  label { display: block; font-size: 0.82rem; color: #9ba3c9; margin-bottom: 0.25rem; }
-  input[type="text"], input[type="password"], select {
-    background: #0b0e17; border: 1px solid #2a3050; color: #e7e9f5;
-    border-radius: 8px; padding: 0.5rem 0.65rem; font-size: 0.92rem; width: 100%;
-  }
-  .field { margin-bottom: 0.75rem; min-width: 180px; flex: 1; }
-  button, .btn {
-    background: #1c2340; border: 1px solid #34406e; color: #e7e9f5;
-    border-radius: 8px; padding: 0.55rem 1rem; font-size: 0.9rem; cursor: pointer;
-    display: inline-block;
-  }
-  button.primary, .btn.primary { background: #0f766e; border-color: #14b8a6; }
-  button.danger, .btn.danger { background: #3f1d2e; border-color: #7f1d3f; color: #fecdd3; }
-  button:hover, .btn:hover { filter: brightness(1.15); }
-  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #1f2436; }
-  th { color: #9ba3c9; font-weight: 600; font-size: 0.8rem; }
-  .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-  .badge.active { background: #0f3d33; color: #5eead4; }
-  .badge.ended { background: #2a2f45; color: #9ba3c9; }
-  .muted { color: #7d84a8; font-size: 0.85rem; }
-  .mono { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.85rem; }
-  .copy-box { display: flex; gap: 0.5rem; align-items: stretch; margin-top: 0.4rem; }
-  .copy-box input { flex: 1; }
-  .qr-wrap { background: #fff; border-radius: 12px; padding: 1rem; display: inline-block; }
-  .banner { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.88rem; }
-  .banner--bad { background: #3f1d2e; color: #fecdd3; border: 1px solid #7f1d3f; }
-  .banner--good { background: #0f3d33; color: #5eead4; border: 1px solid #14b8a6; }
+// Bootstrap 5.3 (CDN) - "sistem profesyonel ve responsive olmalı, admin
+// paneli de bootstrap olmalı" isteği üzerine tüm arayüz (admin + katılımcı
+// + konuşmacı ekranı) buna geçirildi. data-bs-theme="dark" Bootstrap'ın
+// KENDİ yerleşik koyu renk moduyla tüm bileşenleri (kart, form, tablo)
+// otomatik uyumlu hale getiriyor - ayrıca özel bir "dark CSS" yazmaya
+// gerek kalmadı.
+const BOOTSTRAP_CSS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+const BOOTSTRAP_JS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js';
+
+const EXTRA_STYLE = <<<CSS
+  body { min-height: 100vh; }
+  .navbar-brand { font-weight: 700; }
+  .placeholder-screen { display:flex; align-items:center; justify-content:center; min-height:50vh; }
+  .placeholder-screen img { max-width:100%; max-height:60vh; border-radius: .5rem; }
+  #transcript { min-height: 300px; max-height: 55vh; overflow-y:auto; }
+  #transcript .line { padding: .5rem 0; border-bottom: 1px dashed var(--bs-border-color); }
+  #transcript .line:last-child { border-bottom: none; }
+  #transcript .source { font-size: .8rem; opacity: .7; }
+  #interim-line { min-height: 1.6rem; color: var(--bs-info); }
+  .mic-btn { width: 120px; height: 120px; border-radius: 50%; font-size: 2.4rem; }
+  .mic-btn.on { animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220,53,69,.5); } 100% { box-shadow: 0 0 0 20px rgba(220,53,69,0); } }
 CSS;
 
 function nav_item(string $href, string $key, string $active, string $label): string
 {
-    $class = $active === $key ? ' class="active"' : '';
-    return '<a href="' . esc($href) . '"' . $class . '>' . esc($label) . '</a>';
+    $class = 'nav-link' . ($active === $key ? ' active' : '');
+    return '<li class="nav-item"><a class="' . $class . '" href="' . esc($href) . '">' . esc($label) . '</a></li>';
 }
 
 function admin_page(string $activeNav, string $title, string $bodyHtml): string
 {
-    $style = SHARED_STYLE;
-    // Başlık (ör. bir oturumun adı) kullanıcı girdisi olabilir - burada,
-    // TÜM çağıranlar için tek bir yerde escape edilmesi, her çağıranın
-    // bunu ayrı ayrı hatırlamasına bağımlı kalmaktan daha güvenli
-    // (bkz. NOTES.md - admin/session.php'de tam da bu unutulmuştu).
     $titleEsc = esc($title);
-    $nav = nav_item('/admin/sessions.php', 'sessions', $activeNav, 'Oturumlar') .
-        nav_item('/admin/speakers.php', 'speakers', $activeNav, 'Konuşmacılar') .
+    $bsCss = BOOTSTRAP_CSS;
+    $bsJs = BOOTSTRAP_JS;
+    $extraStyle = EXTRA_STYLE;
+    $nav = nav_item('/admin/events.php', 'events', $activeNav, 'Etkinlikler') .
         nav_item('/admin/settings.php', 'settings', $activeNav, 'Ayarlar');
 
     return <<<HTML
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$titleEsc} - Canlı Çeviri Yönetimi</title>
-<style>{$style}</style>
+<link href="{$bsCss}" rel="stylesheet">
+<style>{$extraStyle}</style>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">Canlı Çeviri &middot; Yönetim</div>
-  <nav>{$nav}</nav>
-</header>
-<main>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary-subtle sticky-top">
+  <div class="container">
+    <a class="navbar-brand" href="/admin/events.php">Canlı Çeviri</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav me-auto">
+        {$nav}
+      </ul>
+      <a class="btn btn-outline-light btn-sm" href="/admin/logout.php">Çıkış</a>
+    </div>
+  </div>
+</nav>
+<main class="container py-4">
 {$bodyHtml}
 </main>
+<script src="{$bsJs}"></script>
 </body>
 </html>
 HTML;
 }
 
-function public_page(string $title, string $bodyHtml, string $extraStyle = ''): string
+/** Katılımcı/konuşmacı ekranları için sade bir kabuk - admin panelinden bilerek AYRI (navbar yok, kendi başlıklarını kendileri çiziyor). */
+function public_page(string $title, string $bodyHtml, string $htmlLang = 'tr', string $extraHead = ''): string
 {
-    $style = SHARED_STYLE;
     $titleEsc = esc($title);
+    $langEsc = esc($htmlLang);
+    $bsCss = BOOTSTRAP_CSS;
+    $bsJs = BOOTSTRAP_JS;
+    $extraStyle = EXTRA_STYLE;
+
     return <<<HTML
 <!doctype html>
-<html lang="tr">
+<html lang="{$langEsc}" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$titleEsc}</title>
-<style>{$style}
-main { max-width: 720px; }
-{$extraStyle}
-</style>
+<link href="{$bsCss}" rel="stylesheet">
+<style>{$extraStyle}</style>
+{$extraHead}
 </head>
 <body>
 {$bodyHtml}
+<script src="{$bsJs}"></script>
 </body>
 </html>
 HTML;
+}
+
+function notice(string $kind, string $html): string
+{
+    $map = ['bad' => 'danger', 'good' => 'success', 'info' => 'warning'];
+    $cls = $map[$kind] ?? 'secondary';
+    return '<div class="alert alert-' . $cls . '" role="alert">' . $html . '</div>';
+}
+
+/**
+ * admin/event.php (ilk yüklemede) VE admin/questions_feed.php (canlı
+ * tazeleme) TARAFINDAN paylaşılıyor - ikisi de AYNI HTML'i üretsin diye
+ * (DRY) tek bir yerde.
+ */
+function render_question_list_html(array $questions, string $defaultLang): string
+{
+    if (count($questions) === 0) {
+        return '<p class="text-secondary" id="no-questions-msg">Henüz soru gelmedi.</p>';
+    }
+    $rows = '';
+    foreach ($questions as $q) {
+        $rows .= '<div class="border-bottom py-2" data-question-id="' . esc($q['id']) . '">
+        <div class="d-flex justify-content-between">
+          <strong>' . esc($q['asker_name']) . '</strong>
+          <span class="text-secondary small">' . esc($q['created_at']) . '</span>
+        </div>
+        <div>' . nl2br(esc($q['message'])) . '</div>
+        <div class="mt-1 d-flex gap-2 align-items-center">
+          <select class="form-select form-select-sm w-auto question-lang-select">' . language_options_html($defaultLang) . '</select>
+          <button type="button" class="btn btn-sm btn-outline-info question-translate-btn" data-id="' . esc($q['id']) . '">Çevir</button>
+          <span class="question-translation small text-info"></span>
+        </div>
+      </div>';
+    }
+    return $rows;
+}
+
+function render_fatal_error_page(string $message): string
+{
+    $body = '<main class="container py-5"><div class="alert alert-danger"><strong>Bir şeyler ters gitti</strong><pre class="mb-0 mt-2">' .
+        esc($message) . '</pre></div></main>';
+    return public_page('Hata', $body);
 }

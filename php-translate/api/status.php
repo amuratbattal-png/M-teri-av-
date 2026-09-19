@@ -24,12 +24,22 @@ register_shutdown_function(function (): void {
 require_once __DIR__ . '/../includes/bootstrap.php';
 
 try {
-    $sessionId = (string) ($_GET['session_id'] ?? '');
-    if ($sessionId === '') {
-        json_response(['error' => 'missing_session_id'], 400);
+    $eventId = (string) ($_GET['event_id'] ?? '');
+    if ($eventId === '') {
+        json_response(['error' => 'missing_event_id'], 400);
     }
 
-    json_response(['participantCount' => count_active_participants($sessionId)]);
+    $activeSpeaker = find_active_speaker($eventId);
+
+    json_response([
+        'participantCount' => count_active_participants($eventId),
+        'activeSpeaker' => $activeSpeaker ? [
+            'id' => $activeSpeaker['id'],
+            'name' => $activeSpeaker['name'],
+            'topic_tr' => $activeSpeaker['topic_tr'],
+            'topic_en' => $activeSpeaker['topic_en'],
+        ] : null,
+    ]);
 } catch (Throwable $e) {
     error_log('[status] ' . $e->getMessage());
     json_response(['error' => 'internal_error', 'message' => $e->getMessage()], 500);

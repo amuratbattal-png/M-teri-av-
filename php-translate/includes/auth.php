@@ -1,19 +1,46 @@
 <?php
 declare(strict_types=1);
 
-/** apps/translate'in (Cloudflare sürümü) AYNI basit Basic Auth deseni. */
+/**
+ * "Admin panelini girişi de bootstrap panel yap" isteği üzerine Basic
+ * Auth (tarayıcının kendi çirkin, stillendirilemeyen popup'ı) kaldırıldı -
+ * artık normal bir PHP oturumu (session) + admin/login.php'deki Bootstrap
+ * formuyla giriş yapılıyor.
+ */
+function ensure_session_started(): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+}
+
+function is_admin_logged_in(): bool
+{
+    ensure_session_started();
+    return ($_SESSION['admin_logged_in'] ?? false) === true;
+}
+
+function log_in_admin(): void
+{
+    ensure_session_started();
+    session_regenerate_id(true);
+    $_SESSION['admin_logged_in'] = true;
+}
+
+function log_out_admin(): void
+{
+    ensure_session_started();
+    $_SESSION = [];
+    session_destroy();
+}
+
+/** Bir admin sayfasının en başında çağrılır - girişi yoksa login sayfasına yönlendirip çıkar. */
 function require_admin_auth(): void
 {
-    $config = get_config();
-    $user = $_SERVER['PHP_AUTH_USER'] ?? null;
-    $pass = $_SERVER['PHP_AUTH_PW'] ?? null;
-
-    if ($user === $config['admin_username'] && $pass === $config['admin_password']) {
+    if (is_admin_logged_in()) {
         return;
     }
-
-    header('WWW-Authenticate: Basic realm="canli-ceviri-admin"');
-    http_response_code(401);
-    echo 'Unauthorized';
+    $redirect = $_SERVER['REQUEST_URI'] ?? '/admin/events.php';
+    header('Location: /admin/login.php?redirect=' . rawurlencode($redirect));
     exit;
 }

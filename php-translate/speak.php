@@ -3,82 +3,77 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
 
-$sessionId = (string) ($_GET['session'] ?? '');
+$eventId = (string) ($_GET['event'] ?? '');
 $token = (string) ($_GET['token'] ?? '');
-$session = $sessionId !== '' ? find_session($sessionId) : null;
+$event = $eventId !== '' ? find_event($eventId) : null;
 
-if (!$session) {
+if (!$event) {
     http_response_code(404);
-    echo public_page('Bulunamadı', '<main><h1>Oturum bulunamadı.</h1></main>');
+    echo public_page('Bulunamadı', '<main class="container py-5"><h1 class="h4">Etkinlik bulunamadı.</h1></main>');
     exit;
 }
-if ($session['status'] !== 'active') {
-    echo public_page('Oturum sona erdi', '<main><h1>Bu oturum sona erdi.</h1></main>');
+if ($event['status'] !== 'active') {
+    echo public_page('Etkinlik sona erdi', '<main class="container py-5"><h1 class="h4">Bu etkinlik sona erdi.</h1></main>');
     exit;
 }
-if ($token !== $session['speaker_token']) {
+if (!hash_equals($event['speaker_token'], $token)) {
     http_response_code(401);
-    echo public_page('Yetkisiz', '<main><h1>Geçersiz konuşmacı bağlantısı.</h1></main>');
+    echo public_page('Yetkisiz', '<main class="container py-5"><h1 class="h4">Geçersiz mikrofon bağlantısı.</h1></main>', 'tr');
     exit;
 }
 
-$extraStyle = <<<CSS
-body { display:flex; align-items:center; justify-content:center; padding: 1.25rem; }
-main { width: 100%; }
-.status-row { display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; }
-.mic-wrap { text-align:center; margin: 1.5rem 0; }
-#mic-btn {
-  width: 110px; height: 110px; border-radius: 50%; font-size: 2.2rem;
-  background: #1c2340; border: 3px solid #34406e; cursor:pointer;
-}
-#mic-btn.on { background: #7f1d3f; border-color: #ef4444; animation: pulse 1.4s infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 100% { box-shadow: 0 0 0 18px rgba(239,68,68,0); } }
-#interim { min-height: 2.4rem; text-align:center; font-size:1.15rem; color:#5eead4; margin: 0.75rem 0; }
-#transcript { max-height: 220px; overflow-y:auto; border:1px solid #232842; border-radius:10px; padding:0.75rem; background:#10131f; }
-#transcript .line { padding: 0.3rem 0; border-bottom: 1px dashed #1f2436; font-size:0.92rem; }
-#log { max-height: 100px; overflow-y:auto; font-size:0.78rem; color:#7d84a8; margin-top:0.75rem; }
-CSS;
+$extraHead = '<style>
+body { display:flex; align-items:center; justify-content:center; padding: 1.25rem; min-height:100vh; }
+main { width: 100%; max-width: 640px; }
+#interim { min-height: 2.4rem; text-align:center; font-size:1.15rem; }
+#transcript { max-height: 220px; overflow-y:auto; }
+#log { max-height: 100px; overflow-y:auto; font-size:.78rem; }
+</style>';
 
-$titleEsc = esc($session['title']);
-$sessionIdJson = json_encode($session['id']);
-$tokenJson = json_encode($session['speaker_token']);
-$sourceBcp47Json = json_encode(bcp47_for($session['source_lang']));
+$titleEsc = esc($event['name']);
+$eventIdJson = json_encode($event['id']);
+$tokenJson = json_encode($event['speaker_token']);
+$sourceBcp47Json = json_encode(bcp47_for($event['source_lang']));
 
 $body = <<<HTML
-<main>
-  <div class="status-row">
+<main class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-      <h1 style="margin:0">{$titleEsc}</h1>
-      <p class="muted" style="margin:0.2rem 0 0">Konuşmacı ekranı</p>
+      <h1 class="h4 mb-0">{$titleEsc}</h1>
+      <p class="text-secondary small mb-0">Mikrofon ekranı</p>
     </div>
-    <div class="muted">Katılımcı: <strong id="participant-count">0</strong></div>
-  </div>
-
-  <div class="card">
-    <p class="muted" id="support-warning" style="display:none">
-      Bu tarayıcı konuşma tanımayı desteklemiyor olabilir. En kararlı sonuç için
-      bilgisayarda Chrome veya Edge kullanmanız önerilir.
-    </p>
-    <div class="mic-wrap">
-      <button id="mic-btn" type="button">&#127908;</button>
-      <p class="muted" id="mic-label">Başlatmak için mikrofona dokunun</p>
+    <div class="text-end">
+      <div class="text-secondary small">Katılımcı</div>
+      <strong id="participant-count">0</strong>
     </div>
-    <div id="interim"></div>
   </div>
 
-  <h2>Yakalanan cümleler</h2>
-  <div id="transcript" class="card"></div>
-
-  <div class="card row" style="justify-content:space-between">
-    <span class="muted">Konuşma bitince oturumu sonlandırabilirsiniz.</span>
-    <button id="end-btn" type="button" class="danger">Oturumu Sonlandır</button>
+  <div class="card mb-3">
+    <div class="card-body text-center">
+      <div class="text-secondary small mb-2">Şu an aktif konuşmacı</div>
+      <div class="h5" id="active-speaker-name">-</div>
+      <p class="mt-3 mb-1" id="support-warning" style="display:none">
+        <span class="badge text-bg-warning">Bu tarayıcı konuşma tanımayı desteklemiyor olabilir - Chrome/Edge önerilir.</span>
+      </p>
+      <button id="mic-btn" type="button" class="btn btn-danger rounded-circle mic-btn my-3">&#127908;</button>
+      <p class="text-secondary" id="mic-label">Başlatmak için mikrofona dokunun</p>
+      <div id="interim" class="text-info"></div>
+    </div>
   </div>
 
-  <div id="log"></div>
+  <h2 class="h6">Yakalanan cümleler</h2>
+  <div id="transcript" class="card card-body mb-3"></div>
+
+  <div class="card card-body d-flex flex-row justify-content-between align-items-center">
+    <span class="text-secondary small">Etkinlik bitince sonlandırabilirsiniz.</span>
+    <button id="end-btn" type="button" class="btn btn-outline-danger btn-sm">Etkinliği Sonlandır</button>
+  </div>
+
+  <div id="log" class="text-secondary small mt-2"></div>
 </main>
 
 <script>
-var sessionId = {$sessionIdJson};
+var eventId = {$eventIdJson};
 var speakerToken = {$tokenJson};
 var sourceBcp47 = {$sourceBcp47Json};
 var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -103,7 +98,7 @@ function setText(id, value) {
 function addTranscriptLine(text) {
   var el = document.getElementById('transcript');
   var div = document.createElement('div');
-  div.className = 'line';
+  div.className = 'border-bottom py-1';
   div.textContent = text;
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
@@ -113,22 +108,25 @@ function postToServer(type, text) {
   fetch('/api/speak_post.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, token: speakerToken, type: type, text: text })
+    body: JSON.stringify({ event_id: eventId, token: speakerToken, type: type, text: text })
   }).catch(function () {});
 }
 
-function pollParticipantCount() {
-  fetch('/api/status.php?session_id=' + encodeURIComponent(sessionId))
+function pollStatus() {
+  fetch('/api/status.php?event_id=' + encodeURIComponent(eventId))
     .then(function (res) { return res.json(); })
     .then(function (data) {
-      if (typeof data.participantCount === 'number') {
-        setText('participant-count', String(data.participantCount));
+      if (typeof data.participantCount === 'number') setText('participant-count', String(data.participantCount));
+      if (data.activeSpeaker) {
+        setText('active-speaker-name', data.activeSpeaker.name + ' - ' + data.activeSpeaker.topic_tr);
+      } else {
+        setText('active-speaker-name', 'Aktif konuşmacı yok');
       }
     })
     .catch(function () {});
 }
-setInterval(pollParticipantCount, 4000);
-pollParticipantCount();
+setInterval(pollStatus, 4000);
+pollStatus();
 
 function updateMicButton() {
   var btn = document.getElementById('mic-btn');
@@ -197,30 +195,24 @@ function startRecognition() {
 function stopRecognition() {
   manuallyStopped = true;
   if (recognition) {
-    try {
-      recognition.stop();
-    } catch (e) {}
+    try { recognition.stop(); } catch (e) {}
   }
   listening = false;
   updateMicButton();
 }
 
 document.getElementById('mic-btn').addEventListener('click', function () {
-  if (listening) {
-    stopRecognition();
-  } else {
-    startRecognition();
-  }
+  if (listening) stopRecognition(); else startRecognition();
 });
 
 document.getElementById('end-btn').addEventListener('click', function () {
-  if (!confirm('Oturumu sonlandırmak istediğinize emin misiniz?')) return;
+  if (!confirm('Etkinliği sonlandırmak istediğinize emin misiniz?')) return;
   fetch('/api/speak_post.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, token: speakerToken, type: 'end_session' })
+    body: JSON.stringify({ event_id: eventId, token: speakerToken, type: 'end_event' })
   }).then(function () {
-    logLine('Oturum sonlandırıldı.');
+    logLine('Etkinlik sonlandırıldı.');
     stopRecognition();
   }).catch(function () {});
 });
@@ -232,4 +224,4 @@ if (!SpeechRecognitionImpl) {
 </script>
 HTML;
 
-echo public_page($session['title'], $body, $extraStyle);
+echo public_page($event['name'], $body, 'tr', $extraHead);

@@ -1,5 +1,5 @@
 <?php
 declare(strict_types=1);
 
-header('Location: /admin/sessions.php');
+header('Location: /admin/events.php');
 exit;

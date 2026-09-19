@@ -4,88 +4,172 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/bootstrap.php';
 
 $code = (string) ($_GET['code'] ?? '');
-$session = $code !== '' ? find_session_by_join_code($code) : null;
+$uiLang = current_ui_lang();
 
-if (!$session) {
+// ?ui= query param geldiyse tercih kalıcı olsun diye çerezi güncelle -
+// "isterse header alanından dili türkçe veya ingilizce yapabilecek" isteği.
+if (isset($_GET['ui'])) {
+    setcookie('ui_lang', $uiLang, time() + 60 * 60 * 24 * 365, '/');
+}
+
+$event = $code !== '' ? find_event_by_join_code($code) : null;
+
+if (!$event) {
     http_response_code(404);
-    echo public_page('Bulunamadı', '<main><h1>Bu katılım kodu geçerli değil.</h1></main>');
+    echo public_page(
+        'Not Found',
+        '<main class="container py-5"><div class="alert alert-danger">' . esc(t('not_found', $uiLang)) . '</div></main>',
+        $uiLang,
+    );
     exit;
 }
 
-$speaker = find_speaker($session['speaker_id']);
-$speakerName = $speaker['name'] ?? 'Bilinmeyen konuşmacı';
-$ended = $session['status'] !== 'active';
+$activeSpeaker = find_active_speaker($event['id']);
+$ended = $event['status'] !== 'active';
 
-$extraStyle = <<<CSS
-main { padding-top: 1.5rem; }
-#join-panel { text-align:center; }
-#session-panel { display:none; }
-#session-panel.visible { display:block; }
-.top-row { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.75rem; }
-.top-row select { max-width: 220px; }
-#transcript { min-height: 300px; max-height: 55vh; overflow-y:auto; border:1px solid #232842; border-radius:12px; padding:0.85rem; background:#10131f; }
-#transcript .line { padding:0.5rem 0; border-bottom:1px dashed #1f2436; }
-#transcript .line:last-child { border-bottom:none; }
-#transcript .text { font-size:1.02rem; }
-#transcript .source { font-size:0.78rem; color:#7d84a8; margin-top:0.15rem; }
-#transcript .time { font-size:0.7rem; color:#565c80; float:right; }
-#interim-line { min-height:1.6rem; color:#5eead4; font-size:0.95rem; padding:0.4rem 0.1rem; }
-.controls { display:flex; gap:0.6rem; margin-top:0.75rem; flex-wrap:wrap; }
-.controls button { flex:1; min-width:140px; }
-#conn-status { font-size:0.78rem; color:#7d84a8; text-align:center; margin-top:0.5rem; }
-CSS;
+$extraHead = '<style>
+main { max-width: 720px; margin: 0 auto; padding-top: 1rem; }
+#speaker-header-body img { max-width: 100%; max-height: 220px; border-radius: .5rem; }
+#transcript { min-height: 260px; }
+#transcript .line { padding: .5rem 0; border-bottom: 1px dashed var(--bs-border-color); }
+#transcript .line:last-child { border-bottom: none; }
+#transcript .source { font-size: .78rem; opacity: .7; }
+</style>';
 
-$endedBanner = $ended ? '<div class="banner banner--bad">Bu oturum sona erdi. Katılamazsınız.</div>' : '';
-$disabledAttr = $ended ? ' disabled' : '';
-$langOptions = language_options_html();
-$titleEsc = esc($session['title']);
-$speakerNameEsc = esc($speakerName);
+$eventNameEsc = esc($event['name']);
+$codeEsc = esc($event['join_code']);
+$trActiveClass = $uiLang === 'tr' ? 'active' : '';
+$enActiveClass = $uiLang === 'en' ? 'active' : '';
 
-$sessionIdJson = json_encode($session['id']);
-$sourceLangJson = json_encode($session['source_lang']);
-$endedJson = $ended ? 'true' : 'false';
+$langLabel = esc(t('lang_label', $uiLang));
+$joinLabel = esc(t('join', $uiLang));
+$ttsOnLabel = esc(t('tts_on', $uiLang));
+$leaveLabel = esc(t('leave', $uiLang));
+$askLabel = esc(t('ask_question', $uiLang));
+$askTitle = esc(t('ask_question_title', $uiLang));
+$yourNameLabel = esc(t('your_name', $uiLang));
+$yourMessageLabel = esc(t('your_message', $uiLang));
+$sendLabel = esc(t('send', $uiLang));
+$cancelLabel = esc(t('cancel', $uiLang));
+$langOptions = language_options_html($event['source_lang'], $uiLang);
+
+// İlk yüklemede JS'in "flaş" etmeden hemen doğru içerikle başlaması için
+// başlık (aktif konuşmacı/placeholder) sunucu tarafında da hesaplanıyor -
+// ilk poll() çağrısı zaten anında tetiklenip bunu tazeleyecek.
+if ($activeSpeaker) {
+    $headerInitial = '<div class="h5 mb-1">' . esc($activeSpeaker['name']) . '</div><div class="text-secondary">' .
+        esc($uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr']) . '</div>';
+} elseif (!empty($event['placeholder_image'])) {
+    $headerInitial = '<img src="' . esc('/' . $event['placeholder_image']) . '" alt="">';
+} else {
+    $headerInitial = '<span class="text-secondary">' . esc(t('no_speaker', $uiLang)) . '</span>';
+}
+
+$bcp47Map = [];
+foreach (LANGUAGES as $l) {
+    $bcp47Map[$l['code']] = $l['bcp47'];
+}
+
+$config = [
+    'eventId' => $event['id'],
+    'code' => $event['join_code'],
+    'uiLang' => $uiLang,
+    'sourceLang' => $event['source_lang'],
+    'ended' => $ended,
+    'bcp47' => $bcp47Map,
+    'strings' => [
+        'connected' => t('connected', $uiLang),
+        'connection_issue' => t('connection_issue', $uiLang),
+        'ended' => t('ended', $uiLang),
+        'error_prefix' => t('error_prefix', $uiLang),
+        'no_speaker' => t('no_speaker', $uiLang),
+        'validation_error' => t('validation_error', $uiLang),
+        'sent' => t('sent', $uiLang),
+        'tts_on' => t('tts_on', $uiLang),
+        'tts_off' => t('tts_off', $uiLang),
+    ],
+];
+$configJson = json_encode($config, JSON_UNESCAPED_UNICODE);
 
 $body = <<<HTML
-<main>
-  <div id="join-panel">
-    <h1>{$titleEsc}</h1>
-    <p class="muted">Konuşmacı: {$speakerNameEsc}</p>
-    {$endedBanner}
-    <div class="card" style="text-align:left">
-      <label for="lang-select">Hangi dilde takip etmek istersiniz?</label>
-      <select id="lang-select"{$disabledAttr}>{$langOptions}</select>
-      <button id="join-btn" class="primary" style="margin-top:0.75rem;width:100%"{$disabledAttr}>Katıl</button>
+<main class="container">
+  <div class="d-flex justify-content-between align-items-center py-2 border-bottom mb-3">
+    <strong>{$eventNameEsc}</strong>
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="?code={$codeEsc}&ui=tr" class="btn btn-outline-secondary {$trActiveClass}">TR</a>
+      <a href="?code={$codeEsc}&ui=en" class="btn btn-outline-secondary {$enActiveClass}">EN</a>
     </div>
   </div>
 
-  <div id="session-panel">
-    <div class="top-row">
-      <strong>{$titleEsc}</strong>
-      <select id="lang-select-live"></select>
+  <div class="card mb-3">
+    <div class="card-body text-center placeholder-screen py-4" id="speaker-header-body">{$headerInitial}</div>
+  </div>
+
+  <div id="join-panel" class="card mb-3">
+    <div class="card-body">
+      <label for="lang-select" class="form-label">{$langLabel}</label>
+      <select id="lang-select" class="form-select mb-3">{$langOptions}</select>
+      <button id="join-btn" class="btn btn-primary w-100">{$joinLabel}</button>
     </div>
-    <div id="transcript"></div>
-    <div id="interim-line"></div>
-    <div class="controls">
-      <button id="tts-toggle">Sesli Oku: Açık</button>
-      <button id="leave-btn">Ayrıl</button>
+  </div>
+
+  <div id="session-panel" style="display:none">
+    <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+      <select id="lang-select-live" class="form-select form-select-sm w-auto"></select>
+      <button id="ask-btn" type="button" class="btn btn-sm btn-outline-info" style="display:none" data-bs-toggle="modal" data-bs-target="#questionModal">{$askLabel}</button>
     </div>
-    <div id="conn-status"></div>
+    <div id="transcript" class="card card-body mb-2"></div>
+    <div id="interim-line" class="mb-2 text-info"></div>
+    <div class="d-flex gap-2 mb-2">
+      <button id="tts-toggle" class="btn btn-outline-secondary btn-sm flex-fill">{$ttsOnLabel}</button>
+      <button id="leave-btn" class="btn btn-outline-secondary btn-sm flex-fill">{$leaveLabel}</button>
+    </div>
+    <div id="conn-status" class="text-secondary small text-center"></div>
   </div>
 </main>
 
+<div class="modal fade" id="questionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{$askTitle}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="question-error" class="alert alert-danger" style="display:none"></div>
+        <div class="mb-3">
+          <label for="question-name" class="form-label">{$yourNameLabel}</label>
+          <input type="text" id="question-name" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label for="question-message" class="form-label">{$yourMessageLabel}</label>
+          <textarea id="question-message" class="form-control" rows="3" required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$cancelLabel}</button>
+        <button type="button" id="question-send-btn" class="btn btn-primary">{$sendLabel}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="config">{$configJson}</script>
 <script>
-var sessionId = {$sessionIdJson};
-var sourceLang = {$sourceLangJson};
-var ended = {$endedJson};
+var config = JSON.parse(document.getElementById('config').textContent);
 var currentLang = null;
 var afterSeq = 0;
-var pollTimer = null;
+var joined = false;
 var autoSpeak = true;
+var qaEnabled = false;
+var ended = config.ended;
 var clientId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c' + Date.now() + Math.random());
 
+var headerBody = document.getElementById('speaker-header-body');
 var transcriptEl = document.getElementById('transcript');
 var interimEl = document.getElementById('interim-line');
 var statusEl = document.getElementById('conn-status');
+var askBtn = document.getElementById('ask-btn');
 
 function isNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -95,19 +179,8 @@ function buildLineEl(entry) {
   var wrap = document.createElement('div');
   wrap.className = 'line';
 
-  var time = document.createElement('span');
-  time.className = 'time';
-  try {
-    time.textContent = new Date(entry.created_at.replace(' ', 'T')).toLocaleTimeString('tr-TR');
-  } catch (e) {
-    time.textContent = '';
-  }
-
   var text = document.createElement('div');
-  text.className = 'text';
   text.textContent = entry.text;
-  text.appendChild(time);
-
   wrap.appendChild(text);
 
   if (entry.lang !== entry.source_lang) {
@@ -127,35 +200,75 @@ function appendLine(entry) {
   speakIfEnabled(entry);
 }
 
+function replaceHistory(entries) {
+  transcriptEl.textContent = '';
+  for (var i = 0; i < entries.length; i++) transcriptEl.appendChild(buildLineEl(entries[i]));
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
 function speakIfEnabled(entry) {
-  if (!autoSpeak) return;
+  if (!autoSpeak || !joined) return;
   if (!window.speechSynthesis) return;
   try {
     var utter = new SpeechSynthesisUtterance(entry.text);
-    utter.lang = currentLang || sourceLang;
+    utter.lang = config.bcp47[currentLang] || config.bcp47[config.sourceLang] || config.sourceLang;
     window.speechSynthesis.speak(utter);
   } catch (e) {}
 }
 
+function updateHeader(data) {
+  headerBody.textContent = '';
+  if (data.active_speaker) {
+    var h = document.createElement('div');
+    h.className = 'h5 mb-1';
+    h.textContent = data.active_speaker.name;
+    var p = document.createElement('div');
+    p.className = 'text-secondary';
+    p.textContent = data.active_speaker.topic;
+    headerBody.appendChild(h);
+    headerBody.appendChild(p);
+  } else if (data.placeholder_image) {
+    var img = document.createElement('img');
+    img.src = data.placeholder_image;
+    img.alt = '';
+    headerBody.appendChild(img);
+  } else {
+    var span = document.createElement('span');
+    span.className = 'text-secondary';
+    span.textContent = config.strings.no_speaker;
+    headerBody.appendChild(span);
+  }
+  qaEnabled = !!data.qa_enabled;
+  askBtn.style.display = qaEnabled ? 'inline-block' : 'none';
+}
+
+var firstPollAfterJoin = false;
+
 function poll() {
-  if (ended) return;
-  var url = '/api/participant_poll.php?session_id=' + encodeURIComponent(sessionId) +
-    '&lang=' + encodeURIComponent(currentLang) +
+  var url = '/api/participant_poll.php?event_id=' + encodeURIComponent(config.eventId) +
+    '&lang=' + encodeURIComponent(currentLang || config.sourceLang) +
+    '&ui=' + encodeURIComponent(config.uiLang) +
     '&after_seq=' + encodeURIComponent(afterSeq) +
     '&client_id=' + encodeURIComponent(clientId);
 
   fetch(url).then(function (res) { return res.json(); }).then(function (data) {
     if (data.error) {
-      statusEl.textContent = 'Hata: ' + (data.message || data.error);
+      statusEl.textContent = config.strings.error_prefix + (data.message || data.error);
       return;
     }
+    updateHeader(data);
     if (data.ended) {
       ended = true;
-      statusEl.textContent = 'Oturum sona erdi.';
+      statusEl.textContent = config.strings.ended;
       return;
     }
-    statusEl.textContent = 'Bağlandı.';
-    if (data.entries && data.entries.length > 0) {
+    if (!joined) return;
+    statusEl.textContent = config.strings.connected;
+    if (firstPollAfterJoin) {
+      firstPollAfterJoin = false;
+      replaceHistory(data.entries || []);
+      if (data.entries && data.entries.length) afterSeq = data.entries[data.entries.length - 1].seq;
+    } else if (data.entries && data.entries.length > 0) {
       for (var i = 0; i < data.entries.length; i++) {
         appendLine(data.entries[i]);
         if (data.entries[i].seq > afterSeq) afterSeq = data.entries[i].seq;
@@ -163,48 +276,81 @@ function poll() {
     }
     interimEl.textContent = data.interim || '';
   }).catch(function () {
-    statusEl.textContent = 'Bağlantı sorunu, tekrar denenecek...';
+    if (joined) statusEl.textContent = config.strings.connection_issue;
   });
 }
 
-function startPolling(lang) {
-  currentLang = lang;
-  afterSeq = 0;
-  transcriptEl.textContent = '';
-  interimEl.textContent = '';
-  if (pollTimer) clearInterval(pollTimer);
-  poll();
-  pollTimer = setInterval(poll, 2000);
-}
+setInterval(poll, 2000);
+poll();
 
 document.getElementById('join-btn').addEventListener('click', function () {
-  var lang = document.getElementById('lang-select').value;
+  currentLang = document.getElementById('lang-select').value;
+  joined = true;
+  afterSeq = 0;
+  firstPollAfterJoin = true;
   document.getElementById('join-panel').style.display = 'none';
-  document.getElementById('session-panel').classList.add('visible');
-  var liveSelect = document.getElementById('lang-select-live');
-  liveSelect.innerHTML = document.getElementById('lang-select').innerHTML;
-  liveSelect.value = lang;
-  startPolling(lang);
+  document.getElementById('session-panel').style.display = 'block';
+  var live = document.getElementById('lang-select-live');
+  live.innerHTML = document.getElementById('lang-select').innerHTML;
+  live.value = currentLang;
+  poll();
 });
 
 document.getElementById('lang-select-live').addEventListener('change', function (event) {
-  startPolling(event.target.value);
+  currentLang = event.target.value;
+  afterSeq = 0;
+  firstPollAfterJoin = true;
+  poll();
 });
 
 document.getElementById('tts-toggle').addEventListener('click', function (event) {
   autoSpeak = !autoSpeak;
-  event.target.textContent = 'Sesli Oku: ' + (autoSpeak ? 'Açık' : 'Kapalı');
-  if (!autoSpeak && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
+  event.target.textContent = autoSpeak ? config.strings.tts_on : config.strings.tts_off;
+  if (!autoSpeak && window.speechSynthesis) window.speechSynthesis.cancel();
 });
 
 document.getElementById('leave-btn').addEventListener('click', function () {
-  if (pollTimer) clearInterval(pollTimer);
-  document.getElementById('session-panel').classList.remove('visible');
+  joined = false;
+  document.getElementById('session-panel').style.display = 'none';
   document.getElementById('join-panel').style.display = 'block';
+});
+
+document.getElementById('question-send-btn').addEventListener('click', function () {
+  var name = document.getElementById('question-name').value.trim();
+  var message = document.getElementById('question-message').value.trim();
+  var errEl = document.getElementById('question-error');
+  if (!name || !message) {
+    errEl.textContent = config.strings.validation_error;
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  fetch('/api/ask_question.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_id: config.eventId,
+      asker_name: name,
+      asker_lang: currentLang || config.sourceLang,
+      message: message
+    })
+  }).then(function (res) { return res.json(); }).then(function (data) {
+    if (data.ok) {
+      document.getElementById('question-name').value = '';
+      document.getElementById('question-message').value = '';
+      var modalEl = document.getElementById('questionModal');
+      var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.hide();
+    } else {
+      errEl.textContent = data.message || data.error || 'Error';
+      errEl.style.display = 'block';
+    }
+  }).catch(function () {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  });
 });
 </script>
 HTML;
 
-echo public_page($session['title'], $body, $extraStyle);
+echo public_page($event['name'], $body, $uiLang, $extraHead);

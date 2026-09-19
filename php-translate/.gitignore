@@ -1,2 +1,4 @@
 config.php
 data/
+uploads/events/*
+!uploads/events/.gitkeep

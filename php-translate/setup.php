@@ -26,23 +26,24 @@ const CONFIG_PATH = __DIR__ . '/config.php';
 
 function render_setup_page(string $bodyHtml): string
 {
-    $style = SHARED_STYLE;
+    $bsCss = BOOTSTRAP_CSS;
+    $bsJs = BOOTSTRAP_JS;
     return <<<HTML
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kurulum - Canlı Çeviri</title>
-<style>{$style}
-main { max-width: 640px; }
-</style>
+<link href="{$bsCss}" rel="stylesheet">
+<style>main { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }</style>
 </head>
 <body>
 <main>
-<h1>Canlı Çeviri &middot; Kurulum</h1>
+<h1 class="h3 mb-4">Canlı Çeviri &middot; Kurulum</h1>
 {$bodyHtml}
 </main>
+<script src="{$bsJs}"></script>
 </body>
 </html>
 HTML;
@@ -75,7 +76,7 @@ if (file_exists(CONFIG_PATH)) {
         render_notice('good', 'Kurulum zaten tamamlanmış görünüyor - <code>config.php</code> mevcut.') .
         '<p>Yeniden kurmak isterseniz önce sunucudaki <code>config.php</code> dosyasını silin, sonra bu sayfayı tekrar açın.</p>' .
         '<p><strong>Güvenlik için bu dosyayı (setup.php) şimdi sunucudan silmenizi öneririz</strong> - açık kalırsa, siteyi bulan biri config.php\'yi silip paneli yeniden kurarak ele geçirebilir.</p>' .
-        '<p><a class="btn primary" href="/admin/sessions.php">Yönetim paneline git &rarr;</a></p>',
+        '<p><a class="btn btn-primary" href="/admin/events.php">Yönetim paneline git &rarr;</a></p>',
     );
     exit;
 }
@@ -227,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo render_setup_page(
             render_notice('good', 'Kurulum tamamlandı! Veritabanı hazır, <code>config.php</code> oluşturuldu.') .
             '<p><strong>Şimdi güvenlik için bu dosyayı (setup.php) sunucudan silin</strong> - açık kalırsa, siteyi bulan biri config.php\'yi silip kurulumu tekrar çalıştırarak paneli ele geçirebilir.</p>' .
-            '<p><a class="btn primary" href="/admin/sessions.php">Yönetim paneline git &rarr;</a></p>',
+            '<p><a class="btn btn-primary" href="/admin/events.php">Yönetim paneline git &rarr;</a></p>',
         );
         exit;
     }
@@ -255,66 +256,74 @@ $nvidiaModelEsc = esc($values['nvidia_model']);
 $body = <<<HTML
 {$errorBanner}
 {$hostNoteBanner}
-<p class="muted">Bu sihirbaz veritabanı bağlantınızı test eder, tabloları oluşturur ve <code>config.php</code>'yi sizin için yazar - phpMyAdmin'e girmenize gerek kalmaz.</p>
+<p class="text-secondary">Bu sihirbaz veritabanı bağlantınızı test eder, tabloları oluşturur ve <code>config.php</code>'yi sizin için yazar - phpMyAdmin'e girmenize gerek kalmaz.</p>
 
 <form method="post">
-  <div class="card">
-    <h2 style="margin-top:0">Veritabanı</h2>
-    <div class="row" style="margin-bottom:0.75rem">
-      <label style="display:inline-flex;align-items:center;gap:0.4rem;width:auto;margin:0">
-        <input type="radio" name="db_type" value="mysql" style="width:auto"{$mysqlChecked} onchange="toggleDbFields()"> MySQL (hosting'inizdeki normal seçenek)
-      </label>
-      <label style="display:inline-flex;align-items:center;gap:0.4rem;width:auto;margin:0 0 0 1.25rem">
-        <input type="radio" name="db_type" value="sqlite" style="width:auto"{$sqliteChecked} onchange="toggleDbFields()"> SQLite (sadece yerel/deneme kurulumu için)
-      </label>
-    </div>
-    <div id="mysql-fields" style="display:{$mysqlDisplay}">
-      <div class="field">
-        <label for="db_host">Sunucu adresi</label>
-        <input type="text" id="db_host" name="db_host" value="{$dbHostEsc}" placeholder="localhost">
-        <p class="muted" style="margin-top:0.3rem">Genelde sadece <code>localhost</code>. Tarayıcı adres çubuğundaki site klasör adını (ör. <code>/site2</code>) veya <code>http://</code> önekini BURAYA yazmayın.</p>
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5 card-title">Veritabanı</h2>
+      <div class="mb-3 d-flex flex-wrap gap-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="db_type" value="mysql" id="db_type_mysql"{$mysqlChecked} onchange="toggleDbFields()">
+          <label class="form-check-label" for="db_type_mysql">MySQL (hosting'inizdeki normal seçenek)</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="db_type" value="sqlite" id="db_type_sqlite"{$sqliteChecked} onchange="toggleDbFields()">
+          <label class="form-check-label" for="db_type_sqlite">SQLite (sadece yerel/deneme kurulumu için)</label>
+        </div>
       </div>
-      <div class="field">
-        <label for="db_name">Veritabanı adı</label>
-        <input type="text" id="db_name" name="db_name" value="{$dbNameEsc}">
-      </div>
-      <div class="field">
-        <label for="db_user">Kullanıcı adı</label>
-        <input type="text" id="db_user" name="db_user" value="{$dbUserEsc}">
-      </div>
-      <div class="field">
-        <label for="db_pass">Şifre</label>
-        <input type="password" id="db_pass" name="db_pass" value="{$dbPassEsc}">
+      <div id="mysql-fields" style="display:{$mysqlDisplay}">
+        <div class="mb-3">
+          <label for="db_host" class="form-label">Sunucu adresi</label>
+          <input type="text" class="form-control" id="db_host" name="db_host" value="{$dbHostEsc}" placeholder="localhost">
+          <div class="form-text">Genelde sadece <code>localhost</code>. Tarayıcı adres çubuğundaki site klasör adını (ör. <code>/site2</code>) veya <code>http://</code> önekini BURAYA yazmayın.</div>
+        </div>
+        <div class="mb-3">
+          <label for="db_name" class="form-label">Veritabanı adı</label>
+          <input type="text" class="form-control" id="db_name" name="db_name" value="{$dbNameEsc}">
+        </div>
+        <div class="mb-3">
+          <label for="db_user" class="form-label">Kullanıcı adı</label>
+          <input type="text" class="form-control" id="db_user" name="db_user" value="{$dbUserEsc}">
+        </div>
+        <div class="mb-3">
+          <label for="db_pass" class="form-label">Şifre</label>
+          <input type="password" class="form-control" id="db_pass" name="db_pass" value="{$dbPassEsc}">
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0">Yönetim paneli girişi</h2>
-    <div class="field">
-      <label for="admin_username">Kullanıcı adı</label>
-      <input type="text" id="admin_username" name="admin_username" value="{$adminUserEsc}" required>
-    </div>
-    <div class="field">
-      <label for="admin_password">Şifre</label>
-      <input type="password" id="admin_password" name="admin_password" required>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0">NVIDIA API (çeviri için, isteğe bağlı)</h2>
-    <p class="muted">Boş bırakabilirsiniz - daha sonra panelin Ayarlar sayfasından da girilebilir.</p>
-    <div class="field">
-      <label for="nvidia_api_key">API anahtarı</label>
-      <input type="password" id="nvidia_api_key" name="nvidia_api_key" value="{$nvidiaKeyEsc}" placeholder="nvapi-...">
-    </div>
-    <div class="field">
-      <label for="nvidia_model">Model kimliği</label>
-      <input type="text" id="nvidia_model" name="nvidia_model" value="{$nvidiaModelEsc}">
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5 card-title">Yönetim paneli girişi</h2>
+      <div class="mb-3">
+        <label for="admin_username" class="form-label">Kullanıcı adı</label>
+        <input type="text" class="form-control" id="admin_username" name="admin_username" value="{$adminUserEsc}" required>
+      </div>
+      <div class="mb-3">
+        <label for="admin_password" class="form-label">Şifre</label>
+        <input type="password" class="form-control" id="admin_password" name="admin_password" required>
+      </div>
     </div>
   </div>
 
-  <button type="submit" class="primary">Kurulumu Tamamla</button>
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5 card-title">NVIDIA API (çeviri için, isteğe bağlı)</h2>
+      <p class="text-secondary">Boş bırakabilirsiniz - daha sonra panelin Ayarlar sayfasından da girilebilir.</p>
+      <div class="mb-3">
+        <label for="nvidia_api_key" class="form-label">API anahtarı</label>
+        <input type="password" class="form-control" id="nvidia_api_key" name="nvidia_api_key" value="{$nvidiaKeyEsc}" placeholder="nvapi-...">
+      </div>
+      <div class="mb-3">
+        <label for="nvidia_model" class="form-label">Model kimliği</label>
+        <input type="text" class="form-control" id="nvidia_model" name="nvidia_model" value="{$nvidiaModelEsc}">
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Kurulumu Tamamla</button>
 </form>
 
 <script>

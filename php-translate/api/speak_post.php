@@ -2,8 +2,7 @@
 declare(strict_types=1);
 
 // bkz. participant_poll.php'deki AYNI yorum - JSON'dan önce tesadüfen
-// basılan bir PHP uyarısı/ölümcül hatası bile artık düz JSON olarak
-// dönüyor, tarayıcı tarafında "geçersiz yanıt" hatasına yol açmıyor.
+// basılan bir PHP uyarısı/hatası bile artık düz JSON olarak dönüyor.
 ob_start();
 
 register_shutdown_function(function (): void {
@@ -28,32 +27,32 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 function handle_speak_post(): void
 {
     $input = read_json_body();
-    $sessionId = (string) ($input['session_id'] ?? '');
+    $eventId = (string) ($input['event_id'] ?? '');
     $token = (string) ($input['token'] ?? '');
     $type = (string) ($input['type'] ?? '');
     $text = (string) ($input['text'] ?? '');
 
-    $session = $sessionId !== '' ? find_session($sessionId) : null;
-    if (!$session) {
-        json_response(['error' => 'session_not_found'], 404);
+    $event = $eventId !== '' ? find_event($eventId) : null;
+    if (!$event) {
+        json_response(['error' => 'event_not_found'], 404);
     }
-    if ($token !== $session['speaker_token']) {
+    if (!hash_equals($event['speaker_token'], $token)) {
         json_response(['error' => 'unauthorized'], 401);
     }
-    if ($session['status'] !== 'active') {
-        json_response(['error' => 'session_ended'], 410);
+    if ($event['status'] !== 'active') {
+        json_response(['error' => 'event_ended'], 410);
     }
 
     $pdo = get_pdo();
 
-    if ($type === 'end_session') {
-        $stmt = $pdo->prepare("UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?");
-        $stmt->execute([now_iso(), $sessionId]);
+    if ($type === 'end_event') {
+        $stmt = $pdo->prepare("UPDATE events SET status = 'ended', ended_at = ? WHERE id = ?");
+        $stmt->execute([now_iso(), $eventId]);
         json_response(['ok' => true]);
     }
 
     if ($type === 'interim') {
-        upsert('session_interim', ['session_id' => $sessionId, 'interim_text' => $text, 'updated_at' => now_iso()], ['session_id']);
+        upsert('event_interim', ['event_id' => $eventId, 'interim_text' => $text, 'updated_at' => now_iso()], ['event_id']);
         json_response(['ok' => true]);
     }
 
@@ -63,27 +62,26 @@ function handle_speak_post(): void
             json_response(['ok' => true]);
         }
 
-        // Aynı adayın (burada: aynı oturumun) tek yazarı konuşmacı olduğu
-        // için eşzamanlı yazma yarışı pratikte yok - basit oku-yaz-artır
-        // yeterli (bkz. apps/translate Cloudflare sürümündeki Durable
-        // Object seq mantığı).
-        $stmt = $pdo->prepare('SELECT COALESCE(MAX(seq), 0) FROM transcript_entries WHERE session_id = ?');
-        $stmt->execute([$sessionId]);
+        $activeSpeaker = find_active_speaker($eventId);
+        $speakerId = $activeSpeaker['id'] ?? null;
+
+        // Aynı etkinliğin tek yazarı (o anki mikrofon cihazı) olduğu için
+        // eşzamanlı yazma yarışı pratikte yok - basit oku-yaz-artır yeterli.
+        $stmt = $pdo->prepare('SELECT COALESCE(MAX(seq), 0) FROM transcript_entries WHERE event_id = ?');
+        $stmt->execute([$eventId]);
         $seq = ((int) $stmt->fetchColumn()) + 1;
 
         $stmt = $pdo->prepare(
-            'INSERT INTO transcript_entries (id, session_id, seq, source_text, source_lang, translations, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO transcript_entries (id, event_id, speaker_id, seq, source_text, source_lang, translations, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         );
-        $stmt->execute([new_id(), $sessionId, $seq, $text, $session['source_lang'], '{}', now_iso()]);
+        $stmt->execute([new_id(), $eventId, $speakerId, $seq, $text, $event['source_lang'], '{}', now_iso()]);
 
-        // Çeviri BURADA yapılmıyor (WebSocket sürümünden FARKLI) - kimin
-        // hangi dili dinlediğini bu istek anında bilmiyoruz (polling
-        // modeli, kalıcı bağlantı yok). Çeviri, participant_poll.php'de
-        // İLK istendiğinde tembel (lazy) olarak yapılıp önbelleğe
-        // alınıyor - aynı dile ihtiyaç duyan sıradaki katılımcı/anket
-        // için tekrar çağrılmıyor.
-        upsert('session_interim', ['session_id' => $sessionId, 'interim_text' => '', 'updated_at' => now_iso()], ['session_id']);
+        // Çeviri BURADA yapılmıyor - kimin hangi dili dinlediğini bu
+        // istek anında bilmiyoruz (polling modeli, kalıcı bağlantı yok).
+        // Çeviri, participant_poll.php'de İLK istendiğinde tembel (lazy)
+        // olarak yapılıp önbelleğe alınıyor.
+        upsert('event_interim', ['event_id' => $eventId, 'interim_text' => '', 'updated_at' => now_iso()], ['event_id']);
 
         json_response(['ok' => true, 'seq' => $seq]);
     }

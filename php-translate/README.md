@@ -9,13 +9,35 @@
 
 ## Ne yapıyor
 
-Bir konuşmacı bir oturum açar, kendi cihazından (telefon/tablet/PC,
-Chrome önerilir) konuşur. Katılımcılar bir QR kod okutarak - giriş/
-şifre gerekmeden - katılır, kendi dillerini seçer, konuşmanın anlık
-çevirisini hem yazılı (altyazı) hem sesli (kendi cihazlarının
-seslendirmesiyle) takip eder. Geçmiş cümleler ekranda kalır, tekrar
-okunabilir. Ayrı bir yönetim paneli (`/admin/`) konuşmacı ekler/siler,
-oturum açar/kapatır, QR kodu/linkleri gösterir.
+Admin (PC'den ya da telefondan) bir **Etkinlik** (Event) açar - tüm
+katılımcılara verilecek TEK bir QR kod/link buradan üretilir. Etkinlik
+içine **birden çok konuşmacı** (Ad Soyad + Konu) eklenebilir; admin
+panelinden aynı anda sadece BİR konuşmacı **Aktif** yapılır (bir
+konuşmacıyı aktif yapmak diğerlerini otomatik pasif yapar - iki adımlı
+bir işlem gerekmez). Hiçbir konuşmacı aktif değilken katılımcı ekranında
+admin'in yüklediği bir **görsel** (boş ekran yerine) gösterilir.
+
+Katılımcı, QR kodu okutup - giriş/şifre gerekmeden - katılır:
+- Önce (bir kere) **arayüz dili** (TR/EN) seçer - bu, sadece buton/
+  etiket metinlerini ve konuşmacı konusunun hangi dilde (`topic_tr`/
+  `topic_en`) gösterileceğini belirler, ekranın üstündeki bir düğmeyle
+  istediği zaman değiştirebilir.
+- Sonra **takip etmek istediği dili** (yaklaşık 20 dilden biri) seçip
+  katılır - konuşmanın çevrileceği dil budur. Konuşma hem yazılı
+  (altyazı, geçmişiyle birlikte) hem sesli (kendi cihazının
+  seslendirmesiyle) takip edilir.
+- Admin "soru sormayı" açtıysa katılımcı bir buton üzerinden **ad soyad
+  + mesaj** ile soru gönderebilir (ikisi de zorunlu - sunucu tarafında
+  da doğrulanır). Sorular admin ekranında canlı listelenir, admin
+  istediği dile tek tıkla çevirebilir.
+
+Konuşmacının kendisi ayrı bir link (`speak.php?event=...&token=...`)
+üzerinden mikrofonunu açık tutar - bu link etkinlik boyunca tek bir
+cihazda (ör. podyumdaki laptop) açık kalır, hangi konuşmacının aktif
+olduğu admin panelinden değiştirilir.
+
+Tüm arayüz (admin girişi dahil) **Bootstrap 5** ile responsive - telefon/
+tablet/PC'de sorunsuz çalışır.
 
 ## Mimari - Cloudflare sürümünden FARKI
 
@@ -29,13 +51,15 @@ Bunun yerine **polling (anket)** kullanılıyor:
   ile sunucuya gönderir (aynı Web Speech API, tarayıcıda ücretsiz STT).
 - Katılımcının tarayıcısı **her 2 saniyede bir**
   `GET /api/participant_poll.php` ile "benden sonraki yeni cümleler var
-  mı?" diye sorar - yeni cümle varsa alır, kendi cihazında seslendirir
-  (`speechSynthesis`, yine ücretsiz).
+  mı, aktif konuşmacı/görsel değişti mi?" diye sorar - bu anket sayfa
+  açılır açılmaz (dil seçilmeden/katılmadan ÖNCE) başlar ki başlık
+  (konuşmacı/görsel) her zaman canlı kalsın.
 - Çeviri, konuşmacı cümleyi gönderdiği ANDA değil, bir katılımcı O
   CÜMLEYİ O DİLDE İLK istediğinde yapılıp veritabanına önbelleğe
   alınıyor (`transcript_entries.translations` JSON sütunu) - aynı dili
   paylaşan sonraki katılımcılar/anketler için tekrar NVIDIA çağrısı
-  yapılmıyor.
+  yapılmıyor. Sorular için de aynı önbellekleme (`questions.translations`)
+  kullanılıyor.
 - Katılımcı sayısı, her anket isteğinin kendisi bir "nabız" (heartbeat)
   sayılarak hesaplanıyor (`participant_pings` tablosu, son 15 saniyede
   görülen benzersiz `client_id` sayısı) - ayrı bir WebSocket bağlantısı
@@ -53,16 +77,32 @@ php-translate/
   setup.php               Web tabanlı kurulum sihirbazı - TEK adımda DB
                           bağlantısını test eder, şemayı uygular, config.php'yi
                           kendisi yazar (phpMyAdmin'e girmeye GEREK YOK)
-  schema.sql              MySQL/SQLite uyumlu şema (setup.php bunu kullanır)
+  schema.sql              MySQL/SQLite uyumlu şema, Event tabanlı model
+                          (events, event_speakers, transcript_entries,
+                          event_interim, participant_pings, questions, settings)
   config.example.php      setup.php kullanmak istemezseniz elle doldurulacak örnek
   vendor/                 chillerlan/php-qrcode (QR SVG üretimi) - VENDORED,
                           composer çalıştırmaya GEREK YOK, FTP ile olduğu gibi
                           yüklenebilir
-  includes/               Ortak fonksiyonlar (db, auth, çeviri, ayarlar, layout)
-  admin/                  Yönetim paneli (speakers.php, sessions.php, session.php, settings.php)
-  api/                    speak_post.php, participant_poll.php, status.php
+  includes/               Ortak fonksiyonlar:
+                            auth.php      oturum tabanlı admin girişi (session)
+                            layout.php    Bootstrap 5 sayfa kabukları (admin/katılımcı)
+                            i18n.php      katılımcı arayüz dili (TR/EN) metinleri
+                            languages.php çeviri hedef dili listesi (~20 dil)
+                            repo.php      events/event_speakers/questions sorguları
+                            db.php, settings.php, translate.php, qrcode.php
+  admin/                  Yönetim paneli:
+                            login.php / logout.php   Bootstrap giriş formu (oturum)
+                            events.php                etkinlik listesi + oluşturma
+                            event.php                 tek etkinlik: roster, aktif/
+                                                       pasif, görsel, QA, sorular
+                            questions_feed.php         canlı soru listesi (JS poller)
+                            translate_question.php     tek bir soruyu çevir (JSON)
+                            settings.php                NVIDIA API anahtarı/model
+  api/                    speak_post.php, participant_poll.php, status.php,
+                          ask_question.php
   join.php                Katılımcı sayfası (?code=XXXXXX)
-  speak.php               Konuşmacı ekranı (?session=...&token=...)
+  speak.php               Konuşmacı mikrofon ekranı (?event=...&token=...)
 ```
 
 ## Kurulum (paylaşımlı/cPanel hosting için)
@@ -84,21 +124,23 @@ php-translate/
    geçirebilir. `setup.php`, `config.php` zaten varsa kendini otomatik
    olarak devre dışı bırakıyor (yeniden çalıştırılamıyor) ama silmek yine
    de en güvenlisi.
-5. `https://sizin-alan-adiniz/ceviri/admin/sessions.php` adresine gidin
-   (Basic Auth ile giriş isteyecek - 3. adımda belirlediğiniz kullanıcı
-   adı/şifre), bir konuşmacı ekleyin, bir oturum açın.
+5. `https://sizin-alan-adiniz/ceviri/admin/events.php` adresine gidin -
+   3. adımda belirlediğiniz kullanıcı adı/şifre ile bir Bootstrap giriş
+   ekranı karşılayacak. Giriş yaptıktan sonra bir Etkinlik oluşturun,
+   içine konuşmacı(lar) ekleyin, birini Aktif yapın ve QR kodu/mikrofon
+   linkini paylaşın.
 
 `setup.php` kullanmak istemezseniz (ör. sunucunuzda dosya yazma izni
 kısıtlıysa) eski yöntem hâlâ geçerli: `config.example.php`'yi elle
 `config.php` olarak kopyalayıp doldurun, `schema.sql`'i phpMyAdmin'den
 içe aktarın.
 
-**ÖNEMLİ - HTTPS:** Basic Auth şifresi şifrelenmeden (düz metin)
-gönderilir, bu yüzden hosting'inizde **mutlaka HTTPS/SSL aktif olmalı**
-(çoğu cPanel hosting'de ücretsiz "AutoSSL" ile otomatik gelir). Ayrıca
-tarayıcıların mikrofon (`getUserMedia`) ve konuşma tanıma API'sine izin
-vermesi için de HTTPS ŞART - HTTP üzerinden konuşmacı ekranı mikrofona
-erişemez.
+**ÖNEMLİ - HTTPS:** Admin şifresi (giriş formunda) şifrelenmeden (düz
+metin) gönderilir, bu yüzden hosting'inizde **mutlaka HTTPS/SSL aktif
+olmalı** (çoğu cPanel hosting'de ücretsiz "AutoSSL" ile otomatik gelir).
+Ayrıca tarayıcıların mikrofon (`getUserMedia`) ve konuşma tanıma
+API'sine izin vermesi için de HTTPS ŞART - HTTP üzerinden konuşmacı
+ekranı mikrofona erişemez.
 
 ## NVIDIA API anahtarını panelden ekleme
 
@@ -117,58 +159,86 @@ cp config.example.php config.php
 mkdir -p data
 php -r '$pdo = new PDO("sqlite:" . __DIR__ . "/data/canli_ceviri.sqlite"); $pdo->exec(file_get_contents("schema.sql"));'
 php -S 127.0.0.1:8099
-# tarayıcıda http://127.0.0.1:8099/admin/sessions.php
+# tarayıcıda http://127.0.0.1:8099/admin/events.php
 ```
 
 ## Bu oturumda GERÇEKTEN test edildi (Cloudflare sürümünden FARKLI olarak)
 
 Cloudflare sürümü hiç çalıştırılamamıştı (sandbox'ın Cloudflare'e ağ
 erişimi yok) - bu PHP sürümü ise `php -S` ile gerçekten çalıştırılıp
-SQLite üzerinden uçtan uca test edildi:
+SQLite üzerinden uçtan uca test edildi (v1'de olduğu gibi, v2'nin
+Event/çok-konuşmacı/Q&A modeliyle GÜNCELLENEREK tekrarlandı):
 
-- Admin Basic Auth (doğru/yanlış şifre).
-- Konuşmacı ekleme/silme, oturum açma.
-- QR kod üretimi (gerçek SVG data URI, tarayıcıda render edilebilir).
-- Konuşmacı token doğrulama (doğru/yanlış token, 401).
-- `speak_post.php` final cümle → `participant_poll.php` ile alma (kaynak
-  dilde - çeviri gerekmeden).
-- Farklı dilde katılım → çeviri denemesi → NVIDIA'ya bu sandbox'tan ağ
-  erişimi olmadığı için **beklenen şekilde** başarısız oldu, katılımcıya
-  `[çeviri yapılamadı] <orijinal metin>` + `translation_ok:false` olarak
-  DÜRÜST bir şekilde yansıdı (sessizce yanlış bir şey göstermedi).
+- Admin oturum girişi (Bootstrap form): yanlış şifre → hata mesajı,
+  doğru şifre → oturum açılır ve sonraki isteklerde kalıcı kalır,
+  `require_admin_auth()` girişsizken `/admin/login.php`'ye yönlendirir.
+- Etkinlik oluşturma (boş isim reddedilir), etkinlik adı/konuşmacı adı/
+  soru metninde XSS payload'ları (`<script>`, `<b>`) test edilip her
+  yerde (etkinlik listesi, etkinlik sayfası, soru listesi) escape
+  edildiği doğrulandı.
+- Konuşmacı ekleme/silme; **tek-aktif kuralı**: bir konuşmacıyı Aktif
+  yapmak, aynı etkinlikteki diğer TÜM konuşmacıları otomatik Pasif
+  yapıyor (veritabanı satırlarıyla doğrulandı).
+- Hiçbir konuşmacı aktif değilken `api/status.php`/`api/participant_poll.php`
+  `activeSpeaker`/`active_speaker: null` döndürüyor.
+- Boş-ekran görseli yükleme (gerçek bir PNG ile), veritabanına doğru
+  yolun yazıldığı ve `participant_poll.php`'nin `placeholder_image`
+  alanında döndürdüğü doğrulandı; görsel kaldırma (dosya silinip DB
+  temizleniyor) ayrıca test edildi.
+- `join.php`: UI dili TR/EN başlık değiştirme (query param + doğru
+  buton `active` sınıfı + doğru dilde metinler), geçersiz katılım kodu
+  için 404 + lokalize "bulunamadı" mesajı.
+- **Q&A akışı**: soru sorma kapalıyken `api/ask_question.php` 403
+  (`qa_disabled`) döndürüyor; admin panelinden açıldıktan sonra boş isim
+  VEYA boş mesajla gönderim sunucu tarafında 422 (`validation_error`)
+  ile reddediliyor (istemci tarafı doğrulamanın atlanabileceği
+  senaryoyu kapsıyor); geçerli bir soru kabul edilip admin'in canlı
+  soru listesinde (`admin/questions_feed.php`) XSS'siz göründüğü
+  doğrulandı.
+- Admin soru çevirisi (`admin/translate_question.php`): sorunun kendi
+  dilinde istenirse orijinal metni döndürüyor; farklı bir dilde
+  istenip NVIDIA'ya bu sandbox'tan ağ erişimi olmadığı için **beklenen
+  şekilde** başarısız oluyor, `ok:false` + `[çeviri yapılamadı] ...`
+  ile DÜRÜST bir şekilde yansıyor (sessizce yanlış bir şey göstermedi);
+  endpoint girişsiz erişime 302 ile kapalı.
+- `speak_post.php` final cümle → `participant_poll.php` ile alma
+  (kaynak dilde - çeviri gerekmeden) ve farklı dilde katılım → çeviri
+  denemesi → aynı "dürüst başarısızlık" davranışı; interim (henüz
+  bitmemiş) altyazının SADECE kaynak dildeki katılımcıya gösterildiği,
+  diğer dillerde boş döndüğü doğrulandı.
+- Konuşmacı token doğrulama (doğru/yanlış token, 401) hem `speak.php`
+  sayfası hem `speak_post.php` için.
 - Artımlı anket (`after_seq`) - sadece yeni cümleleri döndürdüğü
   doğrulandı.
-- Oturum sonlandırma - hem admin'den hem sonrasında katılımcı/konuşmacı
-  API çağrılarının doğru şekilde reddedildiği (410/`ended:true`)
+- Etkinlik sonlandırma - hem admin'den ("Etkinliği Sonlandır" butonu
+  sonrasında disabled olduğu) hem konuşmacı ekranından
+  (`type:end_event`), sonrasında katılımcı anketinin `ended:true`
+  döndürdüğü ve `join.php`'nin "Oturum sona erdi" mesajını gösterdiği
   doğrulandı.
 - Ayarlar panelinden NVIDIA anahtarı kaydetme/silme - veritabanına
   gerçekten yazıldığı/silindiği doğrulandı.
-- **Gerçek bir hata bulundu ve düzeltildi:** "var ise güncelle" (upsert)
-  mantığı ilk yazımda MySQL söz dizimini (`ON DUPLICATE KEY UPDATE`)
-  SQLite'a `try/catch` ile "düşürmeye" çalışıyordu - ama SQLite,
-  `PDO::prepare()` anında (execute'tan ÖNCE) hata fırlattığı için bu
-  hata try bloğunun DIŞINDA kalıp siteyi çökertiyordu. Çözüm:
-  `includes/db.php`'de tek, sürücüye göre doğru SQL üreten bir
-  `upsert()` yardımcı fonksiyonu (bkz. içindeki yorum) - artık HİÇBİR
-  yerde bu kırılgan try/catch deseni yok.
-- **Gerçek bir XSS bulundu ve düzeltildi:** `admin/session.php`'de
-  oturum başlığı/konuşmacı adı `esc()` olmadan doğrudan HTML'e
-  yazılıyordu (`<script>` içeren bir başlıkla test edilip doğrulandı) -
-  düzeltildi, ayrıca `includes/layout.php`'deki `admin_page()`/
-  `public_page()` artık `$title` parametresini KENDİ İÇİNDE escape
-  ediyor (tek merkezi yer - gelecekte yeni bir sayfa eklenirken aynı
-  hatanın tekrarlanma riski azaltılıyor).
+- **Gerçek bir hata bulundu ve düzeltildi (v1'den kalma, hâlâ geçerli):**
+  "var ise güncelle" (upsert) mantığı ilk yazımda MySQL söz dizimini
+  (`ON DUPLICATE KEY UPDATE`) SQLite'a `try/catch` ile "düşürmeye"
+  çalışıyordu - ama SQLite, `PDO::prepare()` anında (execute'tan ÖNCE)
+  hata fırlattığı için bu hata try bloğunun DIŞINDA kalıp siteyi
+  çökertiyordu. Çözüm: `includes/db.php`'de tek, sürücüye göre doğru
+  SQL üreten bir `upsert()` yardımcı fonksiyonu (bkz. içindeki yorum) -
+  artık HİÇBİR yerde bu kırılgan try/catch deseni yok.
+- **v2 redesign sırasında bulunup düzeltilen bir hata:** `setup.php`,
+  Bootstrap'a geçilen yeni `includes/layout.php`'nin artık üretmediği
+  eski bir `SHARED_STYLE` sabitini kullanıyordu - her açılışta "Undefined
+  constant" fatal hatası verirdi. `setup.php` Bootstrap'a taşındı, ayrıca
+  başarı sayfalarındaki eski `/admin/sessions.php` linkleri (v1'den kalma,
+  artık silinmiş bir dosya) `/admin/events.php`'ye düzeltildi.
 - **`setup.php` (web kurulum sihirbazı) da aynı şekilde uçtan uca
   çalıştırıldı:** SQLite ile tam bir kurulum (form doldur → DB
   bağlantısı test edilir → şema uygulanır → `config.php` yazılır →
   panel girişi hemen çalışır) doğrulandı; ardından `config.php` varken
   sihirbazın kendini otomatik kapattığı, zorunlu alanlar boş
-  bırakıldığında `config.php` YAZILMADAN hata gösterdiği, ve MySQL
-  bağlantı hatasında (bu sandbox'ta MySQL sunucusu yok, doğal olarak
-  başarısız oldu) yine `config.php` yazılmadan net bir hata
-  gösterildiği test edildi. Form yeniden gösterilirken kullanıcı
-  girdisinin (ör. sunucu adı alanına yazılmış bir `<script>`) escape
-  edildiği ayrıca doğrulandı.
+  bırakıldığında `config.php` YAZILMADAN hata gösterdiği doğrulandı.
+  Form yeniden gösterilirken kullanıcı girdisinin escape edildiği ayrıca
+  doğrulandı.
 
 ## Bilinen sınırlamalar (dürüst liste)
 
@@ -176,8 +246,9 @@ SQLite üzerinden uçtan uca test edildi:
   AYNI durum (Web Speech API resmi standart değil, Chrome/Edge önerilir,
   Safari/iOS kısmi, Firefox yok).
 - **Anket (polling) gecikmesi** - katılımcı en kötü ihtimalle ~2 saniye
-  sonra yeni cümleyi görür (WebSocket'teki "anlık" hissin yerini
-  alıyor, ama konferans altyazısı için pratikte fark edilmez).
+  sonra yeni cümleyi/aktif konuşmacı değişikliğini görür (WebSocket'teki
+  "anlık" hissin yerini alıyor, ama konferans altyazısı için pratikte
+  fark edilmez).
 - **Katılımcı sayısı yaklaşık** - son 15 saniyede anket atan benzersiz
   `client_id` sayısı; bir katılımcı sekmeyi kapattıktan sonra 15 saniye
   boyunca hâlâ "bağlı" gösterilebilir.
@@ -185,6 +256,9 @@ SQLite üzerinden uçtan uca test edildi:
   `api/participant_poll.php`) - Cloudflare sürümüyle AYNI karar.
 - **Çeviri kalitesi tek bir hızlı LLM çağrısı** - profesyonel simultane
   tercüme değil.
+- **Soru sorma dilinin tahmini** - `asker_lang`, katılımcının o an
+  SEÇTİĞİ çeviri dilinden alınıyor (soruyu muhtemelen o dilde/kendi
+  dilinde yazdığının makul bir işareti) - kesin bir garanti değil.
 - **QR kod kütüphanesi (chillerlan/php-qrcode) `vendor/`'da commit
   edilmiş durumda** (composer'ın normalde önerdiği ".gitignore'a ekle,
   kurulumda `composer install` çalıştır" deseninin TERSİ) - bilinçli
@@ -202,6 +276,6 @@ SQLite üzerinden uçtan uca test edildi:
   UPDATE ... VALUES()` söz dizimini desteklemeyebilir - bu, MySQL 8.0.20
   öncesi sürümlerde "deprecated" ama hâlâ çalışıyor olmalı) bu bilinen
   bir risk olarak not edildi.
-- **Hiçbir yerde CSRF token yok** (admin formları sadece Basic Auth'a
+- **Hiçbir yerde CSRF token yok** (admin formları sadece oturum girişine
   güveniyor) - Cloudflare sürümünde de yoktu, aynı kapsam dışı bırakma
   kararı burada da geçerli sayıldı; istenirse eklenebilir.

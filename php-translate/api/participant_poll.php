@@ -3,15 +3,9 @@ declare(strict_types=1);
 
 // En başta ob_start() - bu dosyanın herhangi bir yerinde (require'lar
 // dahil) tesadüfen basılan bir PHP uyarısı/notice'i JSON'dan önce
-// tarayıcıya gitmesin diye (bkz. helpers.php json_response). Sahibinin
-// canlıda yaşadığı "Bağlantı sorunu, tekrar denenecek..." arızası
-// muhtemelen tam olarak buydu - JSON'dan önce görünmez bir hata metni
-// karışıp tarayıcının ayrıştırmasını bozuyordu.
+// tarayıcıya gitmesin diye (bkz. helpers.php json_response).
 ob_start();
 
-// try/catch'in bile yakalayamayacağı GERÇEK ölümcül hatalara (ör.
-// require'lardan biri hiç yoksa) karşı son çare - bootstrap.php'nin
-// fonksiyonlarına GÜVENMEDEN, kendi başına JSON basıyor.
 register_shutdown_function(function (): void {
     $error = error_get_last();
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR];
@@ -33,26 +27,20 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 
 const HISTORY_LIMIT = 20;
 
-/**
- * Asıl mantık burada, bir fonksiyon içinde - dışarıdaki try/catch HERHANGİ
- * bir hatayı (bir dizi anahtarının eksik olması, veritabanı hatası, ne
- * olursa olsun) yakalayıp GERÇEK mesajı JSON içinde dönebilsin diye.
- * Böylece katılımcı ekranında sonsuza kadar "Bağlantı sorunu" görmek
- * yerine, bir sonraki oturumda gerçek hata metni görünür olacak.
- */
 function handle_participant_poll(): void
 {
-    $sessionId = (string) ($_GET['session_id'] ?? '');
+    $eventId = (string) ($_GET['event_id'] ?? '');
     $lang = (string) ($_GET['lang'] ?? '');
+    $uiLang = normalize_ui_lang((string) ($_GET['ui'] ?? 'tr'));
     $afterSeq = (int) ($_GET['after_seq'] ?? 0);
     $clientId = (string) ($_GET['client_id'] ?? '');
 
-    $session = $sessionId !== '' ? find_session($sessionId) : null;
-    if (!$session) {
-        json_response(['error' => 'session_not_found'], 404);
+    $event = $eventId !== '' ? find_event($eventId) : null;
+    if (!$event) {
+        json_response(['error' => 'event_not_found'], 404);
     }
     if ($lang === '') {
-        $lang = $session['source_lang'];
+        $lang = $event['source_lang'];
     }
 
     $pdo = get_pdo();
@@ -60,26 +48,45 @@ function handle_participant_poll(): void
     if ($clientId !== '') {
         upsert(
             'participant_pings',
-            ['session_id' => $sessionId, 'client_id' => $clientId, 'lang' => $lang, 'last_seen' => now_iso()],
-            ['session_id', 'client_id'],
+            ['event_id' => $eventId, 'client_id' => $clientId, 'lang' => $lang, 'last_seen' => now_iso()],
+            ['event_id', 'client_id'],
         );
     }
 
-    if ($session['status'] !== 'active') {
-        json_response(['ended' => true, 'entries' => [], 'interim' => '']);
+    $activeSpeaker = find_active_speaker($eventId);
+    $activeSpeakerOut = null;
+    if ($activeSpeaker) {
+        $activeSpeakerOut = [
+            'id' => $activeSpeaker['id'],
+            'name' => $activeSpeaker['name'],
+            'topic' => $uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr'],
+        ];
+    }
+
+    $placeholderImage = !empty($event['placeholder_image']) ? ('/' . $event['placeholder_image']) : null;
+
+    if ($event['status'] !== 'active') {
+        json_response([
+            'ended' => true,
+            'entries' => [],
+            'interim' => '',
+            'active_speaker' => $activeSpeakerOut,
+            'qa_enabled' => (bool) $event['qa_enabled'],
+            'placeholder_image' => $placeholderImage,
+        ]);
     }
 
     if ($afterSeq > 0) {
         $stmt = $pdo->prepare(
-            'SELECT * FROM transcript_entries WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT 50',
+            'SELECT * FROM transcript_entries WHERE event_id = ? AND seq > ? ORDER BY seq ASC LIMIT 50',
         );
-        $stmt->execute([$sessionId, $afterSeq]);
+        $stmt->execute([$eventId, $afterSeq]);
         $rows = $stmt->fetchAll();
     } else {
         $stmt = $pdo->prepare(
-            'SELECT * FROM transcript_entries WHERE session_id = ? ORDER BY seq DESC LIMIT ?',
+            'SELECT * FROM transcript_entries WHERE event_id = ? ORDER BY seq DESC LIMIT ?',
         );
-        $stmt->bindValue(1, $sessionId);
+        $stmt->bindValue(1, $eventId);
         $stmt->bindValue(2, HISTORY_LIMIT, PDO::PARAM_INT);
         $stmt->execute();
         $rows = array_reverse($stmt->fetchAll());
@@ -122,13 +129,12 @@ function handle_participant_poll(): void
     }
 
     // İnterim (henüz bitmemiş) altyazı SADECE kaynak dildeki katılımcılara
-    // gösteriliyor - Cloudflare/WebSocket sürümüyle AYNI karar, çünkü
-    // çevirisi yok (her poll'da çevirmek maliyetli/gereksiz olurdu, birkaç
-    // saniye içinde "final" olacak zaten).
+    // gösteriliyor - çevirisi yok (her poll'da çevirmek maliyetli/gereksiz
+    // olurdu, birkaç saniye içinde "final" olacak zaten).
     $interimText = '';
-    if ($lang === $session['source_lang']) {
-        $stmt = $pdo->prepare('SELECT interim_text FROM session_interim WHERE session_id = ?');
-        $stmt->execute([$sessionId]);
+    if ($lang === $event['source_lang']) {
+        $stmt = $pdo->prepare('SELECT interim_text FROM event_interim WHERE event_id = ?');
+        $stmt->execute([$eventId]);
         $interimText = (string) ($stmt->fetchColumn() ?: '');
     }
 
@@ -136,6 +142,9 @@ function handle_participant_poll(): void
         'ended' => false,
         'entries' => $entries,
         'interim' => $interimText,
+        'active_speaker' => $activeSpeakerOut,
+        'qa_enabled' => (bool) $event['qa_enabled'],
+        'placeholder_image' => $placeholderImage,
     ]);
 }
 

@@ -1,0 +1,9 @@
+# Yüklenen görseller dışında hiçbir dosyanın (özellikle .php) burada
+# ÇALIŞTIRILAMAYACAĞINDAN emin olmak için ek bir güvenlik katmanı -
+# admin/event.php zaten sadece gerçek görsel dosyalarının (getimagesize
+# ile doğrulanmış) yüklenmesine izin veriyor ve dosya adını KENDİSİ
+# belirliyor (yüklenen dosyanın adını/uzantısını asla kullanmıyor), ama
+# "derinlemesine savunma" için bu da eklendi.
+<FilesMatch "\.(php|phtml|php\d|pl|py|cgi|asp|aspx|sh)$">
+  Require all denied
+</FilesMatch>

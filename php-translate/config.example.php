@@ -16,7 +16,7 @@ return [
     // gerek kalmaz:
     // 'db_dsn' => 'sqlite:' . __DIR__ . '/data/canli_ceviri.sqlite',
 
-    // /admin panelini koruyan Basic Auth bilgileri.
+    // /admin panelindeki giriş ekranını (oturum tabanlı) koruyan bilgiler.
     'admin_username' => 'admin',
     'admin_password' => 'guclu-bir-sifre-belirleyin',
 
