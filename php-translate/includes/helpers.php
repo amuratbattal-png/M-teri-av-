@@ -33,6 +33,16 @@ function new_speaker_token(): string
 
 function json_response(array $data, int $status = 200): void
 {
+    // API uç noktaları artık HER ZAMAN tek, temiz bir JSON gövdesi
+    // döndürüyor - PHP bir uyarı/notice bastırmışsa (ör. eksik bir
+    // config.php alanı) bile bu, JSON'dan ÖNCE tesadüfen yazdırılmış
+    // olabilir; burada (json_response'un ilk işi olarak) o arabellek
+    // temizleniyor ki tarayıcı "geçersiz JSON" hatasına düşmesin. Bunun
+    // işe yaraması için her API dosyasının en başında ob_start()
+    // çağrılmış olması gerekiyor (bkz. api/*.php).
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);

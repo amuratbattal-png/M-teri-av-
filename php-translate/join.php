@@ -145,6 +145,10 @@ function poll() {
     '&client_id=' + encodeURIComponent(clientId);
 
   fetch(url).then(function (res) { return res.json(); }).then(function (data) {
+    if (data.error) {
+      statusEl.textContent = 'Hata: ' + (data.message || data.error);
+      return;
+    }
     if (data.ended) {
       ended = true;
       statusEl.textContent = 'Oturum sona erdi.';
