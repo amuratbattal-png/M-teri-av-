@@ -28,6 +28,7 @@ function render_setup_page(string $bodyHtml): string
 {
     $bsCss = BOOTSTRAP_CSS;
     $bsJs = BOOTSTRAP_JS;
+    $designStyle = DESIGN_STYLE;
     return <<<HTML
 <!doctype html>
 <html lang="tr" data-bs-theme="dark">
@@ -36,7 +37,8 @@ function render_setup_page(string $bodyHtml): string
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kurulum - Canlı Çeviri</title>
 <link href="{$bsCss}" rel="stylesheet">
-<style>main { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }</style>
+<style>{$designStyle}
+main { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }</style>
 </head>
 <body>
 <main>

@@ -70,6 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([now_iso(), $id]);
         header('Location: /admin/event.php?id=' . rawurlencode($id));
         exit;
+    } elseif ($action === 'delete_event') {
+        delete_event($id);
+        header('Location: /admin/events.php?deleted=1');
+        exit;
     } elseif ($action === 'remove_placeholder') {
         if (!empty($event['placeholder_image'])) {
             @unlink(__DIR__ . '/../' . $event['placeholder_image']);
@@ -274,12 +278,18 @@ $body = <<<HTML
       </div>
     </div>
 
-    <div class="card">
+    <div class="card border-danger-subtle">
       <div class="card-body">
         <h2 class="h5 card-title">Etkinlik Yönetimi</h2>
-        <form method="post" onsubmit="return confirm('Etkinliği sonlandırmak istediğinize emin misiniz? Tüm katılımcıların bağlantısı kesilecek.');">
+        <form method="post" class="mb-3" onsubmit="return confirm('Etkinliği sonlandırmak istediğinize emin misiniz? Tüm katılımcıların bağlantısı kesilecek.');">
           <input type="hidden" name="action" value="end_event">
           <button type="submit" class="btn btn-outline-danger" {$endDisabled}>Etkinliği Sonlandır</button>
+        </form>
+        <hr>
+        <p class="text-secondary small mb-2">Aşağıdaki işlem etkinliği, tüm konuşmacıları, transkripti, soruları ve yüklenen görselleri KALICI olarak siler - geri alınamaz.</p>
+        <form method="post" onsubmit="return confirm('Bu etkinliği KALICI olarak silmek istediğinize emin misiniz? Tüm konuşmacılar, transkript, sorular ve yüklenen görseller de silinecek. Bu işlem GERİ ALINAMAZ.');">
+          <input type="hidden" name="action" value="delete_event">
+          <button type="submit" class="btn btn-danger">Etkinliği Kalıcı Olarak Sil</button>
         </form>
       </div>
     </div>

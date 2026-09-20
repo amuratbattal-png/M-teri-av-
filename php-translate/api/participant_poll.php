@@ -105,16 +105,24 @@ function handle_participant_poll(): void
             $ok = true;
         } elseif (isset($translations[$lang])) {
             $text = $translations[$lang];
-            $ok = true;
+            $ok = !str_starts_with($text, TRANSLATION_FAILURE_PREFIX);
         } else {
             $result = translate_text($row['source_text'], $row['source_lang'], $lang);
             $text = $result['text'];
             $ok = $result['ok'];
-            if ($ok) {
-                $translations[$lang] = $text;
-                $stmt = $pdo->prepare('UPDATE transcript_entries SET translations = ? WHERE id = ?');
-                $stmt->execute([json_encode($translations, JSON_UNESCAPED_UNICODE), $row['id']]);
-            }
+            // BAŞARISIZ olsa bile önbelleğe alınıyor - aksi halde HER
+            // katılımcı anketinde (2 saniyede bir!) AYNI eski cümle tekrar
+            // tekrar NVIDIA'ya gönderiliyordu ("sistem devamlı aynı şeyleri
+            // çevirip duruyor" şikayetinin kök sebebi - ayrıca NVIDIA
+            // anahtarı hız sınırına takılmışsa fetch_nvidia_chat()'in kendi
+            // yeniden deneme mantığı [en fazla ~75 saniye] HER poll'da
+            // tekrar tetiklenip isteği yavaşlatıyordu). Bir cümle bir dil
+            // için artık sadece BİR KEZ denenir; sonuç (başarılı ya da
+            // TRANSLATION_FAILURE_PREFIX ile işaretli "[çeviri yapılamadı]"
+            // metni) kalıcı olarak önbellekte kalır.
+            $translations[$lang] = $text;
+            $stmt = $pdo->prepare('UPDATE transcript_entries SET translations = ? WHERE id = ?');
+            $stmt->execute([json_encode($translations, JSON_UNESCAPED_UNICODE), $row['id']]);
         }
 
         $entries[] = [

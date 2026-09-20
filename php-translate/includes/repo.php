@@ -19,6 +19,40 @@ function find_event_by_join_code(string $joinCode): ?array
     return $row ?: null;
 }
 
+/**
+ * Bir etkinliği ve ona ait HER ŞEYİ (konuşmacılar, transkript, sorular,
+ * katılımcı "nabız" kayıtları, yüklenen boş-ekran görseli VE her
+ * konuşmacının fotoğrafı) KALICI olarak siler - geri alınamaz. Sadece
+ * "sona erdirmek" (events.status='ended', bkz. end_event) ile
+ * KARIŞTIRILMASIN, o veri tabanında kalır; bu fonksiyon veriyi tamamen
+ * kaldırır.
+ */
+function delete_event(string $eventId): void
+{
+    $pdo = get_pdo();
+    $event = find_event($eventId);
+    if (!$event) {
+        return;
+    }
+    $speakers = list_event_speakers($eventId);
+
+    $pdo->prepare('DELETE FROM questions WHERE event_id = ?')->execute([$eventId]);
+    $pdo->prepare('DELETE FROM transcript_entries WHERE event_id = ?')->execute([$eventId]);
+    $pdo->prepare('DELETE FROM event_interim WHERE event_id = ?')->execute([$eventId]);
+    $pdo->prepare('DELETE FROM participant_pings WHERE event_id = ?')->execute([$eventId]);
+    $pdo->prepare('DELETE FROM event_speakers WHERE event_id = ?')->execute([$eventId]);
+    $pdo->prepare('DELETE FROM events WHERE id = ?')->execute([$eventId]);
+
+    if (!empty($event['placeholder_image'])) {
+        @unlink(__DIR__ . '/../' . $event['placeholder_image']);
+    }
+    foreach ($speakers as $speaker) {
+        if (!empty($speaker['photo'])) {
+            @unlink(__DIR__ . '/../' . $speaker['photo']);
+        }
+    }
+}
+
 function list_events(): array
 {
     $pdo = get_pdo();

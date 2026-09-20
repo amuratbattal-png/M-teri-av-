@@ -4,6 +4,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_admin_auth();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_event') {
+    delete_event((string) ($_POST['event_id'] ?? ''));
+    header('Location: /admin/events.php?deleted=1');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim((string) ($_POST['name'] ?? ''));
     $sourceLang = trim((string) ($_POST['source_lang'] ?? 'tr')) ?: 'tr';
@@ -27,7 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $events = list_events();
 $error = $_GET['error'] ?? null;
-$errorBanner = $error ? notice('bad', esc($error)) : '';
+$deleted = ($_GET['deleted'] ?? '') === '1';
+$errorBanner = $error ? notice('bad', esc($error)) : ($deleted ? notice('good', 'Etkinlik silindi.') : '');
 
 $rows = '';
 foreach ($events as $e) {
@@ -38,12 +45,19 @@ foreach ($events as $e) {
         <td><a href="/admin/event.php?id=' . esc($e['id']) . '">' . esc($e['name']) . '</a></td>
         <td>' . $badge . '</td>
         <td class="text-secondary">' . esc($e['created_at']) . '</td>
+        <td class="text-end">
+          <form method="post" class="d-inline" onsubmit="return confirm(\'Bu etkinliği KALICI olarak silmek istediğinize emin misiniz? Tüm konuşmacılar, transkript, sorular ve yüklenen görseller de silinecek. Bu işlem GERİ ALINAMAZ.\');">
+            <input type="hidden" name="action" value="delete_event">
+            <input type="hidden" name="event_id" value="' . esc($e['id']) . '">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Sil</button>
+          </form>
+        </td>
       </tr>';
 }
 
 $listHtml = count($events) === 0
     ? '<p class="text-secondary">Henüz etkinlik oluşturulmadı.</p>'
-    : '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Ad</th><th>Durum</th><th>Oluşturulma</th></tr></thead><tbody>' . $rows . '</tbody></table></div>';
+    : '<div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>Ad</th><th>Durum</th><th>Oluşturulma</th><th></th></tr></thead><tbody>' . $rows . '</tbody></table></div>';
 
 $langOptions = language_options_html('tr');
 

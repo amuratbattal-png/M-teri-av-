@@ -407,6 +407,101 @@ soruyu başka dillere çevirebilmeli" isteği geldi.
   istendiğinde orijinal metnin döndüğü, yanlış token'la 401 ve başka
   bir etkinliğin ID'siyle 404 döndüğü doğrulandı.
 
+### Dördüncü tur: etkinlik silme, "kusursuz sistem" tam incelemesi, profesyonel tema, tekrarlanan çeviri hatası
+
+Sahibi bir ekran görüntüsüyle "etkinliği silebilmeliyim, tema çok kötü
+daha profesyonel bir görüntü olsun, bazen sistem devamlı aynı şeyleri
+çevirip duruyor, tüm hataları kontrol et, kusursuz bir sistem olsun"
+dedi - dördü de ele alındı:
+
+- **Etkinlik silme.** Önceden sadece "sonlandırma" (soft, `status='ended'`,
+  veri kalır) vardı, KALICI silme yoktu. Yeni `delete_event()`
+  (`includes/repo.php`) - etkinliğe ait `questions`, `transcript_entries`,
+  `event_interim`, `participant_pings`, `event_speakers` satırlarının
+  TAMAMINI VE yüklenen boş-ekran görselini VE her konuşmacının
+  fotoğrafını (dosya sisteminden) siliyor, en son `events` satırını
+  kaldırıyor. Hem `/admin/events.php` listesindeki her satıra (Sil
+  butonu + `confirm()` onayı) hem `/admin/event.php`'nin "Etkinlik
+  Yönetimi" kartına ("Etkinliği Kalıcı Olarak Sil", ayrı/daha güçlü bir
+  uyarı metniyle) eklendi. Canlı testte: bir etkinlik + konuşmacı +
+  fotoğraf + boş-ekran görseli + bir transkript cümlesi oluşturulup
+  silindi - hem VERİTABANI satırlarının (events, event_speakers) hem
+  YÜKLENEN DOSYALARIN (`uploads/events/*`, `uploads/speakers/*`)
+  gerçekten kalktığı, silinen etkinliğe tekrar gidildiğinde 404
+  döndüğü, ve listeye "Etkinlik silindi." banner'ının düştüğü
+  doğrulandı. **Kod incelemesi sırasında AYRI bir gerçek güvenlik
+  hatası bulunup düzeltildi:** silme onay diyaloğuna ilk yazımda
+  etkinlik adını `confirm('... "İsim" ...')` şeklinde göstermeye
+  çalıştım - `esc()` bunu HTML özniteliği (attribute) bağlamında
+  güvenli hale getiriyor ama tarayıcı bu özniteliği JS'e vermeden ÖNCE
+  HTML entity'lerini ÇÖZÜYOR; isimde bir tek tırnak (`'`) varsa (esc()
+  ENT_QUOTES ile bunu `&#039;`'e çevirse bile, tarayıcı özniteliği
+  parse ederken bunu tekrar `'`'e çözüyor) bu, `confirm('...')`
+  JS string'ini ERKEN kapatıp geçersiz/enjekte edilebilir JS
+  üretebilirdi. Düzeltme: onaydaki metin, bu projedeki TÜM diğer
+  `confirm()` diyaloglarıyla AYNI desene çekilip SABİT/statik tutuldu
+  (dinamik etkinlik adı hiç gömülmüyor) - `esc()`'in HTML-özniteliği
+  güvenliği ile JS-string güvenliğinin AYNI ŞEY OLMADIĞI, dinamik
+  içerik bir `onsubmit="...confirm('...')..."` gibi iç içe bir JS
+  bağlamına gömülürken ekstra dikkat gerektiği bu oturumun net dersi.
+- **Kök sebep bulunup düzeltildi: "sistem devamlı aynı şeyleri çevirip
+  duruyor".** `api/participant_poll.php`'de bir çeviri BAŞARISIZ
+  olduğunda (ör. NVIDIA anahtarı tanımsız/hatalı/hız sınırına takılmış)
+  sonuç ÖNBELLEĞE ALINMIYORDU (sadece BAŞARILI çeviriler
+  `transcript_entries.translations`'a yazılıyordu) - yani NVIDIA
+  çalışmıyorsa, HER katılımcı anketinde (2 saniyede bir, o dili izleyen
+  HER katılımcı için, geçmişteki HER cümle için) AYNI eski cümle tekrar
+  tekrar NVIDIA'ya gönderiliyordu - hem "sürekli aynı şeyi çeviriyor"
+  şikayetinin birebir açıklaması hem (`fetch_nvidia_chat()`'in kendi
+  429-yeniden-deneme mantığıyla birleşince) bir isteğin ~75 saniyeye
+  kadar uzayabilmesine yol açan gizli bir performans sorunu. Düzeltme:
+  artık BAŞARISIZ bir çeviri de (aynı `translations` JSON sütununda,
+  `"[çeviri yapılamadı] ..."` metniyle) önbelleğe alınıyor - bir cümle
+  bir dil için SADECE BİR KEZ denenir. Sonraki okumaların hâlâ doğru
+  `translation_ok:false` döndürebilmesi için yeni bir
+  `TRANSLATION_FAILURE_PREFIX` sabiti (`includes/translate.php`)
+  eklendi - önbellekten okunan bir metin bu ön ekle başlıyorsa
+  `ok:false` olarak tanınıyor. Canlı testte: NVIDIA anahtarı yokken
+  bir cümlenin İLK pollda önbelleğe alındığı, sonraki pollarda AYNI
+  metnin (yeniden NVIDIA'ya gitmeden) döndüğü ve `translation_ok`'un
+  tutarlı kaldığı doğrulandı. **Bilinen ödünleşim (bilinçli):** bu, bir
+  cümlenin NVIDIA sonradan düzelse bile o ana kadar zaten denenmiş
+  eski cümleler için OTOMATİK olarak "iyileşmeyeceği" anlamına geliyor -
+  buna karşılık YENİ söylenen her cümle her zaman taze bir ilk deneme
+  alıyor, ve sistemin kendini tekrar tekrar döven bir istek fırtınasına
+  girmesi engellenmiş oluyor (basitlik/öngörülebilirlik, karmaşık bir
+  yeniden-deneme-zamanlaması makinesine tercih edildi).
+- **Profesyonel tema.** `includes/layout.php`'ye paylaşılan bir
+  `DESIGN_STYLE` sabiti eklendi - Bootstrap'ın kendi `--bs-*` CSS
+  değişkenlerini (birincil renk artık indigo/mor `#6366f1`, daha koyu/
+  katmanlı bir arkaplan, ince kart kenarlıkları + yumuşak gölgeler,
+  daha yuvarlak köşeler, daha belirgin başlık tipografisi, rafine
+  form/navbar stilleri) Bootstrap'ın KENDİ dosyasından SONRA aynı
+  seçicilerle (`:root`) yeniden tanımlayarak - Bootstrap'ın hiçbir
+  satırını değiştirmeden, sadece EKLEYEREK - uyguluyor. `admin_page()`/
+  `public_page()` (yani TÜM admin + katılımcı + konuşmacı ekranları),
+  `admin/login.php` (giriş formu) ve `setup.php` (kurulum sihirbazı)
+  HEPSİ bu paylaşılan temayı kullanıyor - "sistem" artık tek/tutarlı
+  bir görünüme sahip. Navbar'ın eski `bg-dark border-bottom
+  border-secondary-subtle` Bootstrap yardımcı sınıfları kaldırıldı
+  (bunlar `!important` taşıdığı için yeni temanın navbar arkaplan/
+  kenarlık rengini ezip geçersiz kılıyordu) - artık SADECE yeni
+  `DESIGN_STYLE`'daki `.navbar` kuralı geçerli. Giriş sayfasındaki
+  Bootstrap'ın kendi `shadow-lg` yardımcı sınıfı da (aynı `!important`
+  çakışma riski yüzünden) kaldırıldı ki kart, sitedeki HER YERDEKİ AYNI
+  özel gölgeyi kullansın. `php -S` ile hem giriş hem admin sayfalarında
+  yeni renklerin/kuralların gerçekten HTML'e yansıdığı doğrulandı.
+- **"Tüm hataları kontrol et" - tam bir kod incelemesi yapıldı.** Her
+  dosyada (özellikle bu oturumda değişen `admin/event.php`,
+  `admin/events.php`, `includes/repo.php`, `includes/layout.php`)
+  XSS/`esc()` kullanımı, SQL parametrelerinin hep `PDO::prepare()` ile
+  bağlandığı (asla ham string birleştirme olmadığı), her admin
+  sayfasının `require_admin_auth()` çağırdığı, her token-korumalı API
+  uç noktasının `hash_equals()` kullandığı, ve `render_question_list_html()`
+  imzası değiştiğinde geride kalmış eski bir çağıran olmadığı tek tek
+  doğrulandı - yukarıdaki `confirm()`/JS-string enjeksiyonu dışında
+  başka bir gerçek hata bulunmadı.
+
 ## Bilinen sınırlamalar (dürüst liste)
 
 - **STT/TTS güvenilirliği tarayıcıya bağlı** - Cloudflare sürümüyle

@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $bsCss = BOOTSTRAP_CSS;
 $bsJs = BOOTSTRAP_JS;
+$designStyle = DESIGN_STYLE;
 $redirectEsc = esc($redirect);
 $errorHtml = $error ? '<div class="alert alert-danger">' . esc($error) . '</div>' : '';
 
@@ -41,9 +42,10 @@ echo <<<HTML
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Giriş - Canlı Çeviri Yönetimi</title>
 <link href="{$bsCss}" rel="stylesheet">
+<style>{$designStyle}</style>
 </head>
 <body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
-  <div class="card shadow-lg" style="width:100%;max-width:380px">
+  <div class="card" style="width:100%;max-width:380px">
     <div class="card-body p-4">
       <h1 class="h4 mb-3 text-center">Canlı Çeviri</h1>
       <p class="text-secondary text-center mb-4">Yönetim Paneli Girişi</p>

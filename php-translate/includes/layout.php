@@ -10,9 +10,54 @@ declare(strict_types=1);
 const BOOTSTRAP_CSS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
 const BOOTSTRAP_JS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js';
 
+/**
+ * "Tema çok kötü, daha profesyonel bir görüntü olsun" isteği üzerine
+ * eklendi - Bootstrap'ın kendi CSS değişkenlerini (`--bs-*`) Bootstrap'ın
+ * KENDİ dosyasından SONRA (bu <style> bloğu her zaman <link>'ten sonra
+ * geliyor) aynı `:root` seçicisiyle YENİDEN tanımlıyoruz; eşit özgüllükte
+ * (specificity) SONRAKİ kural kazandığı için Bootstrap'ın hiçbir satırını
+ * değiştirmeden - sadece BUNU EKLEYEREK - tüm bileşenlere (buton, kart,
+ * form, tablo, modal, sekme) tutarlı bir şekilde yansıyor. Tüm sayfalarda
+ * (admin + katılımcı + konuşmacı + giriş + kurulum) paylaşılıyor ki
+ * "sistem" tek/tutarlı bir marka gibi görünsün.
+ */
+const DESIGN_STYLE = <<<CSS
+  :root {
+    --bs-body-bg: #0d0f14;
+    --bs-border-color: #262b38;
+    --bs-border-color-translucent: #262b38;
+    --bs-primary: #6366f1;
+    --bs-primary-rgb: 99, 102, 241;
+    --bs-primary-text-emphasis: #a5b4fc;
+    --bs-link-color: #818cf8;
+    --bs-link-color-rgb: 129, 140, 248;
+    --bs-link-hover-color: #a5b4fc;
+    --bs-link-hover-color-rgb: 165, 180, 252;
+    --bs-border-radius: .65rem;
+    --bs-border-radius-sm: .5rem;
+    --bs-border-radius-lg: .85rem;
+  }
+  body { background: radial-gradient(1100px 520px at 12% -8%, #171b26 0%, rgba(23,27,38,0) 60%) fixed, var(--bs-body-bg); }
+  h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 { letter-spacing: -.01em; }
+  .navbar { background: #0f1219 !important; border-bottom: 1px solid var(--bs-border-color); box-shadow: 0 8px 24px -16px rgba(0,0,0,.6); }
+  .navbar-brand { letter-spacing: -.02em; font-weight: 700; }
+  .nav-link { font-weight: 500; }
+  .nav-link.active { color: var(--bs-primary-text-emphasis) !important; }
+  .card { background: #12151d; border: 1px solid var(--bs-border-color); box-shadow: 0 14px 34px -18px rgba(0,0,0,.6); }
+  .card-title { font-weight: 600; }
+  .modal-content { background: #12151d; border: 1px solid var(--bs-border-color); }
+  .btn { font-weight: 500; }
+  .btn-primary { background: var(--bs-primary); border-color: var(--bs-primary); }
+  .btn-primary:hover, .btn-primary:focus { background: #4f46e5; border-color: #4f46e5; }
+  .btn-outline-primary { color: var(--bs-primary); border-color: var(--bs-primary); }
+  .btn-outline-primary:hover { background: var(--bs-primary); border-color: var(--bs-primary); }
+  .form-control, .form-select { background: #0d0f14; border-color: var(--bs-border-color); }
+  .form-control:focus, .form-select:focus { border-color: var(--bs-primary); box-shadow: 0 0 0 .2rem rgba(99,102,241,.25); }
+  .table { --bs-table-bg: transparent; }
+CSS;
+
 const EXTRA_STYLE = <<<CSS
   body { min-height: 100vh; }
-  .navbar-brand { font-weight: 700; }
   .placeholder-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:50vh; padding: 2rem 1rem; text-align:center; }
   .placeholder-screen img { max-width:100%; max-height:60vh; border-radius: .5rem; }
   .speaker-photo { width:132px; height:132px; object-fit:cover; border-radius:50%; border:3px solid var(--bs-border-color); box-shadow:0 6px 20px rgba(0,0,0,.35); margin-bottom:1rem; }
@@ -39,6 +84,7 @@ function admin_page(string $activeNav, string $title, string $bodyHtml): string
     $titleEsc = esc($title);
     $bsCss = BOOTSTRAP_CSS;
     $bsJs = BOOTSTRAP_JS;
+    $designStyle = DESIGN_STYLE;
     $extraStyle = EXTRA_STYLE;
     $nav = nav_item('/admin/events.php', 'events', $activeNav, 'Etkinlikler') .
         nav_item('/admin/settings.php', 'settings', $activeNav, 'Ayarlar');
@@ -51,10 +97,11 @@ function admin_page(string $activeNav, string $title, string $bodyHtml): string
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$titleEsc} - Canlı Çeviri Yönetimi</title>
 <link href="{$bsCss}" rel="stylesheet">
-<style>{$extraStyle}</style>
+<style>{$designStyle}
+{$extraStyle}</style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary-subtle sticky-top">
+<nav class="navbar navbar-expand-lg navbar-dark sticky-top">
   <div class="container">
     <a class="navbar-brand" href="/admin/events.php">Canlı Çeviri</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
@@ -84,6 +131,7 @@ function public_page(string $title, string $bodyHtml, string $htmlLang = 'tr', s
     $langEsc = esc($htmlLang);
     $bsCss = BOOTSTRAP_CSS;
     $bsJs = BOOTSTRAP_JS;
+    $designStyle = DESIGN_STYLE;
     $extraStyle = EXTRA_STYLE;
 
     return <<<HTML
@@ -94,7 +142,8 @@ function public_page(string $title, string $bodyHtml, string $htmlLang = 'tr', s
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$titleEsc}</title>
 <link href="{$bsCss}" rel="stylesheet">
-<style>{$extraStyle}</style>
+<style>{$designStyle}
+{$extraStyle}</style>
 {$extraHead}
 </head>
 <body>

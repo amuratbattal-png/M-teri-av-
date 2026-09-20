@@ -3,6 +3,12 @@ declare(strict_types=1);
 
 const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
+// translate_text() başarısız olduğunda döndürdüğü metnin başına eklenen
+// sabit ön ek - api/participant_poll.php bunu, önbelleğe alınmış BAŞARISIZ
+// bir çeviriyi (bkz. aşağıdaki yorum) sonraki okumalarda hâlâ "ok:false"
+// olarak tanıyabilmek için kullanıyor.
+const TRANSLATION_FAILURE_PREFIX = '[çeviri yapılamadı] ';
+
 /**
  * NVIDIA chat completions çağrısı - Cloudflare sürümünde (apps/translate/
  * src/lib/translate.ts) öğrenilen AYNI ders: 429 (hız sınırı) gelirse
@@ -110,6 +116,6 @@ function translate_text(string $text, string $sourceLangCode, string $targetLang
         return ['text' => $content, 'ok' => true];
     } catch (Throwable $e) {
         error_log('çeviri başarısız: ' . $e->getMessage());
-        return ['text' => "[çeviri yapılamadı] {$text}", 'ok' => false];
+        return ['text' => TRANSLATION_FAILURE_PREFIX . $text, 'ok' => false];
     }
 }
