@@ -58,9 +58,9 @@ $langOptions = language_options_html($event['source_lang'], $uiLang);
 // ilk poll() çağrısı zaten anında tetiklenip bunu tazeleyecek.
 if ($activeSpeaker) {
     $speakerPhotoHtml = !empty($activeSpeaker['photo'])
-        ? '<img src="' . esc('/' . $activeSpeaker['photo']) . '" class="rounded-circle mb-2" width="88" height="88" style="object-fit:cover" alt="">'
+        ? '<img src="' . esc('/' . $activeSpeaker['photo']) . '" class="speaker-photo" width="132" height="132" alt="">'
         : '';
-    $headerInitial = $speakerPhotoHtml . '<div class="h5 mb-1">' . esc($activeSpeaker['name']) . '</div><div class="text-secondary">' .
+    $headerInitial = $speakerPhotoHtml . '<div class="speaker-name">' . esc($activeSpeaker['name']) . '</div><div class="speaker-topic text-secondary">' .
         esc($uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr']) . '</div>';
 } elseif (!empty($event['placeholder_image'])) {
     $headerInitial = '<img src="' . esc('/' . $event['placeholder_image']) . '" alt="">';
@@ -96,6 +96,7 @@ $config = [
         'sent' => t('sent', $uiLang),
         'tts_on' => t('tts_on', $uiLang),
         'tts_off' => t('tts_off', $uiLang),
+        'tts_unsupported' => t('tts_unsupported', $uiLang),
     ],
 ];
 $configJson = json_encode($config, JSON_UNESCAPED_UNICODE);
@@ -129,6 +130,7 @@ $body = <<<HTML
     </div>
     <div id="transcript" class="card card-body mb-2"></div>
     <div id="interim-line" class="mb-2 text-info"></div>
+    <div id="tts-note" class="text-warning small text-center mb-2" style="display:none"></div>
     <div class="d-flex gap-2 mb-2">
       <button id="tts-toggle" class="btn btn-outline-secondary btn-sm flex-fill">{$ttsOnLabel}</button>
       <button id="leave-btn" class="btn btn-outline-secondary btn-sm flex-fill">{$leaveLabel}</button>
@@ -179,6 +181,38 @@ var transcriptEl = document.getElementById('transcript');
 var interimEl = document.getElementById('interim-line');
 var statusEl = document.getElementById('conn-status');
 var askBtn = document.getElementById('ask-btn');
+var ttsNoteEl = document.getElementById('tts-note');
+
+// Tarayıcının ses (voice) listesi ÇOĞU tarayıcıda ASENKRON yükleniyor -
+// sayfa açılır açılmaz getVoices() boş dönebilir. Hem hemen bir deneme
+// yapıyoruz hem de 'voiceschanged' olayını dinleyip listeyi tazeliyoruz -
+// aksi halde "hangi dil için gerçek bir ses var" sorusuna baştan yanlış
+// (boş) cevap verip gereksiz yere "desteklenmiyor" uyarısı gösterebiliriz.
+var speechVoices = [];
+var speechVoicesLoaded = false;
+function loadSpeechVoices() {
+  if (!window.speechSynthesis) return;
+  speechVoices = window.speechSynthesis.getVoices() || [];
+  if (speechVoices.length > 0) speechVoicesLoaded = true;
+}
+if (window.speechSynthesis) {
+  loadSpeechVoices();
+  window.speechSynthesis.onvoiceschanged = loadSpeechVoices;
+}
+
+function findVoiceForLang(bcp47) {
+  if (!bcp47 || speechVoices.length === 0) return null;
+  var lower = bcp47.toLowerCase();
+  var exact = null;
+  var sameBase = null;
+  var base = lower.split('-')[0];
+  for (var i = 0; i < speechVoices.length; i++) {
+    var voiceLang = (speechVoices[i].lang || '').toLowerCase();
+    if (voiceLang === lower) { exact = speechVoices[i]; break; }
+    if (!sameBase && voiceLang.split('-')[0] === base) sameBase = speechVoices[i];
+  }
+  return exact || sameBase;
+}
 
 function isNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -218,9 +252,22 @@ function replaceHistory(entries) {
 function speakIfEnabled(entry) {
   if (!autoSpeak || !joined) return;
   if (!window.speechSynthesis) return;
+  var targetLang = config.bcp47[currentLang] || config.bcp47[config.sourceLang] || config.sourceLang;
   try {
+    var voice = findVoiceForLang(targetLang);
+    if (!voice && speechVoicesLoaded) {
+      // Ses listesi gerçekten yüklendi VE bu dil için hiçbir ses yok -
+      // sessizce hiçbir şey olmaması yerine katılımcıya AÇIKÇA bildiriyoruz
+      // (aksi halde "sesli çeviri çalışmıyor" şikayetinin sebebi hiç
+      // anlaşılamaz - cihaz/tarayıcı kısıtı mı, çeviri mi bozuk anlaşılmaz).
+      ttsNoteEl.textContent = config.strings.tts_unsupported;
+      ttsNoteEl.style.display = 'block';
+      return;
+    }
+    ttsNoteEl.style.display = 'none';
     var utter = new SpeechSynthesisUtterance(entry.text);
-    utter.lang = config.bcp47[currentLang] || config.bcp47[config.sourceLang] || config.sourceLang;
+    utter.lang = targetLang;
+    if (voice) utter.voice = voice;
     window.speechSynthesis.speak(utter);
   } catch (e) {}
 }
@@ -232,17 +279,16 @@ function updateHeader(data) {
       var photo = document.createElement('img');
       photo.src = data.active_speaker.photo;
       photo.alt = '';
-      photo.className = 'rounded-circle mb-2';
-      photo.width = 88;
-      photo.height = 88;
-      photo.style.objectFit = 'cover';
+      photo.className = 'speaker-photo';
+      photo.width = 132;
+      photo.height = 132;
       headerBody.appendChild(photo);
     }
     var h = document.createElement('div');
-    h.className = 'h5 mb-1';
+    h.className = 'speaker-name';
     h.textContent = data.active_speaker.name;
     var p = document.createElement('div');
-    p.className = 'text-secondary';
+    p.className = 'speaker-topic text-secondary';
     p.textContent = data.active_speaker.topic;
     headerBody.appendChild(h);
     headerBody.appendChild(p);
@@ -332,6 +378,18 @@ document.getElementById('join-btn').addEventListener('click', function () {
   var live = document.getElementById('lang-select-live');
   live.innerHTML = document.getElementById('lang-select').innerHTML;
   live.value = currentLang;
+  // Bazı tarayıcılarda (özellikle mobil Safari) sesli okuma, bir kullanıcı
+  // etkileşimi (tıklama) İÇİNDE en az bir kere tetiklenmeden sonraki
+  // otomatik (anket döngüsünden gelen) speak() çağrılarını sessizce
+  // engelliyor - burada sessiz (volume:0) bir "ısınma" çağrısı bu kilidi
+  // AÇIYOR, gerçek bir ses duyulmaz.
+  if (window.speechSynthesis) {
+    try {
+      var warmup = new SpeechSynthesisUtterance(' ');
+      warmup.volume = 0;
+      window.speechSynthesis.speak(warmup);
+    } catch (e) {}
+  }
   poll();
 });
 

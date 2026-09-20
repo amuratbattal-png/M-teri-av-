@@ -13,8 +13,11 @@ const BOOTSTRAP_JS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/boots
 const EXTRA_STYLE = <<<CSS
   body { min-height: 100vh; }
   .navbar-brand { font-weight: 700; }
-  .placeholder-screen { display:flex; align-items:center; justify-content:center; min-height:50vh; }
+  .placeholder-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:50vh; padding: 2rem 1rem; text-align:center; }
   .placeholder-screen img { max-width:100%; max-height:60vh; border-radius: .5rem; }
+  .speaker-photo { width:132px; height:132px; object-fit:cover; border-radius:50%; border:3px solid var(--bs-border-color); box-shadow:0 6px 20px rgba(0,0,0,.35); margin-bottom:1rem; }
+  .speaker-name { font-size:1.4rem; font-weight:700; margin-bottom:.15rem; }
+  .speaker-topic { font-size:1rem; }
   #transcript { min-height: 300px; max-height: 55vh; overflow-y:auto; }
   #transcript .line { padding: .5rem 0; border-bottom: 1px dashed var(--bs-border-color); }
   #transcript .line:last-child { border-bottom: none; }

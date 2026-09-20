@@ -35,6 +35,11 @@ $titleEsc = esc($event['name']);
 $eventIdJson = json_encode($event['id']);
 $tokenJson = json_encode($event['speaker_token']);
 $sourceBcp47Json = json_encode(bcp47_for($event['source_lang']));
+// Soruları çevirebilmek için bir dil seçici gerekiyor - admin panelindeki
+// AYNI language_options_html() ile üretilip JS'e hazır HTML olarak
+// veriliyor (LANGUAGES sabitinden geldiği için güvenli, kullanıcı
+// girdisi değil - doğrudan innerHTML'e yazılabilir).
+$languageOptionsJson = json_encode(language_options_html($event['source_lang'], 'tr'), JSON_UNESCAPED_UNICODE);
 
 $body = <<<HTML
 <main class="container">
@@ -83,6 +88,7 @@ $body = <<<HTML
 var eventId = {$eventIdJson};
 var speakerToken = {$tokenJson};
 var sourceBcp47 = {$sourceBcp47Json};
+var languageOptionsHtml = {$languageOptionsJson};
 var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
 var recognition = null;
 var listening = false;
@@ -153,6 +159,7 @@ function pollQuestions() {
       data.questions.forEach(function (q) {
         var row = document.createElement('div');
         row.className = 'border-bottom py-1';
+        row.setAttribute('data-question-id', q.id);
         var head = document.createElement('div');
         head.className = 'd-flex justify-content-between';
         var name = document.createElement('strong');
@@ -166,6 +173,23 @@ function pollQuestions() {
         msg.textContent = q.message;
         row.appendChild(head);
         row.appendChild(msg);
+
+        var controls = document.createElement('div');
+        controls.className = 'mt-1 d-flex gap-2 align-items-center';
+        var select = document.createElement('select');
+        select.className = 'form-select form-select-sm w-auto question-lang-select';
+        select.innerHTML = languageOptionsHtml;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm btn-outline-info question-translate-btn';
+        btn.textContent = 'Çevir';
+        var result = document.createElement('span');
+        result.className = 'question-translation small text-info';
+        controls.appendChild(select);
+        controls.appendChild(btn);
+        controls.appendChild(result);
+        row.appendChild(controls);
+
         box.appendChild(row);
       });
       if (wasNear) box.scrollTop = box.scrollHeight;
@@ -174,6 +198,26 @@ function pollQuestions() {
 }
 setInterval(pollQuestions, 5000);
 pollQuestions();
+
+document.getElementById('speaker-questions').addEventListener('click', function (event) {
+  if (!event.target.classList.contains('question-translate-btn')) return;
+  var btn = event.target;
+  var row = btn.closest('[data-question-id]');
+  var lang = row.querySelector('.question-lang-select').value;
+  var out = row.querySelector('.question-translation');
+  out.textContent = 'Çevriliyor...';
+  fetch('/api/speaker_translate_question.php?event_id=' + encodeURIComponent(eventId) +
+    '&token=' + encodeURIComponent(speakerToken) +
+    '&id=' + encodeURIComponent(row.getAttribute('data-question-id')) +
+    '&lang=' + encodeURIComponent(lang))
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      out.textContent = data.text || (data.message || data.error || 'Hata');
+    })
+    .catch(function () {
+      out.textContent = 'Bağlantı hatası';
+    });
+});
 
 function updateMicButton() {
   var btn = document.getElementById('mic-btn');

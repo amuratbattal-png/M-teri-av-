@@ -325,6 +325,88 @@ uygulandı: her değişen `<script>` bloğu (`join.php`, `speak.php`,
 değişen `{$degisken}` heredoc interpolasyonları elle karşı kontrol
 edildi (hepsi tanımlı).
 
+### Üçüncü tur: modern konuşmacı kartı, TTS güvenilirliği, konuşmacı ekranında çeviri
+
+Sahibi canlı ortamdan bir ekran görüntüsü paylaştı - aktif konuşmacının
+fotoğrafı SOLDA, adı/konusu SAĞINDA, tek satırda sıkışık görünüyordu
+(mobilde kötü bir görüntü) - ve "başka dillerde sesli çeviri
+yapılmıyor" bildirdi. Aynı oturum içinde ayrıca "konuşmacı ekranında
+soruyu başka dillere çevirebilmeli" isteği geldi.
+
+- **Kök sebep bulundu: `.placeholder-screen` CSS kuralı `display:flex`
+  idi ama `flex-direction` HİÇ belirtilmemişti** - flex'in varsayılanı
+  `row`, yani fotoğraf + isim + konu (üç ayrı kardeş eleman) yan yana
+  diziliyordu, ekran görüntüsündeki tam olarak o sıkışık görünüm
+  buydu. Tek satırlık düzeltme: `flex-direction:column` eklendi
+  (`includes/layout.php`) - bu, hem tek elemanlı durumları (sadece
+  etkinlik görseli VEYA sadece "aktif konuşmacı yok" metni) ETKİLEMEDEN
+  (tek öğe zaten ortalanıyordu) hem çok elemanlı konuşmacı kartını
+  (fotoğraf → isim → konu) doğru şekilde DİKEY sıralıyor. Görsel de
+  "daha modern" olması istendiği için büyütüldü ve stilize edildi:
+  132px dairesel fotoğraf, ince kenarlık + gölge (`.speaker-photo`),
+  daha büyük/kalın isim (`.speaker-name`), ayrı bir konu stili
+  (`.speaker-topic`) - hem `join.php`'nin ilk PHP render'ında hem
+  `updateHeader()` JS fonksiyonunda AYNI class'lar kullanılarak
+  tutarlılık sağlandı. Gerçek bir fotoğraf yüklenip üretilen HTML'in
+  DOM sırasının (img → isim div'i → konu div'i, hepsi flex-column
+  kapsayıcının doğrudan kardeşi) doğru olduğu test edildi.
+- **TTS güvenilirliği artırıldı (kod tarafında yapılabilecek her şey
+  yapıldı) - ama muhtemel asıl sebep NVIDIA anahtarının php-translate'in
+  KENDİ Ayarlar sayfasında tanımlı olmaması.** Önce dürüstçe test
+  edildi: NVIDIA anahtarı olmadan farklı bir dile geçildiğinde
+  transkript metni zaten `[çeviri yapılamadı] <orijinal metin>` OLARAK
+  görünüyor (`translation_ok:false`) - yani "sesli çeviri yapılmıyor"
+  şikayetinin en olası açıklaması, sesli okumanın kendisinin bozuk
+  olması değil, henüz ÇEVRİLMEMİŞ (hâlâ Türkçe) bir metnin hedef dilin
+  sesiyle okunmaya çalışılması (ya bozuk/anlaşılmaz çıkıyor ya da
+  tarayıcı o dil+metin uyumsuzluğunda hiç ses çıkarmıyor). **Bu
+  sistemin (`php-translate`) NVIDIA anahtarı, "Müşteri Avcısı"
+  sisteminden TAMAMEN AYRI** - kendi `/admin/settings.php` sayfasından
+  girilmesi gerekiyor; bu oturumda anahtarın orada tanımlı olup
+  olmadığı doğrulanamadı (sahibinin kontrol etmesi gerekiyor). Yine de
+  koddaki TTS çağrısı daha sağlam hale getirildi (gerçek bir çeviri
+  gelse bile faydalı, sorunun bir kısmı da tarayıcı/cihaz kaynaklı
+  olabilir diye):
+  - Tarayıcının ses (voice) listesi çoğu tarayıcıda ASENKRON yükleniyor -
+    sayfa açılır açılmaz `getVoices()` boş dönebiliyordu. Artık hem
+    erken bir deneme yapılıyor hem `voiceschanged` olayı dinlenip liste
+    tazeleniyor.
+  - `utter.lang` string'ine körü körüne güvenmek yerine artık
+    `speechSynthesis.getVoices()` listesinden hedef dile TAM eşleşen
+    (yoksa aynı ana dil - ör. `en-GB` yerine `en-US`) bir ses SEÇİLİP
+    `utter.voice`'a atanıyor - bazı tarayıcılar `lang` alanı eşleşen
+    bir ses yoksa sessizce varsayılan sese düşüyor (yanlış telaffuz),
+    bazıları hiç ses çıkarmıyor; açık seçim bu belirsizliği azaltıyor.
+  - Ses listesi kesin olarak yüklenmiş VE hedef dil için gerçekten HİÇ
+    ses yoksa artık SESSİZCE hiçbir şey olmuyormuş gibi davranmak
+    yerine katılımcıya görünür bir uyarı gösteriliyor ("Bu dil için
+    cihazınızda/tarayıcınızda sesli okuma bulunamadı.") - `join.php`'ye
+    yeni `#tts-note` alanı ve `includes/i18n.php`'ye yeni
+    `tts_unsupported` TR/EN metni eklendi.
+  - Mobil Safari gibi tarayıcılarda `speechSynthesis`'in bir kullanıcı
+    etkileşimi İÇİNDE en az bir kez tetiklenmeden sonraki otomatik
+    (anket döngüsünden gelen) çağrıları sessizce engellediği biliniyor -
+    "Katıl" butonunun click handler'ına sessiz (volume:0) bir "ısınma"
+    çağrısı eklendi (yaygın bir workaround).
+- **Konuşmacı ekranında soru çevirisi eklendi** - "konuşmacı ekranında
+  soruyu başka dillere çevirebilmeli" isteği. Yeni, token ile korunan
+  (admin oturumu GEREKTİRMEYEN) `api/speaker_translate_question.php` -
+  `admin/translate_question.php` ile AYNI mantık ve AYNI önbellek
+  sütunu (`questions.translations`) paylaşılıyor (admin ya da
+  konuşmacı hangisi ÖNCE bir soruyu çevirirse, diğeri de aynı
+  önbellekten anında yararlanıyor) - ama admin girişi yerine
+  `event.speaker_token` ile doğrulanıyor, ayrıca soru sorgusu
+  `event_id` ile de sınırlandırılıyor (bir token'ın SADECE kendi
+  etkinliğindeki sorulara erişebilmesi için). `speak.php`'nin "Gelen
+  Sorular" listesindeki her soru satırına artık admin'dekiyle aynı
+  desende bir dil seçici + "Çevir" butonu + sonuç alanı ekleniyor
+  (`language_options_html()` çıktısı JSON olarak JS'e taşınıp
+  `innerHTML`'e yazılıyor - LANGUAGES sabitinden geldiği için güvenli).
+  Canlı testte: NVIDIA anahtarı yokken `ok:false` + `[çeviri
+  yapılamadı]` ile dürüstçe başarısız olduğu, aynı dile çeviri
+  istendiğinde orijinal metnin döndüğü, yanlış token'la 401 ve başka
+  bir etkinliğin ID'siyle 404 döndüğü doğrulandı.
+
 ## Bilinen sınırlamalar (dürüst liste)
 
 - **STT/TTS güvenilirliği tarayıcıya bağlı** - Cloudflare sürümüyle
