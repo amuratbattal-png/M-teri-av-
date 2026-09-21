@@ -502,6 +502,52 @@ dedi - dördü de ele alındı:
   doğrulandı - yukarıdaki `confirm()`/JS-string enjeksiyonu dışında
   başka bir gerçek hata bulunmadı.
 
+### Beşinci tur: "Tanıma hatası: aborted" - konuşmacı mikrofonu kayıt yapmıyor
+
+Sahibi konuşmacı ekranında (`speak.php`) mikrofonun bir süre sonra
+durup "Tanıma hatası: aborted" gösterdiğini ve kayıt yapmayı kestiğini
+bildirdi.
+
+- **Kök sebep bulundu:** Web Speech API'nin bir tanıma oturumu süresiz
+  sürmüyor (sessizlik/dahili zaman aşımı gibi sebeplerle kendiliğinden
+  bitiyor) - "sürekli" mikrofon hissi için `recognition.onend` her
+  bittiğinde yeniden `start()` çağırıyordu. Sorun şu ki bu, **AYNI (bir
+  kez `start()` edilmiş) `SpeechRecognition` nesnesi üzerinde**
+  yapılıyordu - birçok tarayıcı/sürüm bunu güvenilir şekilde
+  desteklemiyor, bazıları anında `"aborted"` hatasıyla başarısız oluyor
+  (tam olarak sahibinin gördüğü hata). Önceki kod bu hatayı sadece
+  logluyordu, yeniden başlatmayı denemeden bırakıyordu - mikrofon
+  kalıcı olarak sessiz kalıyordu.
+- **Düzeltme:** Kurulum `createRecognition()` adında tek bir fonksiyona
+  çıkarıldı - artık HER yeniden başlatmada (`onend` tetiklendiğinde)
+  TAMAMEN YENİ bir `SpeechRecognition` nesnesi oluşturuluyor (aynı ilk
+  başlatmadaki gibi), aynı örneği tekrar kullanmaya ÇALIŞILMIYOR. Ayrıca:
+  - Çok hızı art arda yeniden başlatma denemesinin de `"aborted"`
+    tetikleyebildiği bilindiği için 300ms'lik kısa bir gecikme eklendi.
+  - Hatalar artık ayrıştırılıyor: `"not-allowed"`/`"service-not-allowed"`
+    (mikrofon izni verilmedi) KALICI bir hata - yeniden başlatarak
+    düzelmez, bu yüzden bu durumda döngü durduruluyor ve sahibine
+    "tarayıcı izin ayarından mikrofon izni verip tekrar deneyin" gibi
+    net bir mesaj gösteriliyor. Diğer hatalar (`"aborted"`,
+    `"no-speech"`, `"network"`, `"audio-capture"` gibi) GEÇİCİ kabul
+    edilip otomatik yeniden başlatılıyor.
+  - `startRecognition()`/`stopRecognition()` artık bekleyen bir yeniden
+    başlatma zamanlayıcısını (`restartTimer`) da temizliyor - kullanıcı
+    mikrofonu elle durdurduğunda arka planda gizlice bir "hayalet"
+    yeniden başlatmanın tetiklenmemesi için.
+- **Dürüst sınır:** Bu, tarayıcının kendi `SpeechRecognition`
+  uygulamasındaki bir davranışla ilgili olduğu için bu sandbox'ta canlı
+  bir tarayıcıyla UÇTAN UCA tekrarlanıp doğrulanamadı (ses girişi/
+  mikrofon API'si gerektiriyor) - sadece sayfanın hatasız render
+  edildiği ve yeni `createRecognition()` fonksiyonunun kodda
+  gerçekten yer aldığı `php -S` ile doğrulandı, JS `node --check` ile
+  sözdizimi olarak doğrulandı. Sahibinin kendi tarayıcısında
+  (podyumdaki cihazda) tekrar denemesi ve hâlâ "aborted" görüp
+  görmediğini bildirmesi gerekiyor - eğer hâlâ oluyorsa (ör. tarayıcı
+  sekmesi arka plana alındığında/cihaz uykuya geçtiğinde tetikleniyor
+  olabilir), Canlı Log'daki (`#log` alanı) tam hata mesajı/zamanlaması
+  bir sonraki teşhis için paylaşılmalı.
+
 ## Bilinen sınırlamalar (dürüst liste)
 
 - **STT/TTS güvenilirliği tarayıcıya bağlı** - Cloudflare sürümüyle

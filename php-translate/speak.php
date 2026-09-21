@@ -231,14 +231,27 @@ function updateMicButton() {
   }
 }
 
-function startRecognition() {
-  if (!SpeechRecognitionImpl) return;
-  recognition = new SpeechRecognitionImpl();
-  recognition.lang = sourceBcp47;
-  recognition.continuous = true;
-  recognition.interimResults = true;
+// Web Speech API'nin bir sınırı var: bir tanıma oturumu süresiz sürmüyor,
+// bir süre sonra (sessizlik, dahili zaman aşımı vb.) kendiliğinden
+// 'onend' ile bitiyor - "sürekli" bir mikrofon deneyimi için bunu her
+// bittiğinde YENİDEN başlatmamız gerekiyor. ÖNEMLİ DERS (sahibinin
+// gerçek "Tanıma hatası: aborted" + "kayıt yapmıyor" şikayetiyle
+// bulundu): bazı tarayıcılar AYNI (bir kez `start()` edilmiş) tanıma
+// nesnesini tekrar `start()` etmeye izin vermiyor - anında "aborted"
+// hatasıyla başarısız oluyor. Çözüm: her yeniden başlatmada TAMAMEN
+// YENİ bir SpeechRecognition nesnesi oluşturmak (bu yüzden kurulum
+// `createRecognition()` içine alındı, tek bir yerde) - ayrıca çok hızlı
+// art arda başlatma denemesi de "aborted" tetikleyebildiği için kısa
+// bir gecikme (300ms) eklendi.
+var restartTimer = null;
 
-  recognition.onresult = function (event) {
+function createRecognition() {
+  var r = new SpeechRecognitionImpl();
+  r.lang = sourceBcp47;
+  r.continuous = true;
+  r.interimResults = true;
+
+  r.onresult = function (event) {
     var interimText = '';
     for (var i = event.resultIndex; i < event.results.length; i++) {
       var result = event.results[i];
@@ -261,30 +274,57 @@ function startRecognition() {
     }
   };
 
-  recognition.onerror = function (event) {
+  r.onerror = function (event) {
     logLine('Tanıma hatası: ' + event.error);
-  };
-
-  recognition.onend = function () {
-    if (!manuallyStopped) {
-      try {
-        recognition.start();
-      } catch (e) {
-        logLine('Yeniden başlatılamadı, mikrofona tekrar dokunun.');
-        listening = false;
-        updateMicButton();
-      }
+    // 'not-allowed'/'service-not-allowed' = mikrofon izni verilmedi -
+    // bu, yeniden başlatarak DÜZELMEZ, tekrar tekrar denemek sadece
+    // gereksiz bir döngüye sokar. Diğer hatalar ('aborted', 'no-speech',
+    // 'network', 'audio-capture' gibi) genelde GEÇİCİ - asıl yeniden
+    // başlatma kararı aşağıdaki 'onend'de veriliyor (Web Speech API bu
+    // hatalardan sonra da onend'i tetikliyor).
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      manuallyStopped = true;
+      logLine('Mikrofon izni verilmedi - tarayıcı adres çubuğundaki izin ayarından izin verip tekrar deneyin.');
     }
   };
 
+  r.onend = function () {
+    listening = false;
+    updateMicButton();
+    if (manuallyStopped) return;
+    restartTimer = setTimeout(function () {
+      startRecognition();
+    }, 300);
+  };
+
+  return r;
+}
+
+function startRecognition() {
+  if (!SpeechRecognitionImpl) return;
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
   manuallyStopped = false;
-  recognition.start();
-  listening = true;
-  updateMicButton();
+  recognition = createRecognition();
+  try {
+    recognition.start();
+    listening = true;
+    updateMicButton();
+  } catch (e) {
+    logLine('Başlatılamadı: ' + e.message);
+    listening = false;
+    updateMicButton();
+  }
 }
 
 function stopRecognition() {
   manuallyStopped = true;
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
   if (recognition) {
     try { recognition.stop(); } catch (e) {}
   }
