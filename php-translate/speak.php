@@ -3,22 +3,27 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
 
-$eventId = (string) ($_GET['event'] ?? '');
+// "Her konuşmacının kendi mikrofon kodu olmalı" isteği üzerine artık
+// events.speaker_token DEĞİL, doğrudan BU konuşmacının kendi token'ı
+// ile doğrulanıyor - link admin panelindeki konuşmacı detay sayfasından
+// (admin/speaker.php) alınıyor.
+$speakerId = (string) ($_GET['speaker'] ?? '');
 $token = (string) ($_GET['token'] ?? '');
-$event = $eventId !== '' ? find_event($eventId) : null;
+$speaker = $speakerId !== '' ? find_event_speaker($speakerId) : null;
 
-if (!$event) {
+if (!$speaker) {
     http_response_code(404);
-    echo public_page('Bulunamadı', '<main class="container py-5"><h1 class="h4">Etkinlik bulunamadı.</h1></main>');
+    echo public_page('Bulunamadı', '<main class="container py-5"><h1 class="h4">Konuşmacı bulunamadı.</h1></main>');
     exit;
 }
-if ($event['status'] !== 'active') {
-    echo public_page('Etkinlik sona erdi', '<main class="container py-5"><h1 class="h4">Bu etkinlik sona erdi.</h1></main>');
-    exit;
-}
-if (!hash_equals($event['speaker_token'], $token)) {
+if (!hash_equals($speaker['token'], $token)) {
     http_response_code(401);
     echo public_page('Yetkisiz', '<main class="container py-5"><h1 class="h4">Geçersiz mikrofon bağlantısı.</h1></main>', 'tr');
+    exit;
+}
+$event = find_event($speaker['event_id']);
+if (!$event || $event['status'] !== 'active') {
+    echo public_page('Etkinlik sona erdi', '<main class="container py-5"><h1 class="h4">Bu etkinlik sona erdi.</h1></main>');
     exit;
 }
 
@@ -29,24 +34,34 @@ main { width: 100%; max-width: 640px; }
 #transcript { max-height: 220px; overflow-y:auto; }
 #speaker-questions { max-height: 220px; overflow-y:auto; }
 #log { max-height: 100px; overflow-y:auto; font-size:.78rem; }
+.lang-toggle .btn.active { pointer-events: none; }
 </style>';
 
-$titleEsc = esc($event['name']);
-$eventIdJson = json_encode($event['id']);
-$tokenJson = json_encode($event['speaker_token']);
-$sourceBcp47Json = json_encode(bcp47_for($event['source_lang']));
+$eventNameEsc = esc($event['name']);
+$speakerNameEsc = esc($speaker['name']);
+$speakerIdJson = json_encode($speaker['id']);
+$speakerTokenJson = json_encode($speaker['token']);
+$eventIdForStatusJson = json_encode($event['id']);
+$sourceLangValue = in_array($speaker['source_lang'], ['tr', 'en'], true) ? $speaker['source_lang'] : 'tr';
+$sourceLangJson = json_encode($sourceLangValue);
+$sourceBcp47Json = json_encode(bcp47_for($sourceLangValue));
+$trActiveClass = $sourceLangValue === 'tr' ? 'active' : '';
+$enActiveClass = $sourceLangValue === 'en' ? 'active' : '';
+$qaToggleLabel = $speaker['qa_enabled'] ? 'Soru Sormayı Kapat' : 'Soru Sormayı Aç';
+$qaToggleClass = $speaker['qa_enabled'] ? 'btn-outline-warning' : 'btn-success';
+$qaEnabledJson = json_encode((bool) $speaker['qa_enabled']);
 // Soruları çevirebilmek için bir dil seçici gerekiyor - admin panelindeki
 // AYNI language_options_html() ile üretilip JS'e hazır HTML olarak
 // veriliyor (LANGUAGES sabitinden geldiği için güvenli, kullanıcı
 // girdisi değil - doğrudan innerHTML'e yazılabilir).
-$languageOptionsJson = json_encode(language_options_html($event['source_lang'], 'tr'), JSON_UNESCAPED_UNICODE);
+$languageOptionsJson = json_encode(language_options_html($sourceLangValue, 'tr'), JSON_UNESCAPED_UNICODE);
 
 $body = <<<HTML
 <main class="container">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-      <h1 class="h4 mb-0">{$titleEsc}</h1>
-      <p class="text-secondary small mb-0">Mikrofon ekranı</p>
+      <h1 class="h4 mb-0">{$speakerNameEsc}</h1>
+      <p class="text-secondary small mb-0">{$eventNameEsc} &middot; Mikrofon ekranı</p>
     </div>
     <div class="text-end">
       <div class="text-secondary small">Katılımcı</div>
@@ -54,40 +69,45 @@ $body = <<<HTML
     </div>
   </div>
 
+  <div id="active-warning" class="alert alert-warning small py-2" style="display:none">Şu an aktif konuşmacı siz değilsiniz - "Konuşmayı Başlat"a basınca aktif olursunuz.</div>
+
   <div class="card mb-3">
     <div class="card-body text-center">
-      <div class="text-secondary small mb-2">Şu an aktif konuşmacı</div>
-      <div class="h5" id="active-speaker-name">-</div>
-      <p class="mt-3 mb-1" id="support-warning" style="display:none">
+      <div class="btn-group btn-group-sm lang-toggle mb-3" role="group">
+        <button type="button" class="btn btn-outline-secondary {$trActiveClass}" data-lang="tr">Türkçe konuşuyorum</button>
+        <button type="button" class="btn btn-outline-secondary {$enActiveClass}" data-lang="en">I'm speaking English</button>
+      </div>
+      <p class="mt-1 mb-1" id="support-warning" style="display:none">
         <span class="badge text-bg-warning">Bu tarayıcı konuşma tanımayı desteklemiyor olabilir - Chrome/Edge önerilir.</span>
       </p>
-      <button id="mic-btn" type="button" class="btn btn-danger rounded-circle mic-btn my-3">&#127908;</button>
+      <button id="mic-btn" type="button" class="btn btn-primary rounded-circle mic-btn my-3">&#127908;</button>
       <p class="text-secondary" id="mic-label">Başlatmak için mikrofona dokunun</p>
       <div id="interim" class="text-info"></div>
+      <button id="start-stop-btn" type="button" class="btn btn-primary w-100 mt-2">Konuşmayı Başlat</button>
     </div>
   </div>
 
   <h2 class="h6">Yakalanan cümleler</h2>
   <div id="transcript" class="card card-body mb-3"></div>
 
-  <h2 class="h6">Gelen Sorular</h2>
-  <p class="text-secondary small mb-1">Siz aktifken katılımcıların sorduğu sorular burada görünür.</p>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h6 mb-0">Soru-Cevap</h2>
+    <button id="qa-toggle-btn" type="button" class="btn btn-sm {$qaToggleClass}">{$qaToggleLabel}</button>
+  </div>
+  <p class="text-secondary small mb-1">Açıksa, siz aktifken katılımcıların sorduğu sorular burada görünür.</p>
   <div id="speaker-questions" class="card card-body mb-3">
     <span class="text-secondary small">Henüz soru yok.</span>
-  </div>
-
-  <div class="card card-body d-flex flex-row justify-content-between align-items-center">
-    <span class="text-secondary small">Etkinlik bitince sonlandırabilirsiniz.</span>
-    <button id="end-btn" type="button" class="btn btn-outline-danger btn-sm">Etkinliği Sonlandır</button>
   </div>
 
   <div id="log" class="text-secondary small mt-2"></div>
 </main>
 
 <script>
-var eventId = {$eventIdJson};
-var speakerToken = {$tokenJson};
+var speakerId = {$speakerIdJson};
+var speakerToken = {$speakerTokenJson};
+var sourceLang = {$sourceLangJson};
 var sourceBcp47 = {$sourceBcp47Json};
+var qaEnabled = {$qaEnabledJson};
 var languageOptionsHtml = {$languageOptionsJson};
 var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
 var recognition = null;
@@ -117,24 +137,28 @@ function addTranscriptLine(text) {
   el.scrollTop = el.scrollHeight;
 }
 
-function postToServer(type, text) {
-  fetch('/api/speak_post.php', {
+function postToServer(type, text, langOverride) {
+  return fetch('/api/speak_post.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId, token: speakerToken, type: type, text: text })
-  }).catch(function () {});
+    body: JSON.stringify({
+      speaker_id: speakerId,
+      token: speakerToken,
+      type: type,
+      text: text,
+      lang: (langOverride !== undefined ? langOverride : sourceLang)
+    })
+  }).then(function (res) { return res.json(); }).catch(function () { return null; });
 }
 
 function pollStatus() {
-  fetch('/api/status.php?event_id=' + encodeURIComponent(eventId))
+  fetch('/api/status.php?event_id=' + encodeURIComponent({$eventIdForStatusJson}))
     .then(function (res) { return res.json(); })
     .then(function (data) {
       if (typeof data.participantCount === 'number') setText('participant-count', String(data.participantCount));
-      if (data.activeSpeaker) {
-        setText('active-speaker-name', data.activeSpeaker.name + ' - ' + data.activeSpeaker.topic_tr);
-      } else {
-        setText('active-speaker-name', 'Aktif konuşmacı yok');
-      }
+      var warning = document.getElementById('active-warning');
+      var amIActive = !!(data.activeSpeaker && data.activeSpeaker.id === speakerId);
+      warning.style.display = (!amIActive && listening) ? 'block' : 'none';
     })
     .catch(function () {});
 }
@@ -142,7 +166,7 @@ setInterval(pollStatus, 4000);
 pollStatus();
 
 function pollQuestions() {
-  fetch('/api/speaker_questions.php?event_id=' + encodeURIComponent(eventId) + '&token=' + encodeURIComponent(speakerToken))
+  fetch('/api/speaker_questions.php?speaker_id=' + encodeURIComponent(speakerId) + '&token=' + encodeURIComponent(speakerToken))
     .then(function (res) { return res.json(); })
     .then(function (data) {
       var box = document.getElementById('speaker-questions');
@@ -206,7 +230,7 @@ document.getElementById('speaker-questions').addEventListener('click', function 
   var lang = row.querySelector('.question-lang-select').value;
   var out = row.querySelector('.question-translation');
   out.textContent = 'Çevriliyor...';
-  fetch('/api/speaker_translate_question.php?event_id=' + encodeURIComponent(eventId) +
+  fetch('/api/speaker_translate_question.php?speaker_id=' + encodeURIComponent(speakerId) +
     '&token=' + encodeURIComponent(speakerToken) +
     '&id=' + encodeURIComponent(row.getAttribute('data-question-id')) +
     '&lang=' + encodeURIComponent(lang))
@@ -219,30 +243,61 @@ document.getElementById('speaker-questions').addEventListener('click', function 
     });
 });
 
+document.getElementById('qa-toggle-btn').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  postToServer('toggle_qa', '').then(function (data) {
+    btn.disabled = false;
+    if (!data || !data.ok) return;
+    qaEnabled = data.qa_enabled;
+    btn.textContent = qaEnabled ? 'Soru Sormayı Kapat' : 'Soru Sormayı Aç';
+    btn.className = 'btn btn-sm ' + (qaEnabled ? 'btn-outline-warning' : 'btn-success');
+  });
+});
+
+document.querySelectorAll('.lang-toggle [data-lang]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    if (listening) return;
+    var lang = btn.getAttribute('data-lang');
+    postToServer('set_lang', '', lang).then(function (data) {
+      if (!data || !data.ok) return;
+      sourceLang = data.source_lang;
+      sourceBcp47 = (sourceLang === 'en') ? 'en-US' : 'tr-TR';
+      document.querySelectorAll('.lang-toggle [data-lang]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-lang') === sourceLang);
+      });
+    });
+  });
+});
+
 function updateMicButton() {
   var btn = document.getElementById('mic-btn');
   var label = document.getElementById('mic-label');
+  var startStopBtn = document.getElementById('start-stop-btn');
   if (listening) {
     btn.classList.add('on');
     label.textContent = 'Dinleniyor - durdurmak için dokunun';
+    startStopBtn.textContent = 'Konuşmayı Bitir';
+    startStopBtn.className = 'btn btn-outline-danger w-100 mt-2';
   } else {
     btn.classList.remove('on');
     label.textContent = 'Başlatmak için mikrofona dokunun';
+    startStopBtn.textContent = 'Konuşmayı Başlat';
+    startStopBtn.className = 'btn btn-primary w-100 mt-2';
   }
+  document.querySelectorAll('.lang-toggle [data-lang]').forEach(function (b) {
+    b.disabled = listening;
+  });
 }
 
 // Web Speech API'nin bir sınırı var: bir tanıma oturumu süresiz sürmüyor,
 // bir süre sonra (sessizlik, dahili zaman aşımı vb.) kendiliğinden
 // 'onend' ile bitiyor - "sürekli" bir mikrofon deneyimi için bunu her
-// bittiğinde YENİDEN başlatmamız gerekiyor. ÖNEMLİ DERS (sahibinin
-// gerçek "Tanıma hatası: aborted" + "kayıt yapmıyor" şikayetiyle
-// bulundu): bazı tarayıcılar AYNI (bir kez `start()` edilmiş) tanıma
-// nesnesini tekrar `start()` etmeye izin vermiyor - anında "aborted"
-// hatasıyla başarısız oluyor. Çözüm: her yeniden başlatmada TAMAMEN
-// YENİ bir SpeechRecognition nesnesi oluşturmak (bu yüzden kurulum
-// `createRecognition()` içine alındı, tek bir yerde) - ayrıca çok hızlı
-// art arda başlatma denemesi de "aborted" tetikleyebildiği için kısa
-// bir gecikme (300ms) eklendi.
+// bittiğinde YENİDEN başlatmamız gerekiyor. Her yeniden başlatmada
+// TAMAMEN YENİ bir SpeechRecognition nesnesi oluşturuluyor (bazı
+// tarayıcılar AYNI nesneyi tekrar start() etmeye izin vermiyor, anında
+// "aborted" hatasıyla başarısız oluyor) + çok hızlı art arda başlatmayı
+// önlemek için kısa bir gecikme (300ms).
 var restartTimer = null;
 
 function createRecognition() {
@@ -258,7 +313,12 @@ function createRecognition() {
       var t = result[0].transcript;
       if (result.isFinal) {
         addTranscriptLine(t);
-        postToServer('final', t);
+        postToServer('final', t).then(function (data) {
+          if (data && data.error === 'not_active') {
+            logLine('Aktif konuşmacı değilsiniz - mikrofon durduruldu.');
+            stopRecognition();
+          }
+        });
         setText('interim', '');
       } else {
         interimText += t;
@@ -332,27 +392,33 @@ function stopRecognition() {
   updateMicButton();
 }
 
-document.getElementById('mic-btn').addEventListener('click', function () {
-  if (listening) stopRecognition(); else startRecognition();
-});
+// "Konuşmayı Başlat" - hem bu konuşmacıyı AKTİF yapar (diğerlerini
+// otomatik pasif yaparak, bkz. activate_speaker) hem mikrofonu başlatır.
+// "Konuşmayı Bitir" - mikrofonu durdurur ve bu konuşmacıyı pasif yapar.
+function startSpeaking() {
+  postToServer('activate', '').then(function () {
+    startRecognition();
+  });
+}
 
-document.getElementById('end-btn').addEventListener('click', function () {
-  if (!confirm('Etkinliği sonlandırmak istediğinize emin misiniz?')) return;
-  fetch('/api/speak_post.php', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId, token: speakerToken, type: 'end_event' })
-  }).then(function () {
-    logLine('Etkinlik sonlandırıldı.');
-    stopRecognition();
-  }).catch(function () {});
+function stopSpeaking() {
+  stopRecognition();
+  postToServer('deactivate', '');
+}
+
+document.getElementById('mic-btn').addEventListener('click', function () {
+  if (listening) stopSpeaking(); else startSpeaking();
+});
+document.getElementById('start-stop-btn').addEventListener('click', function () {
+  if (listening) stopSpeaking(); else startSpeaking();
 });
 
 if (!SpeechRecognitionImpl) {
   document.getElementById('support-warning').style.display = 'block';
   document.getElementById('mic-btn').disabled = true;
+  document.getElementById('start-stop-btn').disabled = true;
 }
 </script>
 HTML;
 
-echo public_page($event['name'], $body, 'tr', $extraHead);
+echo public_page($speaker['name'] . ' - ' . $event['name'], $body, 'tr', $extraHead);

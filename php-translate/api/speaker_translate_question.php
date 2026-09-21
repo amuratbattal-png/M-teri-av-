@@ -29,28 +29,30 @@ require_once __DIR__ . '/../includes/bootstrap.php';
  * admin/translate_question.php ile AYNI mantık (aynı önbellek sütunu,
  * questions.translations - admin ya da konuşmacı hangisi önce çevirirse
  * diğeri de aynı önbellekten yararlanıyor), ama admin oturumu YERİNE
- * speak.php'nin kendi token'ı ile korunuyor (aynı speak_post.php/
- * speaker_questions.php deseni). Soru ayrıca `event_id` eşleşmesiyle de
- * doğrulanıyor - token sadece KENDİ etkinliğindeki sorulara erişebilsin diye.
+ * konuşmacının KENDİ token'ı ile korunuyor (aynı speak_post.php/
+ * speaker_questions.php deseni). Soru ayrıca `speaker_id` eşleşmesiyle
+ * de doğrulanıyor - bir konuşmacı SADECE kendisine sorulmuş sorulara
+ * erişebilsin diye (aynı etkinlikteki başka bir konuşmacıya sorulmuş
+ * bir soruya değil).
  */
 function handle_speaker_translate_question(): void
 {
-    $eventId = (string) ($_GET['event_id'] ?? '');
+    $speakerId = (string) ($_GET['speaker_id'] ?? '');
     $token = (string) ($_GET['token'] ?? '');
     $id = (string) ($_GET['id'] ?? '');
     $targetLang = (string) ($_GET['lang'] ?? '');
 
-    $event = $eventId !== '' ? find_event($eventId) : null;
-    if (!$event) {
-        json_response(['error' => 'event_not_found'], 404);
+    $speaker = $speakerId !== '' ? find_event_speaker($speakerId) : null;
+    if (!$speaker) {
+        json_response(['error' => 'speaker_not_found'], 404);
     }
-    if (!hash_equals($event['speaker_token'], $token)) {
+    if (!hash_equals($speaker['token'], $token)) {
         json_response(['error' => 'unauthorized'], 401);
     }
 
     $pdo = get_pdo();
-    $stmt = $pdo->prepare('SELECT * FROM questions WHERE id = ? AND event_id = ?');
-    $stmt->execute([$id, $eventId]);
+    $stmt = $pdo->prepare('SELECT * FROM questions WHERE id = ? AND speaker_id = ?');
+    $stmt->execute([$id, $speakerId]);
     $question = $stmt->fetch();
     if (!$question) {
         json_response(['error' => 'not_found'], 404);

@@ -24,31 +24,75 @@ register_shutdown_function(function (): void {
 
 require_once __DIR__ . '/../includes/bootstrap.php';
 
+/**
+ * "Her konuşmacının kendi mikrofon kodu olmalı" isteği üzerine, önceden
+ * TEK bir events.speaker_token ile çalışan bu uç nokta artık HER
+ * KONUŞMACININ kendi token'ıyla doğrulanıyor (speak.php de aynı şekilde
+ * güncellendi) - events.speaker_token artık HİÇBİR YERDEN okunmuyor
+ * (kod tekrar kullanılmaya kalkışılırsa diye kasıtlı olarak silinmedi).
+ */
 function handle_speak_post(): void
 {
     $input = read_json_body();
-    $eventId = (string) ($input['event_id'] ?? '');
+    $speakerId = (string) ($input['speaker_id'] ?? '');
     $token = (string) ($input['token'] ?? '');
     $type = (string) ($input['type'] ?? '');
     $text = (string) ($input['text'] ?? '');
 
-    $event = $eventId !== '' ? find_event($eventId) : null;
-    if (!$event) {
-        json_response(['error' => 'event_not_found'], 404);
+    $speaker = $speakerId !== '' ? find_event_speaker($speakerId) : null;
+    if (!$speaker) {
+        json_response(['error' => 'speaker_not_found'], 404);
     }
-    if (!hash_equals($event['speaker_token'], $token)) {
+    if (!hash_equals($speaker['token'], $token)) {
         json_response(['error' => 'unauthorized'], 401);
     }
-    if ($event['status'] !== 'active') {
+    $event = find_event($speaker['event_id']);
+    if (!$event || $event['status'] !== 'active') {
         json_response(['error' => 'event_ended'], 410);
     }
+    $eventId = $event['id'];
 
     $pdo = get_pdo();
 
-    if ($type === 'end_event') {
-        $stmt = $pdo->prepare("UPDATE events SET status = 'ended', ended_at = ? WHERE id = ?");
-        $stmt->execute([now_iso(), $eventId]);
+    if ($type === 'activate') {
+        activate_speaker($eventId, $speakerId);
         json_response(['ok' => true]);
+    }
+
+    if ($type === 'deactivate') {
+        deactivate_speaker($speakerId);
+        json_response(['ok' => true]);
+    }
+
+    if ($type === 'toggle_qa') {
+        $newValue = $speaker['qa_enabled'] ? 0 : 1;
+        $stmt = $pdo->prepare('UPDATE event_speakers SET qa_enabled = ? WHERE id = ?');
+        $stmt->execute([$newValue, $speakerId]);
+        json_response(['ok' => true, 'qa_enabled' => (bool) $newValue]);
+    }
+
+    if ($type === 'set_lang') {
+        $lang = (string) ($input['lang'] ?? 'tr');
+        // Bu konuşmacı ekranı SADECE Türkçe/İngilizce arasında seçim
+        // sunuyor ("2 dil - türkçe ve ingilizce" isteği) - başka bir
+        // değer gelirse (elle uğraşılırsa) sessizce Türkçe'ye düşülüyor.
+        if (!in_array($lang, ['tr', 'en'], true)) {
+            $lang = 'tr';
+        }
+        $stmt = $pdo->prepare('UPDATE event_speakers SET source_lang = ? WHERE id = ?');
+        $stmt->execute([$lang, $speakerId]);
+        json_response(['ok' => true, 'source_lang' => $lang]);
+    }
+
+    // 'interim'/'final' - SADECE o an gerçekten AKTİF olan konuşmacı
+    // gönderebilir. Tek-aktif kuralı (activate_speaker) başka bir
+    // konuşmacının Başlat'a basması durumunda bu konuşmacıyı otomatik
+    // pasif yaptığı için, mikrofonu hâlâ açık unutulmuş bir konuşmacının
+    // sözleri sessizce yanlış birine mal edilmek yerine burada NET bir
+    // hatayla reddediliyor - istemci tarafı bunu görüp mikrofonu
+    // durdurup kullanıcıyı bilgilendirebiliyor.
+    if (!$speaker['is_active']) {
+        json_response(['error' => 'not_active', 'message' => 'Şu an aktif konuşmacı değilsiniz.'], 409);
     }
 
     if ($type === 'interim') {
@@ -62,9 +106,6 @@ function handle_speak_post(): void
             json_response(['ok' => true]);
         }
 
-        $activeSpeaker = find_active_speaker($eventId);
-        $speakerId = $activeSpeaker['id'] ?? null;
-
         // Aynı etkinliğin tek yazarı (o anki mikrofon cihazı) olduğu için
         // eşzamanlı yazma yarışı pratikte yok - basit oku-yaz-artır yeterli.
         $stmt = $pdo->prepare('SELECT COALESCE(MAX(seq), 0) FROM transcript_entries WHERE event_id = ?');
@@ -75,7 +116,7 @@ function handle_speak_post(): void
             'INSERT INTO transcript_entries (id, event_id, speaker_id, seq, source_text, source_lang, translations, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         );
-        $stmt->execute([new_id(), $eventId, $speakerId, $seq, $text, $event['source_lang'], '{}', now_iso()]);
+        $stmt->execute([new_id(), $eventId, $speakerId, $seq, $text, $speaker['source_lang'], '{}', now_iso()]);
 
         // Çeviri BURADA yapılmıyor - kimin hangi dili dinlediğini bu
         // istek anında bilmiyoruz (polling modeli, kalıcı bağlantı yok).

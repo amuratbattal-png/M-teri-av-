@@ -61,6 +61,22 @@ CREATE TABLE IF NOT EXISTS event_speakers (
   -- altına kaydedilir, katılımcı ekranında aktifken adı/konusuyla
   -- birlikte gösterilir. NULL = henüz fotoğraf yüklenmedi.
   photo VARCHAR(255) NULL,
+  -- Bu konuşmacının KENDİ mikrofon linki/token'ı - "her konuşmacının
+  -- kendi mikrofon kodu olmalı" isteği üzerine eklendi (önceden TEK bir
+  -- etkinlik-genelinde token vardı, events.speaker_token - artık
+  -- kullanılmıyor, bkz. speak.php). Boş bırakılırsa (eski kurulumlarda
+  -- ALTER sonrası olduğu gibi) repo.php ilk okumada kendiliğinden
+  -- (lazy) rastgele bir token üretip kaydediyor - bkz.
+  -- list_event_speakers()/find_event_speaker() yorumu.
+  token VARCHAR(64) NOT NULL DEFAULT '',
+  -- Bu konuşmacı için "soru sorulması aktif" - artık ETKİNLİK genelinde
+  -- değil, HER KONUŞMACI kendi segmenti için kendi ekranından
+  -- (speak.php) açıp kapatabiliyor.
+  qa_enabled INTEGER NOT NULL DEFAULT 0,
+  -- Bu konuşmacının GERÇEKTE konuştuğu dil (STT/mikrofon için) - artık
+  -- etkinlik genelinde sabit değil, her konuşmacı kendi ekranından
+  -- Türkçe/İngilizce arasında seçebiliyor.
+  source_lang VARCHAR(10) NOT NULL DEFAULT 'tr',
   is_active INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL
@@ -68,14 +84,17 @@ CREATE TABLE IF NOT EXISTS event_speakers (
 
 CREATE INDEX idx_event_speakers_event ON event_speakers(event_id);
 
--- "photo" sütunu sonradan eklendi - CREATE TABLE IF NOT EXISTS zaten var
--- olan bir tabloyu ASLA güncellemez, bu yüzden daha önce kurulmuş
--- (sütun olmadan oluşturulmuş) bir event_speakers tablosuna sütunu
--- burada AYRICA ekliyoruz. Sıfırdan bir kurulumda CREATE TABLE zaten
--- sütunu içerdiği için bu ALTER "duplicate column" hatası verir - bu,
--- setup.php'nin (ve elle phpMyAdmin'den çalıştıranların) tolere ettiği
--- ZARARSIZ bir durumdur (bkz. setup.php'deki $alreadyExists kontrolü).
+-- Sonradan eklenen sütunlar - CREATE TABLE IF NOT EXISTS zaten var olan
+-- bir tabloyu ASLA güncellemez, bu yüzden daha önce kurulmuş bir
+-- event_speakers tablosuna bunları burada AYRICA ekliyoruz. Sıfırdan
+-- bir kurulumda CREATE TABLE zaten hepsini içerdiği için bu ALTER'lar
+-- "duplicate column" hatası verir - bu, setup.php'nin (ve elle
+-- phpMyAdmin'den çalıştıranların) tolere ettiği ZARARSIZ bir durumdur
+-- (bkz. setup.php'deki $alreadyExists kontrolü).
 ALTER TABLE event_speakers ADD COLUMN photo VARCHAR(255) NULL;
+ALTER TABLE event_speakers ADD COLUMN token VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE event_speakers ADD COLUMN qa_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE event_speakers ADD COLUMN source_lang VARCHAR(10) NOT NULL DEFAULT 'tr';
 
 -- Konuşmacının söylediği her bitmiş (final) cümle. speaker_id, o cümle
 -- söylendiği ANDA hangi konuşmacının "aktif" olduğunu tutar (NULL =

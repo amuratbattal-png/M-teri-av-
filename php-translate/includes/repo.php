@@ -59,12 +59,35 @@ function list_events(): array
     return $pdo->query('SELECT * FROM events ORDER BY created_at DESC')->fetchAll();
 }
 
+/**
+ * Konuşmacının KENDİ mikrofon token'ı boşsa (ör. `token` sütunu sonradan
+ * eklenen bir ALTER TABLE ile geldiği ve eski satırların hâlâ boş
+ * olduğu bir yükseltme senaryosunda) burada, ilk okunduğu anda,
+ * kendiliğinden (lazy) rastgele bir token üretilip kalıcı olarak
+ * kaydediliyor - ayrı bir "migration script" çalıştırmaya gerek
+ * kalmadan, sadece sayfa bir kez açıldığında kendi kendini onarıyor.
+ * `hash_equals('', '')` true döneceği için boş bir token asla
+ * bırakılmamalı (aksi halde token'sız bir istek bile doğrulanabilirdi).
+ */
+function ensure_speaker_token(array $speaker): array
+{
+    if ($speaker['token'] !== '') {
+        return $speaker;
+    }
+    $token = new_speaker_token();
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare('UPDATE event_speakers SET token = ? WHERE id = ?');
+    $stmt->execute([$token, $speaker['id']]);
+    $speaker['token'] = $token;
+    return $speaker;
+}
+
 function list_event_speakers(string $eventId): array
 {
     $pdo = get_pdo();
     $stmt = $pdo->prepare('SELECT * FROM event_speakers WHERE event_id = ? ORDER BY sort_order ASC, created_at ASC');
     $stmt->execute([$eventId]);
-    return $stmt->fetchAll();
+    return array_map('ensure_speaker_token', $stmt->fetchAll());
 }
 
 function find_event_speaker(string $id): ?array
@@ -73,7 +96,7 @@ function find_event_speaker(string $id): ?array
     $stmt = $pdo->prepare('SELECT * FROM event_speakers WHERE id = ?');
     $stmt->execute([$id]);
     $row = $stmt->fetch();
-    return $row ?: null;
+    return $row ? ensure_speaker_token($row) : null;
 }
 
 /** O anda aktif olan TEK konuşmacı (varsa) - bir Event'te aynı anda en fazla bir tane aktif olabilir. */
@@ -83,7 +106,7 @@ function find_active_speaker(string $eventId): ?array
     $stmt = $pdo->prepare('SELECT * FROM event_speakers WHERE event_id = ? AND is_active = 1 LIMIT 1');
     $stmt->execute([$eventId]);
     $row = $stmt->fetch();
-    return $row ?: null;
+    return $row ? ensure_speaker_token($row) : null;
 }
 
 /**
@@ -152,6 +175,22 @@ function list_transcript_with_speaker_names(string $eventId): array
          ORDER BY t.seq ASC',
     );
     $stmt->execute([$eventId]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Tek bir konuşmacının TÜM transkript satırları (seq sırasıyla) - katılımcının
+ * "konuşmacı bitirince transkript indir" isteği için, api/download_transcript.php
+ * bunu kullanıyor (list_transcript_with_speaker_names gibi TÜM etkinliği değil,
+ * sadece bu konuşmacıya ait satırları döndürür).
+ */
+function list_speaker_transcript(string $eventId, string $speakerId): array
+{
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare(
+        'SELECT * FROM transcript_entries WHERE event_id = ? AND speaker_id = ? ORDER BY seq ASC',
+    );
+    $stmt->execute([$eventId, $speakerId]);
     return $stmt->fetchAll();
 }
 

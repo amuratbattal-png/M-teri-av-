@@ -97,6 +97,7 @@ $config = [
         'tts_on' => t('tts_on', $uiLang),
         'tts_off' => t('tts_off', $uiLang),
         'tts_unsupported' => t('tts_unsupported', $uiLang),
+        'download_transcript_prefix' => t('download_transcript_prefix', $uiLang),
     ],
 ];
 $configJson = json_encode($config, JSON_UNESCAPED_UNICODE);
@@ -113,6 +114,9 @@ $body = <<<HTML
 
   <div class="card mb-3">
     <div class="card-body text-center placeholder-screen py-4" id="speaker-header-body">{$headerInitial}</div>
+    <div class="card-body pt-0 text-center" id="download-transcript-wrap" style="display:none">
+      <a href="#" id="download-transcript-btn" class="btn btn-sm btn-outline-primary" download></a>
+    </div>
   </div>
 
   <div id="join-panel" class="card mb-3" style="display:{$joinPanelInitialDisplay}">
@@ -182,6 +186,18 @@ var interimEl = document.getElementById('interim-line');
 var statusEl = document.getElementById('conn-status');
 var askBtn = document.getElementById('ask-btn');
 var ttsNoteEl = document.getElementById('tts-note');
+var downloadWrap = document.getElementById('download-transcript-wrap');
+var downloadBtn = document.getElementById('download-transcript-btn');
+
+// "Konuşmacı konuşmayı bitirince transkript indir butonu olmalı" isteği -
+// en son aktif olan konuşmacıyı hatırlıyoruz, aktif konuşmacı yoksa (ama
+// daha önce biri vardıysa) o konuşmacının indirme linkini gösteriyoruz.
+var lastKnownSpeaker = null;
+// "Konuşmacı değişince katılımcı SADECE yeni konuşmacının içeriğini
+// görmeli" isteği - bir sonraki poll() cevabında aktif konuşmacı değiştiği
+// anlaşılırsa transkript, dil değişiminde kullanılan AYNI mekanizmayla
+// (afterSeq=0 + firstPollAfterJoin=true) sıfırdan dolduruluyor.
+var lastActiveSpeakerId = undefined;
 
 // Tarayıcının ses (voice) listesi ÇOĞU tarayıcıda ASENKRON yükleniyor -
 // sayfa açılır açılmaz getVoices() boş dönebilir. Hem hemen bir deneme
@@ -322,8 +338,29 @@ function updateHeader(data) {
     sessionPanelEl.style.display = 'none';
   }
 
-  qaEnabled = !!data.qa_enabled;
+  // "qa_enabled" artık ETKİNLİK genelinde değil, aktif KONUŞMACININ kendi
+  // ayarı - api/participant_poll.php artık bunu data.active_speaker İÇİNDE
+  // dönüyor, üst seviyede değil.
+  qaEnabled = !!(data.active_speaker && data.active_speaker.qa_enabled);
   askBtn.style.display = qaEnabled ? 'inline-block' : 'none';
+}
+
+function updateDownloadLink(data) {
+  if (data.active_speaker) {
+    lastKnownSpeaker = data.active_speaker;
+    downloadWrap.style.display = 'none';
+    return;
+  }
+  if (!lastKnownSpeaker) {
+    downloadWrap.style.display = 'none';
+    return;
+  }
+  var dlLang = currentLang || config.uiLang;
+  downloadBtn.href = '/api/download_transcript.php?event_id=' + encodeURIComponent(config.eventId) +
+    '&speaker_id=' + encodeURIComponent(lastKnownSpeaker.id) +
+    '&lang=' + encodeURIComponent(dlLang);
+  downloadBtn.textContent = config.strings.download_transcript_prefix + lastKnownSpeaker.name;
+  downloadWrap.style.display = 'block';
 }
 
 var firstPollAfterJoin = false;
@@ -342,6 +379,15 @@ function poll() {
       return;
     }
     updateHeader(data);
+    updateDownloadLink(data);
+
+    var newActiveSpeakerId = data.active_speaker ? data.active_speaker.id : null;
+    if (lastActiveSpeakerId !== undefined && newActiveSpeakerId !== lastActiveSpeakerId) {
+      afterSeq = 0;
+      firstPollAfterJoin = true;
+    }
+    lastActiveSpeakerId = newActiveSpeakerId;
+
     if (data.ended) {
       ended = true;
       statusEl.textContent = config.strings.ended;

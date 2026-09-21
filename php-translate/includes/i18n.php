@@ -30,6 +30,7 @@ const UI_STRINGS = [
         'sent' => 'Sorunuz gönderildi.',
         'not_found' => 'Bu katılım kodu geçerli değil.',
         'tts_unsupported' => 'Bu dil için cihazınızda/tarayıcınızda sesli okuma bulunamadı.',
+        'download_transcript_prefix' => 'Transkripti indir: ',
     ],
     'en' => [
         'lang_label' => 'Which language would you like to follow in?',
@@ -52,6 +53,7 @@ const UI_STRINGS = [
         'sent' => 'Your question has been sent.',
         'not_found' => 'This join code is not valid.',
         'tts_unsupported' => 'No voice available for this language on your device/browser.',
+        'download_transcript_prefix' => 'Download transcript: ',
     ],
 ];
 

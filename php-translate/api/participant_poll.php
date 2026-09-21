@@ -39,11 +39,18 @@ function handle_participant_poll(): void
     if (!$event) {
         json_response(['error' => 'event_not_found'], 404);
     }
-    if ($lang === '') {
-        $lang = $event['source_lang'];
-    }
 
     $pdo = get_pdo();
+
+    // "Katılımcı ekranında sadece aktif konuşmacının çeviri ekranı
+    // açılmalı" isteği - artık konuşma dili de (source_lang) ETKİNLİK
+    // değil, KONUŞMACI bazında olduğu için hem varsayılan dil hem
+    // transkript/interim SORGULARI aktif konuşmacıya göre belirleniyor.
+    $activeSpeaker = find_active_speaker($eventId);
+
+    if ($lang === '') {
+        $lang = $activeSpeaker ? $activeSpeaker['source_lang'] : $event['source_lang'];
+    }
 
     if ($clientId !== '') {
         upsert(
@@ -53,7 +60,6 @@ function handle_participant_poll(): void
         );
     }
 
-    $activeSpeaker = find_active_speaker($eventId);
     $activeSpeakerOut = null;
     if ($activeSpeaker) {
         $activeSpeakerOut = [
@@ -61,6 +67,7 @@ function handle_participant_poll(): void
             'name' => $activeSpeaker['name'],
             'topic' => $uiLang === 'en' ? $activeSpeaker['topic_en'] : $activeSpeaker['topic_tr'],
             'photo' => !empty($activeSpeaker['photo']) ? ('/' . $activeSpeaker['photo']) : null,
+            'qa_enabled' => (bool) $activeSpeaker['qa_enabled'],
         ];
     }
 
@@ -72,23 +79,35 @@ function handle_participant_poll(): void
             'entries' => [],
             'interim' => '',
             'active_speaker' => $activeSpeakerOut,
-            'qa_enabled' => (bool) $event['qa_enabled'],
+            'placeholder_image' => $placeholderImage,
+        ]);
+    }
+
+    // Aktif konuşmacı yoksa gösterilecek bir transkript de yok - sadece
+    // görsel/"aktif konuşmacı yok" ekranı zaten geçerli, entries boş kalır.
+    if (!$activeSpeaker) {
+        json_response([
+            'ended' => false,
+            'entries' => [],
+            'interim' => '',
+            'active_speaker' => null,
             'placeholder_image' => $placeholderImage,
         ]);
     }
 
     if ($afterSeq > 0) {
         $stmt = $pdo->prepare(
-            'SELECT * FROM transcript_entries WHERE event_id = ? AND seq > ? ORDER BY seq ASC LIMIT 50',
+            'SELECT * FROM transcript_entries WHERE event_id = ? AND speaker_id = ? AND seq > ? ORDER BY seq ASC LIMIT 50',
         );
-        $stmt->execute([$eventId, $afterSeq]);
+        $stmt->execute([$eventId, $activeSpeaker['id'], $afterSeq]);
         $rows = $stmt->fetchAll();
     } else {
         $stmt = $pdo->prepare(
-            'SELECT * FROM transcript_entries WHERE event_id = ? ORDER BY seq DESC LIMIT ?',
+            'SELECT * FROM transcript_entries WHERE event_id = ? AND speaker_id = ? ORDER BY seq DESC LIMIT ?',
         );
         $stmt->bindValue(1, $eventId);
-        $stmt->bindValue(2, HISTORY_LIMIT, PDO::PARAM_INT);
+        $stmt->bindValue(2, $activeSpeaker['id']);
+        $stmt->bindValue(3, HISTORY_LIMIT, PDO::PARAM_INT);
         $stmt->execute();
         $rows = array_reverse($stmt->fetchAll());
     }
@@ -152,7 +171,6 @@ function handle_participant_poll(): void
         'entries' => $entries,
         'interim' => $interimText,
         'active_speaker' => $activeSpeakerOut,
-        'qa_enabled' => (bool) $event['qa_enabled'],
         'placeholder_image' => $placeholderImage,
     ]);
 }

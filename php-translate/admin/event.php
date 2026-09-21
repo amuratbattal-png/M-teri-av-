@@ -6,7 +6,6 @@ require_once __DIR__ . '/../includes/qrcode.php';
 require_admin_auth();
 
 const EVENT_UPLOAD_DIR = __DIR__ . '/../uploads/events';
-const SPEAKER_UPLOAD_DIR = __DIR__ . '/../uploads/speakers';
 
 $id = (string) ($_GET['id'] ?? '');
 $event = $id !== '' ? find_event($id) : null;
@@ -33,38 +32,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$id]);
             $sortOrder = ((int) $stmt->fetchColumn()) + 1;
 
+            $newSpeakerId = new_id();
             $stmt = $pdo->prepare(
-                'INSERT INTO event_speakers (id, event_id, name, topic_tr, topic_en, is_active, sort_order, created_at)
-                 VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+                'INSERT INTO event_speakers (id, event_id, name, topic_tr, topic_en, token, qa_enabled, source_lang, is_active, sort_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)',
             );
-            $stmt->execute([new_id(), $id, $name, $topicTr, $topicEn, $sortOrder, now_iso()]);
-            header('Location: /admin/event.php?id=' . rawurlencode($id));
+            $stmt->execute([$newSpeakerId, $id, $name, $topicTr, $topicEn, new_speaker_token(), $event['source_lang'], $sortOrder, now_iso()]);
+            // Yeni konuşmacı eklenir eklenmez detay sayfasına gidiliyor -
+            // "konuşmacı detayına girince mikrofon kodu almalı" akışının
+            // doğal bir parçası olarak, admin hemen mikrofon linkini/QR'ını
+            // görüp konuşmacıya iletebiliyor.
+            header('Location: /admin/speaker.php?id=' . rawurlencode($newSpeakerId));
             exit;
         }
-    } elseif ($action === 'activate_speaker') {
-        activate_speaker($id, (string) ($_POST['speaker_id'] ?? ''));
-        header('Location: /admin/event.php?id=' . rawurlencode($id));
-        exit;
-    } elseif ($action === 'deactivate_speaker') {
-        deactivate_speaker((string) ($_POST['speaker_id'] ?? ''));
-        header('Location: /admin/event.php?id=' . rawurlencode($id));
-        exit;
-    } elseif ($action === 'delete_speaker') {
-        $speakerId = (string) ($_POST['speaker_id'] ?? '');
-        $speakerToDelete = find_event_speaker($speakerId);
-        if ($speakerToDelete && !empty($speakerToDelete['photo'])) {
-            @unlink(__DIR__ . '/../' . $speakerToDelete['photo']);
-        }
-        $stmt = $pdo->prepare('DELETE FROM event_speakers WHERE id = ? AND event_id = ?');
-        $stmt->execute([$speakerId, $id]);
-        header('Location: /admin/event.php?id=' . rawurlencode($id));
-        exit;
-    } elseif ($action === 'toggle_qa') {
-        $newValue = $event['qa_enabled'] ? 0 : 1;
-        $stmt = $pdo->prepare('UPDATE events SET qa_enabled = ? WHERE id = ?');
-        $stmt->execute([$newValue, $id]);
-        header('Location: /admin/event.php?id=' . rawurlencode($id));
-        exit;
     } elseif ($action === 'end_event') {
         $stmt = $pdo->prepare("UPDATE events SET status = 'ended', ended_at = ? WHERE id = ?");
         $stmt->execute([now_iso(), $id]);
@@ -102,40 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $formError = 'Görsel kaydedilemedi - klasör yazma izinlerini kontrol edin.';
         }
-    } elseif ($action === 'upload_speaker_photo') {
-        $speakerId = (string) ($_POST['speaker_id'] ?? '');
-        $speaker = find_event_speaker($speakerId);
-        $validated = validate_uploaded_image($_FILES['photo'] ?? null);
-        if (!$speaker || $speaker['event_id'] !== $id) {
-            $formError = 'Konuşmacı bulunamadı.';
-        } elseif (!$validated['ok']) {
-            $formError = $validated['error'];
-        } else {
-            if (!is_dir(SPEAKER_UPLOAD_DIR)) {
-                mkdir(SPEAKER_UPLOAD_DIR, 0775, true);
-            }
-            if (!empty($speaker['photo'])) {
-                @unlink(__DIR__ . '/../' . $speaker['photo']);
-            }
-            $relativePath = 'uploads/speakers/' . $speakerId . '.' . $validated['ext'];
-            if (move_uploaded_file($_FILES['photo']['tmp_name'], __DIR__ . '/../' . $relativePath)) {
-                $stmt = $pdo->prepare('UPDATE event_speakers SET photo = ? WHERE id = ?');
-                $stmt->execute([$relativePath, $speakerId]);
-                header('Location: /admin/event.php?id=' . rawurlencode($id));
-                exit;
-            }
-            $formError = 'Fotoğraf kaydedilemedi - klasör yazma izinlerini kontrol edin.';
-        }
-    } elseif ($action === 'remove_speaker_photo') {
-        $speakerId = (string) ($_POST['speaker_id'] ?? '');
-        $speaker = find_event_speaker($speakerId);
-        if ($speaker && $speaker['event_id'] === $id && !empty($speaker['photo'])) {
-            @unlink(__DIR__ . '/../' . $speaker['photo']);
-            $stmt = $pdo->prepare('UPDATE event_speakers SET photo = NULL WHERE id = ?');
-            $stmt->execute([$speakerId]);
-        }
-        header('Location: /admin/event.php?id=' . rawurlencode($id));
-        exit;
     }
 
     $event = find_event($id) ?? $event;
@@ -146,9 +92,7 @@ $speakers = list_event_speakers($id);
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $origin = $scheme . '://' . $_SERVER['HTTP_HOST'];
 $joinUrl = $origin . '/join.php?code=' . rawurlencode($event['join_code']);
-$speakUrl = $origin . '/speak.php?event=' . rawurlencode($event['id']) . '&token=' . rawurlencode($event['speaker_token']);
 $qrDataUri = render_qr_data_uri($joinUrl);
-$speakQrDataUri = render_qr_data_uri($speakUrl);
 $participantCount = count_active_participants($id);
 $totalParticipants = count_total_participants($id);
 
@@ -161,48 +105,32 @@ $errorBanner = $formError ? notice('bad', esc($formError)) : '';
 
 $titleEsc = esc($event['name']);
 $joinUrlEsc = esc($joinUrl);
-$speakUrlEsc = esc($speakUrl);
 $eventIdJson = json_encode($event['id']);
 $eventIdEsc = esc($event['id']);
 $titleJson = json_encode('Etkinlik: ' . $event['name'], JSON_UNESCAPED_UNICODE);
 
 // --- Konuşmacılar listesi ---
+// Her satırdaki tüm aksiyonlar (aktif/pasif et, fotoğraf, mikrofon
+// linki, dil, soru-cevap, sil) artık admin/speaker.php'deki KENDİ
+// detay sayfasına taşındı - "konuşmacı detayına girince mikrofon kodu
+// almalı" isteği üzerine roster'ı sade bir liste hâline getirdik,
+// isim detay sayfasına bağlanıyor.
 $speakerRows = '';
 foreach ($speakers as $s) {
     $activeBadge = $s['is_active'] ? ' <span class="badge text-bg-success">Aktif</span>' : '';
-    $toggleForm = $s['is_active']
-        ? '<form method="post" class="d-inline"><input type="hidden" name="action" value="deactivate_speaker"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-outline-warning">Pasif Yap</button></form>'
-        : '<form method="post" class="d-inline"><input type="hidden" name="action" value="activate_speaker"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-success">Aktif Yap</button></form>';
-
     $photoCell = !empty($s['photo'])
-        ? '<img src="' . esc('/' . $s['photo'] . '?t=' . time()) . '" width="40" height="40" class="rounded-circle object-fit-cover" alt="">' .
-          '<form method="post" class="d-inline" onsubmit="return confirm(\'Fotoğrafı kaldırmak istediğinize emin misiniz?\');"><input type="hidden" name="action" value="remove_speaker_photo"><input type="hidden" name="speaker_id" value="' . esc($s['id']) . '"><button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-1">Kaldır</button></form>'
-        : '<span class="text-secondary small">Yok</span>';
-    $photoUploadForm = '<form method="post" enctype="multipart/form-data" class="d-flex gap-1 mt-1">
-            <input type="hidden" name="action" value="upload_speaker_photo">
-            <input type="hidden" name="speaker_id" value="' . esc($s['id']) . '">
-            <input type="file" class="form-control form-control-sm" name="photo" accept="image/png,image/jpeg,image/gif,image/webp" style="max-width:150px">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Yükle</button>
-          </form>';
-
+        ? '<img src="' . esc('/' . $s['photo'] . '?t=' . time()) . '" width="36" height="36" class="rounded-circle object-fit-cover" alt="">'
+        : '<span class="text-secondary small">-</span>';
     $speakerRows .= '<tr>
-        <td>' . $photoCell . $photoUploadForm . '</td>
-        <td>' . esc($s['name']) . $activeBadge . '</td>
+        <td>' . $photoCell . '</td>
+        <td><a href="/admin/speaker.php?id=' . esc($s['id']) . '">' . esc($s['name']) . '</a>' . $activeBadge . '</td>
         <td class="text-secondary small">' . esc($s['topic_tr']) . '</td>
         <td class="text-secondary small">' . esc($s['topic_en']) . '</td>
-        <td class="text-nowrap">
-          ' . $toggleForm . '
-          <form method="post" class="d-inline" onsubmit="return confirm(\'Bu konuşmacıyı silmek istediğinize emin misiniz?\');">
-            <input type="hidden" name="action" value="delete_speaker">
-            <input type="hidden" name="speaker_id" value="' . esc($s['id']) . '">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Sil</button>
-          </form>
-        </td>
       </tr>';
 }
 $speakersTable = count($speakers) === 0
     ? '<p class="text-secondary">Henüz konuşmacı eklenmedi.</p>'
-    : '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Fotoğraf</th><th>Ad Soyad</th><th>Konu (TR)</th><th>Konu (EN)</th><th></th></tr></thead><tbody>' . $speakerRows . '</tbody></table></div>';
+    : '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Fotoğraf</th><th>Ad Soyad</th><th>Konu (TR)</th><th>Konu (EN)</th></tr></thead><tbody>' . $speakerRows . '</tbody></table></div>';
 
 // --- Placeholder görsel ---
 $placeholderCard = '';
@@ -213,13 +141,6 @@ if (!empty($event['placeholder_image'])) {
 } else {
     $placeholderCard = '<p class="text-secondary">Henüz görsel yüklenmedi - hiçbir konuşmacı aktif değilken katılımcılar boş bir ekran görecek.</p>';
 }
-
-// --- Soru-Cevap ---
-$qaToggleLabel = $event['qa_enabled'] ? 'Soru Sormayı Kapat' : 'Soru Sormayı Aç';
-$qaToggleClass = $event['qa_enabled'] ? 'btn-outline-warning' : 'btn-success';
-$qaStatusBadge = $event['qa_enabled']
-    ? '<span class="badge text-bg-success">Soru sorma AÇIK</span>'
-    : '<span class="badge text-bg-secondary">Soru sorma KAPALI</span>';
 
 $questionsList = render_question_list_html($id, $event['source_lang']);
 
@@ -245,23 +166,6 @@ $body = <<<HTML
             </div>
             <p class="text-secondary small mb-0">Bağlı katılımcı: <strong id="participant-count">{$participantCount}</strong> &middot; Toplam katılımcı (bugüne kadar, yaklaşık): <strong>{$totalParticipants}</strong></p>
             <a href="/admin/export_qr_poster.php?event_id={$eventIdEsc}" class="btn btn-sm btn-outline-secondary mt-2">QR Posterini İndir (.svg)</a>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card mb-4">
-      <div class="card-body">
-        <h2 class="h5 card-title">Konuşmacı Mikrofon Ekranı</h2>
-        <p class="text-secondary small">Bu tek link/QR, etkinlik boyunca konuşmayı yakalayan cihazda (ör. podyumdaki laptop veya konuşmacının telefonu) açık kalır - hangi konuşmacının aktif olduğunu aşağıdaki listeden siz değiştirirsiniz.</p>
-        <div class="d-flex gap-3 flex-wrap align-items-start">
-          <div class="bg-white p-2 rounded"><img src="{$speakQrDataUri}" width="140" height="140" alt="Mikrofon ekranı QR kodu"></div>
-          <div class="flex-grow-1">
-            <div class="input-group input-group-sm mb-2">
-              <input type="text" class="form-control" id="speak-url" value="{$speakUrlEsc}" readonly>
-              <button class="btn btn-outline-secondary" type="button" onclick="copyField('speak-url')">Kopyala</button>
-            </div>
-            <a href="{$speakUrlEsc}" target="_blank" rel="noopener" class="btn btn-sm btn-primary">Mikrofon ekranını aç &rarr;</a>
           </div>
         </div>
       </div>
@@ -311,6 +215,7 @@ $body = <<<HTML
     <div class="card mb-4">
       <div class="card-body">
         <h2 class="h5 card-title">Konuşmacılar</h2>
+        <p class="text-secondary small">Mikrofon linki, aktif/pasif etme, dil ve soru-cevap ayarları için bir konuşmacının adına tıklayıp kendi detay sayfasına gidin.</p>
         {$speakersTable}
         <hr>
         <form method="post" class="row g-2">
@@ -334,12 +239,10 @@ $body = <<<HTML
     <div class="card">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-          <h2 class="h5 card-title mb-0">Sorular {$qaStatusBadge}</h2>
-          <div class="d-flex gap-2">
-            <button id="notif-btn" type="button" class="btn btn-sm btn-outline-secondary">Yeni Soru Bildirimlerini Aç</button>
-            <form method="post"><input type="hidden" name="action" value="toggle_qa"><button type="submit" class="btn btn-sm {$qaToggleClass}">{$qaToggleLabel}</button></form>
-          </div>
+          <h2 class="h5 card-title mb-0">Sorular</h2>
+          <button id="notif-btn" type="button" class="btn btn-sm btn-outline-secondary">Yeni Soru Bildirimlerini Aç</button>
         </div>
+        <p class="text-secondary small">Soru sorma her konuşmacının kendi ekranından açılıp kapatılıyor - burada tüm konuşmacılara gelen sorular birlikte görünür.</p>
         <div id="questions-list" style="max-height:400px;overflow-y:auto">{$questionsList}</div>
       </div>
     </div>

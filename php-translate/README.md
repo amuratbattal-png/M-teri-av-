@@ -653,6 +653,103 @@ girişsiz erişime 302 ve olmayan etkinliğe 404 döndürdüğü, ve etkinlik
 silme kaskadının YENİ eklenen `transcript_entries`/`participant_pings`
 verisiyle birlikte hâlâ doğru çalıştığı doğrulandı.
 
+### Bu tur: mikrofon/soru/dil artık ETKİNLİK değil, KONUŞMACI bazında
+
+Sahibinin bildirdiği hatalar: "konuşmacı eklemeden 'Konuşmacı Mikrofon
+Ekranı' olmamalı, konuşmacı detayına girince mikrofon kodu almalı, soru
+sorma ve dil de aynı ekrandan (konuşmacı bazlı) yönetilmeli, katılımcı
+sadece aktif konuşmacının çeviri ekranını görmeli, konuşmacı bitirince
+transkript indirilebilmeli". Bunların hepsi tek bir mimari kararla
+çözüldü: eskiden `events` tablosunda TEK bir `speaker_token`/`qa_enabled`/
+`source_lang` (etkinlik genelinde paylaşılan) vardı - artık bunların
+HER BİRİ `event_speakers` satırına taşındı, her konuşmacının kendi
+mikrofon linki/token'ı, kendi soru-sorma açma/kapama anahtarı ve kendi
+konuşma dili var.
+
+- **Şema:** `event_speakers`'a `token`, `qa_enabled`, `source_lang`
+  sütunları eklendi (v1'deki fotoğraf sütunuyle AYNI "tolerant ALTER
+  TABLE" deseni - hem fresh-install hem upgrade yolu `php -S` +
+  SQLite'ta ayrıca test edildi, ikisi de temiz). Var olan konuşmacı
+  satırlarının (upgrade sonrası) boş kalan `token`'ı, `includes/repo.php`
+  `ensure_speaker_token()` ile İLK OKUNDUĞU anda kendiliğinden üretilip
+  kalıcı olarak yazılıyor - ayrı bir migration script'i GEREKMEDİ.
+- **`admin/event.php`'deki eski "Konuşmacı Mikrofon Ekranı" kartı
+  tamamen KALDIRILDI** - artık konuşmacı eklendiğinde doğrudan
+  `admin/speaker.php` (yeni dosya) sayfasına yönlendiriliyor. Bu sayfada:
+  konuşmacının KENDİ mikrofon linki+QR kodu, Aktif Yap/Pasif Yap (tek-aktif
+  kuralı hâlâ geçerli - birini aktif yapmak diğerlerini otomatik pasif
+  yapar), Konuşma Dili (TR/EN) toggle'ı, Soru Sorma aç/kapa, ve o
+  konuşmacıya sorulmuş sorular + çeviri butonları var.
+- **`speak.php` (konuşmacının kendi mikrofon ekranı):** artık
+  `?speaker=<id>&token=<token>` ile açılıyor (eskiden `?event=<id>&token=...`).
+  Yeni "Konuşmayı Başlat"/"Konuşmayı Bitir" butonu - başlatınca hem
+  kendini Aktif yapıyor (`api/speak_post.php` `type:activate`) HEM
+  tarayıcı mikrofon tanımasını (`SpeechRecognition`) başlatıyor;
+  bitirince ikisini de durduruyor. Dil (TR/EN) ve Soru Sorma da bu
+  ekrandan tek tıkla değiştirilebiliyor. **Sunucu tarafında yeni bir
+  bütünlük kuralı:** `api/speak_post.php`, bir konuşmacı O AN aktif
+  DEĞİLKEN gönderdiği `interim`/`final` metni artık 409 (`not_active`)
+  ile REDDEDİYOR - bir konuşmacı pasif kaldıktan sonra tarayıcısı hâlâ
+  açık kalıp yanlışlıkla metin göndermeye devam ederse (ör. sekme
+  kapatılmadan bırakılırsa) bu, başka bir konuşmacının segmentine
+  karışmasını engelliyor; `speak.php`'nin JS'i bu hatayı görünce
+  mikrofonu kendiliğinden durduruyor. Eski etkinlik-genelinde
+  "Etkinliği Sonlandır" butonu ve `type:end_event` bu ekrandan
+  KALDIRILDI (o kontrol zaten `admin/event.php`'deki "Etkinlik
+  Yönetimi" kartında duruyor, konuşmacı ekranının işi değil).
+- **`api/ask_question.php`:** soru sorma artık ETKİNLİĞİN değil, O AN
+  AKTİF konuşmacının `qa_enabled`'ına bakıyor; aktif konuşmacı yoksa
+  403 (`no_active_speaker`) döndürüyor.
+- **`api/participant_poll.php`:** hem varsayılan dil hem transkript/
+  interim sorguları artık AKTİF KONUŞMACIYA göre filtreleniyor
+  (`WHERE ... AND speaker_id = ?`) - katılımcı artık SADECE o an aktif
+  olan konuşmacının cümlelerini görüyor, önceki konuşmacıdan kalan
+  satırlar sorgudan hiç dönmüyor. Aktif konuşmacı yoksa `entries: []`
+  + `active_speaker: null` ile erken dönüyor (hiç DB sorgusu
+  gerekmiyor). Eski üst-seviye `qa_enabled` alanı kaldırıldı, yerine
+  `active_speaker.qa_enabled` geldi (bu turda canlı testte fark edilip
+  ayrıca düzeltilen küçük bir kalıntı - ilk taslakta "ended" yanıtından
+  kaldırılmış ama normal yanıttan unutulmuştu).
+- **`join.php` (katılımcı ekranı):** iki yeni davranış eklendi.
+  1) Bir sonraki anket cevabında aktif konuşmacının kimliği DEĞİŞTİĞİ
+     anlaşılırsa (`data.active_speaker.id` önceki anketten farklıysa),
+     dil değiştirmede KULLANILAN AYNI mekanizma (`afterSeq = 0` +
+     `firstPollAfterJoin = true`) tetiklenip transkript sıfırdan
+     dolduruluyor - böylece bir konuşmacıdan diğerine geçişte ekranda
+     ESKİ konuşmacının cümleleri asılı kalmıyor.
+  2) Aktif konuşmacı `null`'a düştüğünde (konuşmacı konuşmayı
+     bitirdiğinde), en son aktif olan konuşmacı hatırlanıp bir
+     **"Transkripti indir: <Ad Soyad>"** linki beliriyor - yeni,
+     kimlik doğrulaması OLMAYAN `api/download_transcript.php`
+     (`event_id`+`speaker_id`+`lang`) o konuşmacının SADECE kendi
+     segmentini, katılımcının o an takip ettiği dilde (gerekirse
+     çevirip `participant_poll.php`'deki AYNI önbelleğe-yazma
+     deseniyle kalıcı olarak önbelleğe alarak) `.txt` olarak indiriyor.
+- `includes/repo.php`'ye `list_speaker_transcript()` eklendi (tek bir
+  konuşmacının seq sırasına göre TÜM satırları - `list_transcript_with_speaker_names()`
+  gibi tüm etkinliği değil, sadece bu konuşmacıyı döndürüyor).
+
+**`php -S` + SQLite ile uçtan uca canlı test edildi** (yeni bir
+etkinlik + iki konuşmacı oluşturulup gerçek HTTP istekleriyle): her
+iki konuşmacının kendi token'ıyla üretildiği; pasif bir konuşmacının
+`final` metin göndermeye çalışınca 409 `not_active` aldığı; aktif
+konuşmacının metninin doğru kaydedildiği; Soru Sorma açıldığında
+gönderilen sorunun SADECE o konuşmacının soru listesinde göründüğü
+(diğer konuşmacının listesinde GÖRÜNMEDİĞİ); bir konuşmacı pasif
+yapılıp aktif konuşmacı olmadığında katılımcı anketinin boş/`null`
+döndüğü; ikinci konuşmacı aktif yapılıp konuştuğunda, katılımcının
+ESKİ (yüksek) `after_seq` değeriyle bile artık SADECE yeni konuşmacının
+cümlesini aldığı (üst-seviye `qa_enabled` kalıntısı da bu sırada fark
+edilip temizlendi); ilk konuşmacının transkriptinin `download_transcript.php`
+ile hem kaynak dilde hem (NVIDIA anahtarı olmadan, beklenen şekilde
+"[çeviri yapılamadı]" ile dürüstçe) başka bir dilde indirilebildiği;
+`admin/event.php`'de artık eski mikrofon kartının hiç görünmediği ve
+konuşmacı adlarının `admin/speaker.php`'ye linklendiği; hem fresh-install
+hem upgrade şema yolunun temiz uygulandığı; ve sunucu loglarında tüm
+bu istekler boyunca HİÇBİR PHP uyarısı/hatası olmadığı doğrulandı.
+`join.php`'nin canlı render edilen `<script>` çıktısı ayrıca
+`node --check` ile de doğrulandı.
+
 ## Bilinen sınırlamalar (dürüst liste)
 
 - **STT/TTS güvenilirliği tarayıcıya bağlı** - Cloudflare sürümüyle

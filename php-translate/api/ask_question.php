@@ -38,7 +38,15 @@ function handle_ask_question(): void
     if ($event['status'] !== 'active') {
         json_response(['error' => 'event_ended'], 410);
     }
-    if (!$event['qa_enabled']) {
+    // "Soru sorma" artık ETKİNLİK genelinde değil, HER KONUŞMACININ kendi
+    // ekranından (speak.php) açıp kapattığı bir ayar - bu yüzden burada
+    // AKTİF konuşmacının kendi qa_enabled'ına bakılıyor. Aktif konuşmacı
+    // yoksa soru soracak kimse yok demektir, reddediliyor.
+    $activeSpeaker = find_active_speaker($eventId);
+    if (!$activeSpeaker) {
+        json_response(['error' => 'no_active_speaker'], 403);
+    }
+    if (!$activeSpeaker['qa_enabled']) {
         json_response(['error' => 'qa_disabled'], 403);
     }
     // Sunucu tarafında da doğrulanıyor - istemci tarafı doğrulama (bkz.
@@ -48,8 +56,6 @@ function handle_ask_question(): void
         json_response(['error' => 'validation_error', 'message' => 'İsim ve mesaj boş olamaz.'], 422);
     }
 
-    $activeSpeaker = find_active_speaker($eventId);
-
     $pdo = get_pdo();
     $stmt = $pdo->prepare(
         'INSERT INTO questions (id, event_id, speaker_id, asker_name, asker_lang, message, translations, created_at)
@@ -58,7 +64,7 @@ function handle_ask_question(): void
     $stmt->execute([
         new_id(),
         $eventId,
-        $activeSpeaker['id'] ?? null,
+        $activeSpeaker['id'],
         $askerName,
         $askerLang,
         $message,

@@ -27,28 +27,27 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 /**
  * Konuşmacının kendi mikrofon ekranı (speak.php) için - "sorular
  * konuşmacının oturumunda olduğu için konuşmacının ekranına düşecek"
- * isteği. Admin girişi DEĞİL, speak.php'nin kendi token'ı ile korunuyor
- * (aynı speak_post.php/status.php deseni).
+ * isteği. Admin girişi DEĞİL, konuşmacının KENDİ token'ı ile korunuyor
+ * (aynı speak_post.php deseni). Artık token doğrudan BU konuşmacıyı
+ * tanımladığı için (önceden etkinlik-geneli bir token vardı, "o an
+ * aktif konuşmacı kim" diye ayrıca sorgulamak gerekiyordu) - kendisine
+ * sorulmuş TÜM sorular (aktif olsun olmasın, geçmiş segmentleri dahil)
+ * döndürülüyor.
  */
 function handle_speaker_questions(): void
 {
-    $eventId = (string) ($_GET['event_id'] ?? '');
+    $speakerId = (string) ($_GET['speaker_id'] ?? '');
     $token = (string) ($_GET['token'] ?? '');
 
-    $event = $eventId !== '' ? find_event($eventId) : null;
-    if (!$event) {
-        json_response(['error' => 'event_not_found'], 404);
+    $speaker = $speakerId !== '' ? find_event_speaker($speakerId) : null;
+    if (!$speaker) {
+        json_response(['error' => 'speaker_not_found'], 404);
     }
-    if (!hash_equals($event['speaker_token'], $token)) {
+    if (!hash_equals($speaker['token'], $token)) {
         json_response(['error' => 'unauthorized'], 401);
     }
 
-    $activeSpeaker = find_active_speaker($eventId);
-    if (!$activeSpeaker) {
-        json_response(['questions' => [], 'activeSpeakerId' => null]);
-    }
-
-    $rows = list_questions_for_speaker($eventId, $activeSpeaker['id']);
+    $rows = list_questions_for_speaker($speaker['event_id'], $speakerId);
     $questions = array_map(
         static fn (array $q): array => [
             'id' => $q['id'],
@@ -59,7 +58,7 @@ function handle_speaker_questions(): void
         $rows,
     );
 
-    json_response(['questions' => $questions, 'activeSpeakerId' => $activeSpeaker['id']]);
+    json_response(['questions' => $questions]);
 }
 
 try {
