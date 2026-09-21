@@ -51,7 +51,7 @@ $yourNameLabel = esc(t('your_name', $uiLang));
 $yourMessageLabel = esc(t('your_message', $uiLang));
 $sendLabel = esc(t('send', $uiLang));
 $cancelLabel = esc(t('cancel', $uiLang));
-$langOptions = language_options_html($event['source_lang'], $uiLang);
+$langOptions = language_options_html($event['source_lang'], $uiLang, PARTICIPANT_LANGUAGE_CODES);
 
 // İlk yüklemede JS'in "flaş" etmeden hemen doğru içerikle başlaması için
 // başlık (aktif konuşmacı/placeholder) sunucu tarafında da hesaplanıyor -

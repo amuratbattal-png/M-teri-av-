@@ -548,6 +548,25 @@ bildirdi.
   olabilir), Canlı Log'daki (`#log` alanı) tam hata mesajı/zamanlaması
   bir sonraki teşhis için paylaşılmalı.
 
+### Altıncı tur: katılımcı ekranındaki dil seçeneği 2'ye düşürüldü
+
+"Katılımcı ekranında dil seçeneğini 2'ye düşür, Türkçe ve İngilizce
+olsun" isteği üzerine `includes/languages.php`'ye yeni bir
+`PARTICIPANT_LANGUAGE_CODES = ['tr', 'en']` sabiti eklendi;
+`language_options_html()` artık opsiyonel bir 3. parametre
+(`$onlyCodes`) alıyor - verilirse sadece o kodlardaki diller listelenir,
+verilmezse (mevcut TÜM çağıranlarda olduğu gibi) eskisi gibi LANGUAGES'teki
+HEPSİ listelenir (geriye dönük uyumlu). SADECE `join.php`'deki katılımcı
+"hangi dilde takip etmek istersiniz?" seçici bu yeni parametreyi
+kullanıyor - etkinlik oluştururken "konuşmacıların dili" seçimi
+(`admin/events.php`), admin'in soru çevirisi dropdown'u
+(`includes/layout.php` `render_question_list_html()`) ve konuşmacının
+kendi ekranındaki soru çevirisi dropdown'u (`speak.php`) kasıtlı olarak
+ETKİLENMEDİ - hâlâ tüm ~20 dili gösteriyorlar (sahibi sadece
+KATILIMCI ekranını kastetmişti). `php -S` ile katılımcı ekranında
+gerçekten sadece 2 seçenek (Türkçe/İngilizce) çıktığı, diğer üç dil
+seçicisinin hâlâ tam listeyi gösterdiği ayrı ayrı doğrulandı.
+
 ## Bilinen sınırlamalar (dürüst liste)
 
 - **STT/TTS güvenilirliği tarayıcıya bağlı** - Cloudflare sürümüyle

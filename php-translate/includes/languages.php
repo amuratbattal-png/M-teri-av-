@@ -24,6 +24,16 @@ const LANGUAGES = [
     ['code' => 'ro', 'label' => 'Rumence', 'label_en' => 'Romanian', 'bcp47' => 'ro-RO'],
 ];
 
+/**
+ * Katılımcı ekranındaki "hangi dilde takip etmek istersiniz?" seçimi
+ * BİLİNÇLİ olarak sadece bu iki dille sınırlı tutuluyor ("dil
+ * seçeneğini 2'ye düşür, Türkçe ve İngilizce olsun" - sahibi). Diğer
+ * dil seçicileri (etkinlik oluştururken "konuşmacıların dili", admin'in
+ * soru çevirisi dropdown'u, konuşmacının kendi ekranındaki soru
+ * çevirisi) BUNDAN etkilenmiyor - hâlâ TÜM LANGUAGES listesini gösteriyor.
+ */
+const PARTICIPANT_LANGUAGE_CODES = ['tr', 'en'];
+
 function language_label(string $code): string
 {
     foreach (LANGUAGES as $lang) {
@@ -54,10 +64,18 @@ function bcp47_for(string $code): string
     return $code;
 }
 
-function language_options_html(string $selected = '', string $uiLang = 'tr'): string
+/**
+ * @param ?array<int, string> $onlyCodes Verilirse, sadece bu kodlardaki
+ *        diller listelenir (ör. katılımcı ekranı için PARTICIPANT_LANGUAGE_CODES) -
+ *        null ise (varsayılan) LANGUAGES'teki TÜM diller listelenir.
+ */
+function language_options_html(string $selected = '', string $uiLang = 'tr', ?array $onlyCodes = null): string
 {
     $html = '';
     foreach (LANGUAGES as $lang) {
+        if ($onlyCodes !== null && !in_array($lang['code'], $onlyCodes, true)) {
+            continue;
+        }
         $sel = $lang['code'] === $selected ? ' selected' : '';
         $label = $uiLang === 'en' ? $lang['label_en'] : $lang['label'];
         $html .= '<option value="' . esc($lang['code']) . '"' . $sel . '>' . esc($label) . '</option>';
