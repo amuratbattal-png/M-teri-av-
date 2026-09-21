@@ -11,6 +11,16 @@ const BOOTSTRAP_CSS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/boo
 const BOOTSTRAP_JS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js';
 
 /**
+ * Google Fonts (Inter) - "profesyonel yazı tipi" isteği. `preconnect`
+ * ile DNS/TLS el sıkışması erkenden başlıyor, `display=swap` yazı tipi
+ * henüz yüklenmemişken metnin GÖRÜNMEZ kalmasını (FOIT) önlüyor - metin
+ * sistem fontuyla hemen görünüp yazı tipi gelince yumuşakça değişiyor.
+ */
+const FONT_LINKS = '<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">';
+
+/**
  * "Tema çok kötü, daha profesyonel bir görüntü olsun" isteği üzerine
  * eklendi - Bootstrap'ın kendi CSS değişkenlerini (`--bs-*`) Bootstrap'ın
  * KENDİ dosyasından SONRA (bu <style> bloğu her zaman <link>'ten sonra
@@ -19,7 +29,9 @@ const BOOTSTRAP_JS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/boots
  * değiştirmeden - sadece BUNU EKLEYEREK - tüm bileşenlere (buton, kart,
  * form, tablo, modal, sekme) tutarlı bir şekilde yansıyor. Tüm sayfalarda
  * (admin + katılımcı + konuşmacı + giriş + kurulum) paylaşılıyor ki
- * "sistem" tek/tutarlı bir marka gibi görünsün.
+ * "sistem" tek/tutarlı bir marka gibi görünsün. İkinci turda "sadeleştir"
+ * isteği üzerine arkaplandaki dekoratif gradyan kaldırıldı, kart/navbar
+ * gölgeleri hafifletildi - daha az görsel gürültü, daha "kurumsal".
  */
 const DESIGN_STYLE = <<<CSS
   :root {
@@ -33,17 +45,21 @@ const DESIGN_STYLE = <<<CSS
     --bs-link-color-rgb: 129, 140, 248;
     --bs-link-hover-color: #a5b4fc;
     --bs-link-hover-color-rgb: 165, 180, 252;
-    --bs-border-radius: .65rem;
-    --bs-border-radius-sm: .5rem;
-    --bs-border-radius-lg: .85rem;
+    --bs-border-radius: .6rem;
+    --bs-border-radius-sm: .45rem;
+    --bs-border-radius-lg: .75rem;
+    --bs-font-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --bs-body-font-family: var(--bs-font-sans-serif);
   }
-  body { background: radial-gradient(1100px 520px at 12% -8%, #171b26 0%, rgba(23,27,38,0) 60%) fixed, var(--bs-body-bg); }
+  body { background: var(--bs-body-bg); }
   h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 { letter-spacing: -.01em; }
-  .navbar { background: #0f1219 !important; border-bottom: 1px solid var(--bs-border-color); box-shadow: 0 8px 24px -16px rgba(0,0,0,.6); }
+  .navbar { background: #0f1219 !important; border-bottom: 1px solid var(--bs-border-color); }
   .navbar-brand { letter-spacing: -.02em; font-weight: 700; }
+  .navbar-brand-logo, .login-logo { height: 28px; width: auto; }
+  .login-logo { height: 44px; margin-bottom: .75rem; }
   .nav-link { font-weight: 500; }
   .nav-link.active { color: var(--bs-primary-text-emphasis) !important; }
-  .card { background: #12151d; border: 1px solid var(--bs-border-color); box-shadow: 0 14px 34px -18px rgba(0,0,0,.6); }
+  .card { background: #12151d; border: 1px solid var(--bs-border-color); box-shadow: 0 2px 8px -4px rgba(0,0,0,.4); }
   .card-title { font-weight: 600; }
   .modal-content { background: #12151d; border: 1px solid var(--bs-border-color); }
   .btn { font-weight: 500; }
@@ -55,6 +71,29 @@ const DESIGN_STYLE = <<<CSS
   .form-control:focus, .form-select:focus { border-color: var(--bs-primary); box-shadow: 0 0 0 .2rem rgba(99,102,241,.25); }
   .table { --bs-table-bg: transparent; }
 CSS;
+
+/**
+ * Navbar'da ve giriş ekranında kullanılan marka işareti - logo
+ * yüklendiyse küçük bir <img> + marka adı, yüklenmediyse sadece marka
+ * adı metni. `$imgClass` çağrıldığı yere göre boyutu ayarlıyor
+ * (`.navbar-brand-logo` küçük, `.login-logo` giriş ekranında daha büyük).
+ *
+ * @param array{name: string, logo: ?string} $branding
+ */
+function brand_mark_html(array $branding, string $imgClass = 'navbar-brand-logo'): string
+{
+    $nameEsc = esc($branding['name']);
+    if (!empty($branding['logo'])) {
+        return '<img src="' . esc('/' . $branding['logo']) . '" alt="" class="' . esc($imgClass) . '"> ' . $nameEsc;
+    }
+    return $nameEsc;
+}
+
+/** Logo yüklendiyse tarayıcı sekmesindeki simge (favicon) olarak da kullanılıyor - ayrı bir favicon yükleme alanı gerektirmeden. */
+function favicon_link_html(array $branding): string
+{
+    return !empty($branding['logo']) ? '<link rel="icon" href="' . esc('/' . $branding['logo']) . '">' : '';
+}
 
 const EXTRA_STYLE = <<<CSS
   body { min-height: 100vh; }
@@ -81,9 +120,14 @@ function nav_item(string $href, string $key, string $active, string $label): str
 
 function admin_page(string $activeNav, string $title, string $bodyHtml): string
 {
+    $branding = get_effective_branding();
     $titleEsc = esc($title);
+    $brandNameEsc = esc($branding['name']);
+    $brandMark = brand_mark_html($branding);
+    $faviconLink = favicon_link_html($branding);
     $bsCss = BOOTSTRAP_CSS;
     $bsJs = BOOTSTRAP_JS;
+    $fontLinks = FONT_LINKS;
     $designStyle = DESIGN_STYLE;
     $extraStyle = EXTRA_STYLE;
     $nav = nav_item('/admin/events.php', 'events', $activeNav, 'Etkinlikler') .
@@ -95,7 +139,9 @@ function admin_page(string $activeNav, string $title, string $bodyHtml): string
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{$titleEsc} - Canlı Çeviri Yönetimi</title>
+<title>{$titleEsc} - {$brandNameEsc}</title>
+{$faviconLink}
+{$fontLinks}
 <link href="{$bsCss}" rel="stylesheet">
 <style>{$designStyle}
 {$extraStyle}</style>
@@ -103,7 +149,7 @@ function admin_page(string $activeNav, string $title, string $bodyHtml): string
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
   <div class="container">
-    <a class="navbar-brand" href="/admin/events.php">Canlı Çeviri</a>
+    <a class="navbar-brand d-flex align-items-center gap-2" href="/admin/events.php">{$brandMark}</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -127,10 +173,13 @@ HTML;
 /** Katılımcı/konuşmacı ekranları için sade bir kabuk - admin panelinden bilerek AYRI (navbar yok, kendi başlıklarını kendileri çiziyor). */
 function public_page(string $title, string $bodyHtml, string $htmlLang = 'tr', string $extraHead = ''): string
 {
+    $branding = get_effective_branding();
     $titleEsc = esc($title);
     $langEsc = esc($htmlLang);
+    $faviconLink = favicon_link_html($branding);
     $bsCss = BOOTSTRAP_CSS;
     $bsJs = BOOTSTRAP_JS;
+    $fontLinks = FONT_LINKS;
     $designStyle = DESIGN_STYLE;
     $extraStyle = EXTRA_STYLE;
 
@@ -141,6 +190,8 @@ function public_page(string $title, string $bodyHtml, string $htmlLang = 'tr', s
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$titleEsc}</title>
+{$faviconLink}
+{$fontLinks}
 <link href="{$bsCss}" rel="stylesheet">
 <style>{$designStyle}
 {$extraStyle}</style>

@@ -28,8 +28,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $error = 'Kullanıcı adı veya şifre hatalı.';
 }
 
+$branding = get_effective_branding();
+$brandNameEsc = esc($branding['name']);
+$loginLogoHtml = !empty($branding['logo'])
+    ? '<img src="' . esc('/' . $branding['logo']) . '" alt="" class="login-logo">'
+    : '';
+$faviconLink = favicon_link_html($branding);
 $bsCss = BOOTSTRAP_CSS;
 $bsJs = BOOTSTRAP_JS;
+$fontLinks = FONT_LINKS;
 $designStyle = DESIGN_STYLE;
 $redirectEsc = esc($redirect);
 $errorHtml = $error ? '<div class="alert alert-danger">' . esc($error) . '</div>' : '';
@@ -40,15 +47,20 @@ echo <<<HTML
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Giriş - Canlı Çeviri Yönetimi</title>
+<title>Giriş - {$brandNameEsc}</title>
+{$faviconLink}
+{$fontLinks}
 <link href="{$bsCss}" rel="stylesheet">
 <style>{$designStyle}</style>
 </head>
 <body class="d-flex align-items-center justify-content-center" style="min-height:100vh">
   <div class="card" style="width:100%;max-width:380px">
     <div class="card-body p-4">
-      <h1 class="h4 mb-3 text-center">Canlı Çeviri</h1>
-      <p class="text-secondary text-center mb-4">Yönetim Paneli Girişi</p>
+      <div class="text-center">
+        {$loginLogoHtml}
+        <h1 class="h4 mb-3">{$brandNameEsc}</h1>
+        <p class="text-secondary mb-4">Yönetim Paneli Girişi</p>
+      </div>
       {$errorHtml}
       <form method="post">
         <input type="hidden" name="redirect" value="{$redirectEsc}">

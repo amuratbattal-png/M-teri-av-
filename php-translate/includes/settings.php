@@ -62,3 +62,24 @@ function update_nvidia_settings(?string $apiKey, ?string $model, bool $clearApiK
         upsert_setting('nvidia_model', $model);
     }
 }
+
+const DEFAULT_BRAND_NAME = 'Canlı Çeviri';
+
+/**
+ * Ayarlar panelinden girilen marka adı/logosu - admin panelinin
+ * navbar'ında, sayfa başlıklarında ve giriş ekranında kullanılıyor
+ * ("özel logo/marka" isteği). İkisi de opsiyonel - hiçbiri girilmediyse
+ * varsayılan "Canlı Çeviri" adı ve logosuz (sadece metin) haliyle
+ * çalışmaya devam eder.
+ *
+ * @return array{name: string, logo: ?string}
+ */
+function get_effective_branding(): array
+{
+    $name = read_setting('brand_name');
+    $logo = read_setting('brand_logo');
+    return [
+        'name' => $name ?? DEFAULT_BRAND_NAME,
+        'logo' => $logo,
+    ];
+}

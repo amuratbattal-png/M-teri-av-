@@ -4,3 +4,5 @@ uploads/events/*
 !uploads/events/.gitkeep
 uploads/speakers/*
 !uploads/speakers/.gitkeep
+uploads/branding/*
+!uploads/branding/.gitkeep

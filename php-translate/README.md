@@ -110,11 +110,13 @@ php-translate/
                                                        QA, konuşmacıya göre gruplu sorular
                             questions_feed.php         canlı soru listesi (JS poller)
                             translate_question.php     tek bir soruyu çevir (JSON)
-                            settings.php                NVIDIA API anahtarı/model
+                            settings.php                marka/logo + NVIDIA API anahtarı/model
+                            export_transcript.php      transkripti .txt olarak indir
+                            export_qr_poster.php       katılım QR'ını basılabilir .svg poster olarak indir
   api/                    speak_post.php, participant_poll.php, status.php,
                           ask_question.php, speaker_questions.php (konuşmacının
                           kendi ekranı için, token ile korunan, aktifken sorulan
-                          soruları döner)
+                          soruları döner), speaker_translate_question.php
   join.php                Katılımcı sayfası (?code=XXXXXX)
   speak.php               Konuşmacı mikrofon ekranı + gelen sorular (?event=...&token=...)
 ```
@@ -566,6 +568,90 @@ ETKİLENMEDİ - hâlâ tüm ~20 dili gösteriyorlar (sahibi sadece
 KATILIMCI ekranını kastetmişti). `php -S` ile katılımcı ekranında
 gerçekten sadece 2 seçenek (Türkçe/İngilizce) çıktığı, diğer üç dil
 seçicisinin hâlâ tam listeyi gösterdiği ayrı ayrı doğrulandı.
+
+### Yedinci tur: marka/logo, profesyonel yazı tipi, sadeleştirme + 4 yeni özellik
+
+Sahibi "temayı daha profesyonel yap, başka özellik fikirlerin var mı"
+dedi - `AskUserQuestion` ile tema yönü (marka/logo, yazı tipi,
+sadeleştirme - favicon hariç) ve 4 yeni özelliğin HEPSİ (transkript
+indirme, toplam katılımcı raporu, QR poster indirme, yeni soru
+bildirimi) seçildi, hepsi uygulandı:
+
+- **Marka/logo.** `settings` tablosuna (yeni sütun GEREKMEDİ, zaten
+  genel key/value) `brand_name`/`brand_logo` anahtarları eklendi -
+  `includes/settings.php` `get_effective_branding()` (varsayılan:
+  "Canlı Çeviri", logo yok). Ayarlar sayfasına yeni bir "Marka" kartı
+  eklendi: marka adı metin kutusu + logo yükle/kaldır formu (mevcut
+  `validate_uploaded_image()` ile AYNI doğrulama, `uploads/branding/logo.<ext>`'e
+  kaydediliyor - önceki logo, uzantısı ne olursa olsun `glob()` ile
+  temizleniyor). `includes/layout.php`'deki `admin_page()`/`public_page()`
+  VE `admin/login.php` artık bunu okuyup navbar'da/başlıklarda/giriş
+  ekranında kullanıyor; logo yüklendiyse AYRICA tarayıcı sekmesi
+  simgesi (favicon) olarak da kullanılıyor (ayrı bir favicon yükleme
+  alanı gerekmeden). `setup.php` BİLEREK etkilenmedi - o an henüz
+  `config.php`/DB yok, marka ayarına erişilemez.
+- **Profesyonel yazı tipi.** `includes/layout.php`'ye Google Fonts
+  (Inter, `display=swap` ile - yazı tipi yüklenene kadar metin
+  GÖRÜNMEZ kalmasın diye) eklendi, Bootstrap'ın
+  `--bs-font-sans-serif`/`--bs-body-font-family` değişkenleri
+  override edildi - sistem fontu yerine tüm sayfalarda (admin +
+  katılımcı + giriş + kurulum) Inter kullanılıyor.
+- **Sadeleştirme.** `DESIGN_STYLE`'daki dekoratif arkaplan gradyanı
+  kaldırılıp düz bir renkle değiştirildi, kart/navbar gölgeleri
+  belirgin şekilde hafifletildi (`0 14px 34px` gibi dramatik
+  gölgelerden `0 2px 8px` gibi ince bir vurguya) - daha az görsel
+  gürültü, daha "kurumsal" bir görünüm.
+- **Transkript indirme.** Yeni `list_transcript_with_speaker_names()`
+  (repo.php, `transcript_entries` LEFT JOIN `event_speakers`) + yeni
+  `admin/export_transcript.php` (admin girişi korumalı) - o ana kadar
+  kaydedilmiş TÜM konuşmayı `[zaman] Konuşmacı Adı: cümle` formatında
+  düz metin (.txt) olarak indiriyor, konuşmacı atanmamışsa
+  "(konuşmacı atanmamış)" yazıyor. Etkinlik sayfasına yeni bir
+  "Transkript" kartı eklendi.
+- **Toplam katılımcı raporu.** Yeni `count_total_participants()`
+  (repo.php) - `participant_pings` tablosu zaten her benzersiz
+  `client_id` için TEK bir satır tutuyor (upsert, satır katılımcı
+  ayrılsa da SİLİNMİYOR) - bu yüzden HİÇBİR şema değişikliği
+  gerekmedi, sadece zaman penceresi FİLTRESİZ bir `COUNT(*)` sorgusu
+  yeterli oldu. Etkinlik sayfasında canlı "Bağlı katılımcı" sayısının
+  yanına "Toplam katılımcı (bugüne kadar, yaklaşık)" eklendi.
+  **Dürüst sınır:** `join.php` her sayfa yüklemesinde YENİ bir rastgele
+  `client_id` ürettiği için bir katılımcı sayfayı yeniler/tekrar açarsa
+  birden fazla sayılabilir - bu yüzden "yaklaşık" ibaresi bilerek
+  eklendi.
+- **QR poster indirme.** Yeni `admin/export_qr_poster.php` - etkinlik
+  adı + "QR kodu okutun" talimatı + QR kod + yedek katılım kodu içeren,
+  800x1100 boyutunda indirilebilir bir SVG poster üretiyor. Yeni bir
+  bağımlılık (PDF kütüphanesi vb.) EKLEMEDEN yapıldı - QR görseli, zaten
+  var olan `render_qr_data_uri()`'nin döndürdüğü data URI'nin bir
+  `<image>` etiketiyle poster SVG'sinin içine gömülmesiyle elde edildi
+  (chillerlan'ın ham SVG çıktısını elle yeniden boyutlandırmaya
+  çalışmak yerine - daha kırılgan olurdu). Üretilen SVG, PHP'nin
+  `DOMDocument`'ıyla geçerli XML olarak doğrulandı. **Dürüst sınır:**
+  sadece SVG (vektör) - PNG/PDF seçeneği yok; modern tarayıcıların
+  çoğu SVG'yi doğrudan açıp yazdırabiliyor (Ctrl+P), ama bunu
+  bilmeyen bir kullanıcı için ek bir adım.
+- **Yeni soru bildirimi.** Tarayıcının kendi Notification API'si
+  kullanıldı (ek bir servis/bağımlılık gerekmedi) - `admin/event.php`'ye
+  "Yeni Soru Bildirimlerini Aç" butonu eklendi (izin isteği bir
+  kullanıcı TIKLAMASI içinde tetiklenmeli, tarayıcılar sessiz otomatik
+  izin isteklerini engelliyor). Mevcut 5 saniyelik soru anketi
+  (`refreshQuestions()`) her tazelemede `[data-question-id]`
+  eleman sayısını önceki sayıyla karşılaştırıyor - arttıysa VE izin
+  verildiyse bir `Notification` gösteriliyor.
+
+Bu turda da her yeni/değişen dosya `php -l` ile lint edildi,
+`admin/event.php`'nin değişen `<script>` bloğu `node --check` ile
+ayrıca doğrulandı, tüm yeni `{$degisken}` heredoc interpolasyonları
+elle karşı kontrol edildi. `php -S` ile canlı test edildi: marka adı/
+logosunun navbar+giriş ekranında+favicon'da gerçekten göründüğü (ve
+kaldırılınca hem DB hem dosyanın temizlendiği), transkript indirmenin
+konuşmacı adlarıyla doğru çıktı ürettiği, toplam/canlı katılımcı
+sayılarının doğru hesaplandığı, QR poster SVG'sinin geçerli XML
+olduğu ve doğru dosya adıyla indiği, tüm export endpoint'lerinin
+girişsiz erişime 302 ve olmayan etkinliğe 404 döndürdüğü, ve etkinlik
+silme kaskadının YENİ eklenen `transcript_entries`/`participant_pings`
+verisiyle birlikte hâlâ doğru çalıştığı doğrulandı.
 
 ## Bilinen sınırlamalar (dürüst liste)
 

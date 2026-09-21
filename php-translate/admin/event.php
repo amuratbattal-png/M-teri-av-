@@ -150,6 +150,7 @@ $speakUrl = $origin . '/speak.php?event=' . rawurlencode($event['id']) . '&token
 $qrDataUri = render_qr_data_uri($joinUrl);
 $speakQrDataUri = render_qr_data_uri($speakUrl);
 $participantCount = count_active_participants($id);
+$totalParticipants = count_total_participants($id);
 
 $statusBadge = $event['status'] === 'active'
     ? '<span class="badge text-bg-success">Aktif</span>'
@@ -162,6 +163,8 @@ $titleEsc = esc($event['name']);
 $joinUrlEsc = esc($joinUrl);
 $speakUrlEsc = esc($speakUrl);
 $eventIdJson = json_encode($event['id']);
+$eventIdEsc = esc($event['id']);
+$titleJson = json_encode('Etkinlik: ' . $event['name'], JSON_UNESCAPED_UNICODE);
 
 // --- Konuşmacılar listesi ---
 $speakerRows = '';
@@ -240,7 +243,8 @@ $body = <<<HTML
               <input type="text" class="form-control" id="join-url" value="{$joinUrlEsc}" readonly>
               <button class="btn btn-outline-secondary" type="button" onclick="copyField('join-url')">Kopyala</button>
             </div>
-            <p class="text-secondary small mb-0">Bağlı katılımcı: <strong id="participant-count">{$participantCount}</strong></p>
+            <p class="text-secondary small mb-0">Bağlı katılımcı: <strong id="participant-count">{$participantCount}</strong> &middot; Toplam katılımcı (bugüne kadar, yaklaşık): <strong>{$totalParticipants}</strong></p>
+            <a href="/admin/export_qr_poster.php?event_id={$eventIdEsc}" class="btn btn-sm btn-outline-secondary mt-2">QR Posterini İndir (.svg)</a>
           </div>
         </div>
       </div>
@@ -275,6 +279,14 @@ $body = <<<HTML
             <button type="submit" class="btn btn-outline-primary">Yükle</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h5 card-title">Transkript</h2>
+        <p class="text-secondary small">Bu etkinlikte o ana kadar kaydedilmiş tüm konuşmayı (konuşmacı adı + zaman damgasıyla) düz metin olarak indirin.</p>
+        <a href="/admin/export_transcript.php?event_id={$eventIdEsc}" class="btn btn-sm btn-outline-secondary">Transkripti İndir (.txt)</a>
       </div>
     </div>
 
@@ -321,9 +333,12 @@ $body = <<<HTML
 
     <div class="card">
       <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
           <h2 class="h5 card-title mb-0">Sorular {$qaStatusBadge}</h2>
-          <form method="post"><input type="hidden" name="action" value="toggle_qa"><button type="submit" class="btn btn-sm {$qaToggleClass}">{$qaToggleLabel}</button></form>
+          <div class="d-flex gap-2">
+            <button id="notif-btn" type="button" class="btn btn-sm btn-outline-secondary">Yeni Soru Bildirimlerini Aç</button>
+            <form method="post"><input type="hidden" name="action" value="toggle_qa"><button type="submit" class="btn btn-sm {$qaToggleClass}">{$qaToggleLabel}</button></form>
+          </div>
         </div>
         <div id="questions-list" style="max-height:400px;overflow-y:auto">{$questionsList}</div>
       </div>
@@ -350,11 +365,46 @@ function pollStatus() {
 }
 setInterval(pollStatus, 4000);
 
+// "Yeni soru geldiğinde admin'e bildirim" isteği - tarayıcının kendi
+// Notification API'si kullanılıyor (ekstra bir sunucu/servis gerekmez).
+// İzin isteme bir kullanıcı tıklamasıyla TETİKLENMELİ (tarayıcılar sessiz
+// otomatik izin isteklerini engelliyor) - bu yüzden bir buton var.
+var notifBtn = document.getElementById('notif-btn');
+var notificationsEnabled = false;
+var lastQuestionCount = document.querySelectorAll('#questions-list [data-question-id]').length;
+
+function updateNotifButton() {
+  if (!('Notification' in window)) {
+    notifBtn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    notificationsEnabled = true;
+    notifBtn.textContent = 'Bildirimler Açık';
+    notifBtn.disabled = true;
+  } else {
+    notificationsEnabled = false;
+    notifBtn.textContent = 'Yeni Soru Bildirimlerini Aç';
+    notifBtn.disabled = false;
+  }
+}
+notifBtn.addEventListener('click', function () {
+  Notification.requestPermission().then(updateNotifButton);
+});
+updateNotifButton();
+
 function refreshQuestions() {
   fetch('/admin/questions_feed.php?event_id=' + encodeURIComponent({$eventIdJson}))
     .then(function (res) { return res.text(); })
     .then(function (html) {
       document.getElementById('questions-list').innerHTML = html;
+      var newCount = document.querySelectorAll('#questions-list [data-question-id]').length;
+      if (newCount > lastQuestionCount && notificationsEnabled) {
+        try {
+          new Notification('Yeni soru geldi', { body: {$titleJson} });
+        } catch (e) {}
+      }
+      lastQuestionCount = newCount;
     })
     .catch(function () {});
 }

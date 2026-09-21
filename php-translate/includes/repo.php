@@ -121,6 +121,40 @@ function count_active_participants(string $eventId, int $windowSeconds = 15): in
     return (int) $stmt->fetchColumn();
 }
 
+/**
+ * `participant_pings`'te her benzersiz `client_id` için TEK bir satır
+ * tutuluyor (upsert - bkz. schema.sql yorumu), satır katılımcı ayrılsa
+ * da SİLİNMÜYOR, sadece `last_seen` güncelleniyor - bu yüzden
+ * `count_active_participants()`'ın aksine burada bir zaman penceresi
+ * FİLTRESİ YOK, tablodaki TÜM satırlar sayılıyor: "etkinlik boyunca
+ * toplam kaç benzersiz katılımcı bağlandı" sorusuna cevap. **Yaklaşık
+ * bir sayı** - bir katılımcı sayfayı yeniler/tekrar açarsa `join.php`
+ * yeni bir `client_id` (rastgele UUID) ürettiği için aynı kişi birden
+ * fazla sayılabilir.
+ */
+function count_total_participants(string $eventId): int
+{
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM participant_pings WHERE event_id = ?');
+    $stmt->execute([$eventId]);
+    return (int) $stmt->fetchColumn();
+}
+
+/** Transkript dışa aktarma (.txt indirme) için - her satıra, o an söylendiğinde aktif olan konuşmacının adı (varsa) eklenir. */
+function list_transcript_with_speaker_names(string $eventId): array
+{
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare(
+        'SELECT t.seq, t.source_text, t.created_at, s.name AS speaker_name
+         FROM transcript_entries t
+         LEFT JOIN event_speakers s ON s.id = t.speaker_id
+         WHERE t.event_id = ?
+         ORDER BY t.seq ASC',
+    );
+    $stmt->execute([$eventId]);
+    return $stmt->fetchAll();
+}
+
 function list_questions(string $eventId, int $limit = 100): array
 {
     $pdo = get_pdo();
